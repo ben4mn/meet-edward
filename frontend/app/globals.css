@@ -1,0 +1,206 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Light theme (default in :root, overridden by .dark) */
+:root {
+  --primary-bg: #ffffff;
+  --surface: #f1f5f9;
+  --text-primary: #0f172a;
+  --text-muted: #64748b;
+  --border: #e2e8f0;
+  --terminal: #6366f1;
+  --input-bg: #ffffff;
+  --input-border: #e2e8f0;
+}
+
+/* Dark theme (ZYROI style) */
+.dark {
+  --primary-bg: #0f172a;
+  --surface: #1e293b;
+  --text-primary: #f1f5f9;
+  --text-muted: #94a3b8;
+  --border: #334155;
+  --terminal: #10b981;
+  --input-bg: #1e293b;
+  --input-border: #334155;
+}
+
+body {
+  color: var(--text-primary);
+  background: var(--primary-bg);
+  font-family: var(--font-inter), system-ui, sans-serif;
+}
+
+/* Custom scrollbar - Light theme */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Custom scrollbar - Dark theme */
+.dark ::-webkit-scrollbar-track {
+  background: #1e293b;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #475569;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+/* Smooth transitions for theme changes (scoped to avoid layout thrash) */
+body,
+.dark,
+[class*="bg-"],
+input,
+select,
+textarea,
+button {
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+/* Form elements in dark mode */
+.dark select,
+.dark input,
+.dark textarea {
+  color-scheme: dark;
+}
+
+/* Edward avatar animations */
+@keyframes edward-blink {
+  0%, 88%, 96%, 100% { transform: scaleY(1); }
+  92% { transform: scaleY(0.1); }
+}
+
+@keyframes edward-mouth {
+  0%, 78%, 92%, 100% { transform: scaleX(1); }
+  85% { transform: scaleX(1.2); }
+}
+
+@keyframes edward-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+@keyframes edward-eye-glow {
+  0%, 100% { filter: drop-shadow(0 0 0px transparent); }
+  50% { filter: drop-shadow(0 0 3px #52b788); }
+}
+
+@keyframes edward-screen-flicker {
+  0%, 4%, 100% { opacity: 1; }
+  2% { opacity: 0.85; }
+}
+
+@keyframes edward-antenna-glow {
+  0%, 100% { filter: drop-shadow(0 0 0px transparent); fill: #52b788; }
+  50% { filter: drop-shadow(0 0 4px #52b788); fill: #6fcf97; }
+}
+
+@keyframes edward-antenna-wobble {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(3deg); }
+  75% { transform: rotate(-3deg); }
+}
+
+.edward-blink {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: edward-blink 3.7s ease-in-out infinite;
+}
+
+.edward-mouth {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: edward-mouth 6s ease-in-out infinite;
+}
+
+.edward-float {
+  animation: edward-float 5s ease-in-out infinite;
+}
+
+.edward-antenna {
+  transform-origin: 50px 34px;
+  animation: edward-antenna-wobble 3s ease-in-out infinite;
+}
+
+.edward-eye-glow {
+  animation: edward-eye-glow 4s ease-in-out infinite;
+}
+
+.edward-screen-flicker {
+  animation: edward-screen-flicker 8s ease-in-out infinite;
+}
+
+.edward-antenna-glow {
+  animation: edward-antenna-glow 5s ease-in-out infinite;
+}
+
+@keyframes fade-in-step {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in-step {
+  animation: fade-in-step 0.2s ease-out;
+}
+
+/* Landing page animations */
+@keyframes landing-gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes edward-hero-pulse {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.05); }
+}
+
+@keyframes landing-glow-pulse {
+  0%, 100% { box-shadow: 0 0 20px rgba(82, 183, 136, 0.3), 0 0 40px rgba(82, 183, 136, 0.1); }
+  50% { box-shadow: 0 0 25px rgba(82, 183, 136, 0.5), 0 0 50px rgba(82, 183, 136, 0.2); }
+}
+
+.landing-gradient-bg {
+  background: linear-gradient(135deg, #0f172a 0%, #0d1f2d 25%, #0f172a 50%, #111827 75%, #0f172a 100%);
+  background-size: 400% 400%;
+  animation: landing-gradient-shift 15s ease infinite;
+}
+
+.landing-cta-button {
+  background: linear-gradient(135deg, #52b788 0%, #40916c 100%);
+  animation: landing-glow-pulse 3s ease-in-out infinite;
+}
+
+.landing-cta-button:hover {
+  background: linear-gradient(135deg, #5ec898 0%, #52b788 100%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .edward-blink,
+  .edward-mouth,
+  .edward-float,
+  .edward-antenna,
+  .edward-eye-glow,
+  .edward-screen-flicker,
+  .edward-antenna-glow,
+  .landing-gradient-bg,
+  .landing-cta-button {
+    animation: none;
+  }
+}

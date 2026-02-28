@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Database
+data/
+
+# File storage (user uploads/generated files)
+backend/storage/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Build
+.next/
+build/
+dist/
+*.egg-info/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Secrets
+backend/.jwt_secret
+
+# Worktrees
+.worktrees/
+
+# Personal / development
+vision/
+.claude/
+scriptable/
+storage/
+
+# OS
+.DS_Store
+Thumbs.db
