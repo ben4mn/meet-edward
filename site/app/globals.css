@@ -1,0 +1,73 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #0f172a;
+  --foreground: #f1f5f9;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+}
+
+/* Landing page gradient background */
+.landing-gradient-bg {
+  background: linear-gradient(180deg, #0f172a 0%, #0d1f2d 40%, #0f172a 100%);
+}
+
+/* Edward avatar animations */
+@keyframes edward-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+@keyframes edward-blink {
+  0%, 95%, 100% { transform: scaleY(1); }
+  97% { transform: scaleY(0.1); }
+}
+
+@keyframes edward-screen-flicker {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.97; }
+}
+
+@keyframes edward-antenna-glow {
+  0%, 100% { filter: drop-shadow(0 0 2px rgba(82, 183, 136, 0.4)); }
+  50% { filter: drop-shadow(0 0 6px rgba(82, 183, 136, 0.8)); }
+}
+
+@keyframes edward-hero-pulse {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.03); }
+}
+
+.edward-float {
+  animation: edward-float 3s ease-in-out infinite;
+}
+
+.edward-blink {
+  animation: edward-blink 4s ease-in-out infinite;
+  transform-origin: center center;
+}
+
+.edward-screen-flicker {
+  animation: edward-screen-flicker 3s ease-in-out infinite;
+}
+
+.edward-antenna-glow {
+  animation: edward-antenna-glow 2s ease-in-out infinite;
+}
+
+.edward-eye-glow {
+  filter: drop-shadow(0 0 3px rgba(82, 183, 136, 0.4));
+}
+
+.edward-mouth {
+  animation: edward-float 3s ease-in-out infinite 0.5s;
+}
+
+.edward-antenna {
+  animation: edward-float 3s ease-in-out infinite 0.2s;
+}
