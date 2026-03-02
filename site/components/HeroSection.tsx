@@ -47,8 +47,8 @@ export function HeroSection() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.5 }}
         >
-          Long-term memory. Smart scheduling. Code execution.
-          Edward learns who you are and gets better every day.
+          Long-term memory. Multi-agent orchestration. Self-evolution.
+          Edward learns who you are — and improves himself.
         </motion.p>
 
         <motion.a

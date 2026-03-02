@@ -25,8 +25,8 @@ const capabilities = [
   },
   {
     icon: Workflow,
-    label: "Agentic Orchestration",
-    detail: "Graph-based execution with tool loops, parallel workers, and autonomous task delegation.",
+    label: "Multi-Agent Orchestrator",
+    detail: "Spawns lightweight worker agents that run in parallel with full tool access, memory retrieval, and state persistence. Edward delegates complex tasks and synthesizes results.",
   },
   {
     icon: Radio,
@@ -35,8 +35,8 @@ const capabilities = [
   },
   {
     icon: GitBranch,
-    label: "Self-Evolution",
-    detail: "Edward can propose, test, and deploy improvements to its own codebase with full rollback safety.",
+    label: "Self-Evolution Engine",
+    detail: "A full pipeline — branch, code, validate, test, review, merge — powered by Claude Code. Edward proposes and ships improvements to himself with rollback safety.",
   },
   {
     icon: Server,

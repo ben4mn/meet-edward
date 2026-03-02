@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  Long-term memory &nbsp;·&nbsp; Scheduled actions &nbsp;·&nbsp; Multi-channel messaging &nbsp;·&nbsp; Code execution
+  Long-term memory &nbsp;·&nbsp; Multi-agent orchestration &nbsp;·&nbsp; Self-evolution &nbsp;·&nbsp; Code execution
 </p>
 
 <p align="center">
@@ -31,7 +31,7 @@
 
 Edward is a full-stack AI assistant built on **Next.js**, **FastAPI**, **LangGraph**, and **PostgreSQL with pgvector**. He extracts memories from every conversation, schedules his own reminders, sends messages across iMessage / SMS / WhatsApp, and runs code — all locally on your Mac.
 
-Unlike chat wrappers, Edward has persistent memory, background autonomy (heartbeat monitoring, scheduled events, memory consolidation), and a growing set of self-serve integrations via MCP.
+Unlike chat wrappers, Edward has persistent memory, background autonomy, a multi-agent orchestrator that spawns worker agents for parallel tasks, and a self-evolution engine that lets him propose, test, and deploy improvements to his own codebase.
 
 ## Features
 
@@ -41,8 +41,8 @@ Unlike chat wrappers, Edward has persistent memory, background autonomy (heartbe
 | 💬 **Multi-Channel Messaging** | iMessage, SMS, WhatsApp | 🐍 **Code Execution** | Python, JS, SQL, Shell sandboxes |
 | 🍎 **Apple Services** | Calendar, Mail, Reminders, Notes | 🔍 **Web Search** | Brave Search + page extraction |
 | 📄 **Document Store** | Semantic search over saved docs | 🔌 **Custom MCP Servers** | Self-serve install at runtime |
+| 🤖 **Multi-Agent Orchestrator** | Spawns parallel worker agents | 🧬 **Self-Evolution** | Proposes, tests, and deploys its own upgrades |
 | 🔔 **Push Notifications** | Web Push via VAPID | 💾 **File Storage** | Persistent files with tags |
-| 🗄️ **Persistent Databases** | Named PostgreSQL schemas | 📱 **iOS Widget** | Scriptable home screen widget |
 
 ## Quick Start
 

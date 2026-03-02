@@ -1,6 +1,6 @@
 "use client";
 
-import { Brain, Calendar, MessageSquare, Code2, Puzzle, Bell } from "lucide-react";
+import { Brain, Calendar, MessageSquare, Code2, Workflow, GitBranch } from "lucide-react";
 import { ScrollReveal, StaggerContainer, StaggerItem } from "./ScrollReveal";
 
 const features = [
@@ -29,16 +29,16 @@ const features = [
       "Run Python, JavaScript, SQL, and shell commands in a sandboxed environment. Edward computes, analyzes, and builds.",
   },
   {
-    icon: Bell,
-    title: "Ambient Awareness",
+    icon: Workflow,
+    title: "Multi-Agent Orchestration",
     description:
-      "Background monitoring with intelligent triage — Edward knows when something needs attention before you ask.",
+      "Spawns parallel worker agents that run autonomously with full tool access. Edward delegates, coordinates, and synthesizes.",
   },
   {
-    icon: Puzzle,
-    title: "Extensible Tools",
+    icon: GitBranch,
+    title: "Self-Evolution",
     description:
-      "Install MCP servers on the fly. Web search, calendar access, email — Edward discovers and adds capabilities at runtime.",
+      "Edward can propose, test, and deploy improvements to his own codebase — with full rollback safety and review.",
   },
 ];
 
