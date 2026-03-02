@@ -15,9 +15,9 @@ const geistMono = localFont({
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://meet-edward.com"),
-  title: "Edward — AI Assistant with Long-Term Memory",
+  title: "Edward — AI That Remembers, Evolves, and Orchestrates",
   description:
-    "An open-source AI assistant that remembers everything. Built with Next.js, FastAPI, and PostgreSQL. Self-hosted on macOS.",
+    "An open-source AI assistant with persistent memory, self-evolving code, and multi-agent orchestration. Built with LangGraph and Claude. Self-hosted on macOS.",
   keywords: [
     "AI assistant",
     "long-term memory",
@@ -40,9 +40,9 @@ export const metadata: Metadata = {
     apple: "/favicon.svg",
   },
   openGraph: {
-    title: "Edward — AI Assistant with Long-Term Memory",
+    title: "Edward — AI That Remembers, Evolves, and Orchestrates",
     description:
-      "An open-source AI assistant that remembers everything. Self-hosted on macOS.",
+      "Open-source AI with persistent memory, self-evolving code, and multi-agent orchestration. Built with LangGraph and Claude.",
     type: "website",
     url: "https://meet-edward.com",
     siteName: "Edward",
@@ -51,15 +51,15 @@ export const metadata: Metadata = {
         url: "/og.png",
         width: 1200,
         height: 630,
-        alt: "Edward — AI Assistant with Long-Term Memory",
+        alt: "Edward — AI That Remembers, Evolves, and Orchestrates",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Edward — AI Assistant with Long-Term Memory",
+    title: "Edward — AI That Remembers, Evolves, and Orchestrates",
     description:
-      "An open-source AI assistant that remembers everything. Self-hosted on macOS.",
+      "Open-source AI with persistent memory, self-evolving code, and multi-agent orchestration. Built with LangGraph and Claude.",
     creator: "@pennedbyben",
     images: ["/og.png"],
   },
@@ -73,7 +73,7 @@ const jsonLd = {
   "@type": "SoftwareApplication",
   name: "Edward",
   description:
-    "An open-source AI assistant with long-term memory, built with Next.js, FastAPI, and PostgreSQL. Self-hosted on macOS.",
+    "An open-source AI assistant with persistent memory, self-evolving code, and multi-agent orchestration. Built with LangGraph and Claude. Self-hosted on macOS.",
   url: "https://meet-edward.com",
   applicationCategory: "DeveloperApplication",
   operatingSystem: "macOS",
