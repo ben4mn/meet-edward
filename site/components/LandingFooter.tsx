@@ -30,6 +30,14 @@ export function LandingFooter() {
         <p className="text-sm text-[#94a3b8]">
           Built with care. Open source under MIT.
         </p>
+        <p className="text-sm text-[#94a3b8]">
+          Built by Ben Williams —{" "}
+          <a href="https://zyroi.com" target="_blank" rel="noopener noreferrer" className="text-[#52b788] hover:text-[#6fcf97] transition-colors">zyroi.com</a>
+          {" · "}
+          <a href="https://github.com/ben4mn" target="_blank" rel="noopener noreferrer" className="text-[#52b788] hover:text-[#6fcf97] transition-colors">GitHub</a>
+          {" · "}
+          <a href="https://linkedin.com/in/ben4mn" target="_blank" rel="noopener noreferrer" className="text-[#52b788] hover:text-[#6fcf97] transition-colors">LinkedIn</a>
+        </p>
         <p className="text-xs text-[#475569]">
           &copy; {new Date().getFullYear()} Edward. All rights reserved.
         </p>

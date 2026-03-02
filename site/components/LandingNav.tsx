@@ -39,7 +39,7 @@ export function LandingNav() {
         <div className="flex items-center gap-3">
           <Link
             href="/docs"
-            className="flex items-center gap-2 text-sm font-medium text-white px-5 py-2 rounded-lg bg-[#52b788]/20 border border-[#52b788]/30 hover:bg-[#52b788]/30 transition-all"
+            className="flex-shrink-0 flex items-center gap-2 text-sm font-medium text-white px-5 py-2 rounded-lg bg-[#52b788]/20 border border-[#52b788]/30 hover:bg-[#52b788]/30 transition-all"
           >
             <BookOpen className="w-4 h-4" />
             Docs
@@ -48,10 +48,10 @@ export function LandingNav() {
             href={GITHUB_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-2 text-sm font-medium text-white px-5 py-2 rounded-lg bg-[#52b788]/20 border border-[#52b788]/30 hover:bg-[#52b788]/30 transition-all"
+            className="flex-shrink-0 flex items-center gap-2 text-sm font-medium text-white px-5 py-2 rounded-lg bg-[#52b788]/20 border border-[#52b788]/30 hover:bg-[#52b788]/30 transition-all"
           >
             <Github className="w-4 h-4" />
-            View on GitHub
+            <span className="hidden sm:inline">View on GitHub</span>
           </a>
         </div>
       </div>
