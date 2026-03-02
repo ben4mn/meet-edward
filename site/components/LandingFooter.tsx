@@ -31,7 +31,7 @@ export function LandingFooter() {
           Built with care. Open source under MIT.
         </p>
         <p className="text-sm text-[#94a3b8]">
-          Built by Ben Williams —{" "}
+          Built by Ben Foreman —{" "}
           <a href="https://zyroi.com" target="_blank" rel="noopener noreferrer" className="text-[#52b788] hover:text-[#6fcf97] transition-colors">zyroi.com</a>
           {" · "}
           <a href="https://github.com/ben4mn" target="_blank" rel="noopener noreferrer" className="text-[#52b788] hover:text-[#6fcf97] transition-colors">GitHub</a>

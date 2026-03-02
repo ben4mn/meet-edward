@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { DocsContent } from "../../../components/docs/DocsContent";
 
 export const metadata = {
@@ -62,6 +63,9 @@ tool_calls? ──yes──> execute tools
         <li><strong>Extraction</strong>: Claude Haiku identifies memorable info after each turn</li>
         <li><strong>Deep Retrieval</strong>: For complex conversations, runs 4 parallel queries (original + 3 Haiku-rewritten) for richer context</li>
       </ul>
+      <p>
+        <Link href="/docs/memory">Read the full memory system deep dive →</Link>
+      </p>
 
       <h2>Background Systems</h2>
       <p>
@@ -75,6 +79,9 @@ tool_calls? ──yes──> execute tools
         Multi-layer triage classifies urgency: Layer 1 (zero-cost rules) →
         Layer 2 (Haiku classification) → Layer 3 (execute action). Can ignore,
         remember, respond, or push-notify based on classification.
+      </p>
+      <p>
+        <Link href="/docs/heartbeat">Read the full heartbeat deep dive →</Link>
       </p>
 
       <h3>Reflection</h3>
@@ -105,6 +112,9 @@ tool_calls? ──yes──> execute tools
         process. Workers have full tool access, memory retrieval, and state
         persistence. Worker conversations appear in the sidebar with a distinct
         source tag.
+      </p>
+      <p>
+        <Link href="/docs/orchestrator">Read the full orchestrator deep dive →</Link>
       </p>
 
       <h2>Key Directories</h2>

@@ -10,17 +10,34 @@ import {
   Settings,
   Puzzle,
   Layers,
+  Brain,
+  Activity,
+  Smartphone,
+  HardDrive,
+  GitBranch,
   ArrowLeft,
   Menu,
   X,
 } from "lucide-react";
 
-const NAV_ITEMS = [
-  { href: "/docs/introduction", label: "Introduction", icon: BookOpen },
-  { href: "/docs/getting-started", label: "Getting Started", icon: Rocket },
-  { href: "/docs/configuration", label: "Configuration", icon: Settings },
-  { href: "/docs/skills", label: "Skills & Integrations", icon: Puzzle },
-  { href: "/docs/architecture", label: "Architecture", icon: Layers },
+type NavItem =
+  | { type: "section"; label: string }
+  | { type: "link"; href: string; label: string; icon: React.ComponentType<{ className?: string }> };
+
+const NAV_ITEMS: NavItem[] = [
+  { type: "section", label: "Get Started" },
+  { type: "link", href: "/docs/introduction", label: "Introduction", icon: BookOpen },
+  { type: "link", href: "/docs/getting-started", label: "Getting Started", icon: Rocket },
+  { type: "link", href: "/docs/configuration", label: "Configuration", icon: Settings },
+  { type: "section", label: "Features" },
+  { type: "link", href: "/docs/memory", label: "Memory System", icon: Brain },
+  { type: "link", href: "/docs/heartbeat", label: "Heartbeat", icon: Activity },
+  { type: "link", href: "/docs/widget", label: "Widget", icon: Smartphone },
+  { type: "link", href: "/docs/file-storage", label: "File Storage", icon: HardDrive },
+  { type: "link", href: "/docs/orchestrator", label: "Orchestrator", icon: GitBranch },
+  { type: "section", label: "Reference" },
+  { type: "link", href: "/docs/skills", label: "Skills & Integrations", icon: Puzzle },
+  { type: "link", href: "/docs/architecture", label: "Architecture", icon: Layers },
 ];
 
 export function DocsSidebar() {
@@ -29,7 +46,18 @@ export function DocsSidebar() {
 
   const nav = (
     <nav className="flex flex-col gap-1">
-      {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+      {NAV_ITEMS.map((item, i) => {
+        if (item.type === "section") {
+          return (
+            <div
+              key={item.label}
+              className={`px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-widest text-[#64748b] ${i === 0 ? "pt-0" : ""}`}
+            >
+              {item.label}
+            </div>
+          );
+        }
+        const { href, label, icon: Icon } = item;
         const active = pathname === href;
         return (
           <Link
