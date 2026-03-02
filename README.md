@@ -28,6 +28,14 @@
 
 ---
 
+## Demo
+
+<p align="center">
+  <a href="https://youtu.be/uewYlQma1QY">
+    <img src="https://img.youtube.com/vi/uewYlQma1QY/maxresdefault.jpg" width="700" alt="Watch the Edward walkthrough" />
+  </a>
+</p>
+
 ## Screenshots
 
 <p align="center">
