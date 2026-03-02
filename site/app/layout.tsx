@@ -17,7 +17,7 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://meet-edward.com"),
   title: "Edward — Secure, Self-Evolving AI That Never Forgets",
   description:
-    "Self-hosted AI assistant that remembers every conversation, evolves its own code, and runs complex multi-agent workflows. Your data never leaves your machine.",
+    "Self-hosted AI that remembers every conversation, evolves its own code, and proactively monitors your messages and calendar. Your data never leaves your machine.",
   keywords: [
     "AI assistant",
     "long-term memory",
@@ -42,7 +42,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Edward — Secure, Self-Evolving AI That Never Forgets",
     description:
-      "Self-hosted AI assistant that remembers every conversation, evolves its own code, and runs complex multi-agent workflows. Your data never leaves your machine.",
+      "Self-hosted AI that remembers every conversation, evolves its own code, and proactively monitors your messages and calendar. Your data never leaves your machine.",
     type: "website",
     url: "https://meet-edward.com",
     siteName: "Edward",
@@ -59,7 +59,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Edward — Secure, Self-Evolving AI That Never Forgets",
     description:
-      "Self-hosted AI assistant that remembers every conversation, evolves its own code, and runs complex multi-agent workflows. Your data never leaves your machine.",
+      "Self-hosted AI that remembers every conversation, evolves its own code, and proactively monitors your messages and calendar. Your data never leaves your machine.",
     creator: "@pennedbyben",
     images: ["/og.png"],
   },
@@ -73,7 +73,7 @@ const jsonLd = {
   "@type": "SoftwareApplication",
   name: "Edward",
   description:
-    "Self-hosted AI assistant that remembers every conversation, evolves its own code, and runs complex multi-agent workflows. Your data never leaves your machine.",
+    "Self-hosted AI that remembers every conversation, evolves its own code, and proactively monitors your messages and calendar. Your data never leaves your machine.",
   url: "https://meet-edward.com",
   applicationCategory: "DeveloperApplication",
   operatingSystem: "macOS",
