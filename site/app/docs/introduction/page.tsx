@@ -86,6 +86,28 @@ export default function IntroductionPage() {
         </li>
       </ul>
 
+      <figure className="my-8">
+        <img
+          src="/screenshots/settings-desktop.png"
+          alt="Edward settings dashboard showing all available skill panels"
+          className="w-full rounded-lg border border-[#334155]"
+        />
+        <figcaption className="text-sm text-[#94a3b8] mt-2 text-center">
+          The settings dashboard — toggle skills, manage MCP servers, browse memories, and more.
+        </figcaption>
+      </figure>
+
+      <figure className="my-8">
+        <img
+          src="/screenshots/chat-filters-desktop.png"
+          alt="Edward sidebar showing conversation filters for Heartbeat, Scheduled, Inbound, and Workers"
+          className="w-full rounded-lg border border-[#334155]"
+        />
+        <figcaption className="text-sm text-[#94a3b8] mt-2 text-center">
+          Conversation filters — sort by User, Heartbeat, Scheduled, Inbound, and Worker conversations.
+        </figcaption>
+      </figure>
+
       <h2>How It Works (High Level)</h2>
       <ol>
         <li>You send a message through the web UI (or iMessage, SMS, WhatsApp)</li>

@@ -27,6 +27,27 @@
 
 ---
 
+## Screenshots
+
+<p align="center">
+  <img src="docs/screenshots/chat-welcome-desktop.png" width="700" alt="Edward chat interface" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/settings-desktop.png" width="700" alt="Edward settings dashboard" />
+</p>
+
+<details>
+<summary><strong>Mobile</strong></summary>
+
+<p align="center">
+  <img src="docs/screenshots/chat-welcome-mobile.png" width="300" alt="Edward chat - mobile" />
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/settings-mobile.png" width="300" alt="Edward settings - mobile" />
+</p>
+
+</details>
+
 ## What is Edward?
 
 Edward is a full-stack AI assistant built on **Next.js**, **FastAPI**, **LangGraph**, and **PostgreSQL with pgvector**. He extracts memories from every conversation, schedules his own reminders, sends messages across iMessage / SMS / WhatsApp, and runs code — all locally on your Mac.

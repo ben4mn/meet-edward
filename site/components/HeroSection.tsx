@@ -88,22 +88,20 @@ export function HeroSection() {
       </motion.div>
     </section>
 
-    {/* YouTube walkthrough — swap VIDEO_ID_HERE when ready */}
+    {/* App screenshot */}
     <section className="relative px-6 pb-20 pt-8 flex justify-center">
       <motion.div
-        className="w-full max-w-2xl"
+        className="w-full max-w-4xl"
         initial={{ opacity: 0, y: 30 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-50px" }}
         transition={{ duration: 0.6 }}
       >
-        <div className="relative w-full rounded-xl border border-[#334155] overflow-hidden" style={{ paddingBottom: "56.25%" }}>
-          <iframe
-            className="absolute inset-0 w-full h-full"
-            src="https://www.youtube.com/embed/VIDEO_ID_HERE"
-            title="Edward walkthrough"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            allowFullScreen
+        <div className="relative w-full rounded-xl border border-[#334155] overflow-hidden shadow-2xl shadow-black/40">
+          <img
+            src="/screenshots/chat-welcome-desktop.png"
+            alt="Edward chat interface"
+            className="w-full h-auto"
           />
         </div>
       </motion.div>

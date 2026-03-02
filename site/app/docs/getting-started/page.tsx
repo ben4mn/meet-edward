@@ -85,6 +85,17 @@ cd meet-edward
         <li>Check the debug panel (bottom of chat) for health status</li>
       </ol>
 
+      <figure className="my-8">
+        <img
+          src="/screenshots/chat-welcome-desktop.png"
+          alt="Edward chat welcome screen after successful setup"
+          className="w-full rounded-lg border border-[#334155]"
+        />
+        <figcaption className="text-sm text-[#94a3b8] mt-2 text-center">
+          If everything is working, you should see Edward&apos;s welcome screen.
+        </figcaption>
+      </figure>
+
       <h2>Common Issues</h2>
 
       <h3>PostgreSQL not running</h3>
