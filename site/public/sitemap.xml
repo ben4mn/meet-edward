@@ -19,6 +19,18 @@
     <priority>0.6</priority>
   </url>
   <url>
+    <loc>https://meet-edward.com/docs/beginner-guide</loc>
+    <lastmod>2026-03-01</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://meet-edward.com/docs/setup-with-ai</loc>
+    <lastmod>2026-03-01</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
     <loc>https://meet-edward.com/docs/getting-started</loc>
     <lastmod>2026-03-01</lastmod>
     <changefreq>monthly</changefreq>

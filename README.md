@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="MIT License" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="Apache 2.0 License" /></a>
   <img src="https://img.shields.io/badge/platform-macOS-blue.svg" alt="macOS" />
   <img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python 3.11+" />
   <img src="https://img.shields.io/badge/Next.js-15-black.svg" alt="Next.js" />
@@ -145,4 +145,4 @@ Contributions welcome — open an issue first to discuss what you'd like to chan
 
 ## License
 
-[MIT](LICENSE)
+[Apache 2.0](LICENSE)

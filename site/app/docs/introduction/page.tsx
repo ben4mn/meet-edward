@@ -88,10 +88,23 @@ export default function IntroductionPage() {
       </ol>
 
       <hr />
-      <p>
-        Ready to set him up? Head to the{" "}
-        <a href="/docs/getting-started">Getting Started</a> guide.
-      </p>
+
+      <h2>Choose Your Path</h2>
+      <ul>
+        <li>
+          <strong><a href="/docs/beginner-guide">Beginner Guide</a></strong> —
+          never used a terminal? Start here.
+        </li>
+        <li>
+          <strong><a href="/docs/setup-with-ai">Setup with AI</a></strong> —
+          paste one block into an AI coding assistant and let it handle
+          everything.
+        </li>
+        <li>
+          <strong><a href="/docs/getting-started">Getting Started</a></strong> —
+          comfortable with the terminal? Quick 5-minute path.
+        </li>
+      </ul>
     </DocsContent>
   );
 }

@@ -15,6 +15,8 @@ import {
   Smartphone,
   HardDrive,
   GitBranch,
+  GraduationCap,
+  WandSparkles,
   ArrowLeft,
   Menu,
   X,
@@ -27,6 +29,8 @@ type NavItem =
 const NAV_ITEMS: NavItem[] = [
   { type: "section", label: "Get Started" },
   { type: "link", href: "/docs/introduction", label: "Introduction", icon: BookOpen },
+  { type: "link", href: "/docs/beginner-guide", label: "Beginner Guide", icon: GraduationCap },
+  { type: "link", href: "/docs/setup-with-ai", label: "Setup with AI", icon: WandSparkles },
   { type: "link", href: "/docs/getting-started", label: "Getting Started", icon: Rocket },
   { type: "link", href: "/docs/configuration", label: "Configuration", icon: Settings },
   { type: "section", label: "Features" },
