@@ -1,4 +1,31 @@
 User-agent: *
 Allow: /
 
+# AI / LLM crawlers
+User-agent: GPTBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Anthropic-AI
+Allow: /
+
+User-agent: Claude-Web
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
+User-agent: cohere-ai
+Allow: /
+
+# Machine-readable docs for AI search
+# https://llmstxt.org
+# /llms.txt      — structured index
+# /llms-full.txt — complete documentation
+
 Sitemap: https://meet-edward.com/sitemap.xml

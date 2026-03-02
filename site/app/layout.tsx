@@ -76,8 +76,9 @@ const jsonLd = {
     "Self-hosted AI that remembers every conversation, evolves its own code, and proactively monitors your messages and calendar. Your data never leaves your machine.",
   url: "https://meet-edward.com",
   applicationCategory: "DeveloperApplication",
-  operatingSystem: "macOS",
-  license: "https://opensource.org/licenses/MIT",
+  operatingSystem: "macOS, Linux, Windows (WSL)",
+  license: "https://www.apache.org/licenses/LICENSE-2.0",
+  sameAs: ["https://github.com/ben4mn/meet-edward"],
   offers: {
     "@type": "Offer",
     price: "0",

@@ -1,7 +1,15 @@
+import type { Metadata } from "next";
 import { DocsContent } from "../../../components/docs/DocsContent";
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "Beginner Guide — Edward Docs",
+  description: "Step-by-step walkthrough to install and run Edward from scratch — no coding experience required. Covers Terminal basics, Homebrew, Python, Node.js, and first launch.",
+  alternates: { canonical: "/docs/beginner-guide" },
+  openGraph: {
+    title: "Beginner Guide — Edward Docs",
+    description: "Step-by-step walkthrough to install and run Edward from scratch — no coding experience required.",
+    url: "/docs/beginner-guide",
+  },
 };
 
 export default function BeginnerGuidePage() {

@@ -1,7 +1,15 @@
+import type { Metadata } from "next";
 import { DocsContent } from "../../../components/docs/DocsContent";
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "Widget — Edward Docs",
+  description: "Build an iOS home screen widget for Edward using Scriptable — structured data sections, raw JavaScript mode, auto-generated content, and widget chat capabilities.",
+  alternates: { canonical: "/docs/widget" },
+  openGraph: {
+    title: "Widget — Edward Docs",
+    description: "Build an iOS home screen widget for Edward using Scriptable — structured data, JavaScript mode, and chat.",
+    url: "/docs/widget",
+  },
 };
 
 export default function WidgetPage() {

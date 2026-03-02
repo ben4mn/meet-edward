@@ -28,7 +28,7 @@ export function LandingFooter() {
           </a>
         </div>
         <p className="text-sm text-[#94a3b8]">
-          Built with care. Open source under MIT.
+          Built with care. Open source under Apache 2.0.
         </p>
         <p className="text-sm text-[#94a3b8]">
           Built by Ben Foreman —{" "}

@@ -1,7 +1,15 @@
+import type { Metadata } from "next";
 import { DocsContent } from "../../../components/docs/DocsContent";
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "Heartbeat — Edward Docs",
+  description: "Edward's proactive monitoring system — listens for iMessages, calendar events, and emails, then triages and responds automatically using a multi-layer classification pipeline.",
+  alternates: { canonical: "/docs/heartbeat" },
+  openGraph: {
+    title: "Heartbeat — Edward Docs",
+    description: "Proactive monitoring — listens for iMessages, calendar events, and emails, then triages and responds automatically.",
+    url: "/docs/heartbeat",
+  },
 };
 
 export default function HeartbeatPage() {

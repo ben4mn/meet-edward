@@ -1,7 +1,15 @@
+import type { Metadata } from "next";
 import { DocsContent } from "../../../components/docs/DocsContent";
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "Skills & Integrations — Edward Docs",
+  description: "Enable and configure Edward's modular skills — messaging (iMessage, Twilio, WhatsApp), code execution, web search, Apple Services, HTML hosting, and custom MCP servers.",
+  alternates: { canonical: "/docs/skills" },
+  openGraph: {
+    title: "Skills & Integrations — Edward Docs",
+    description: "Enable and configure Edward's modular skills — messaging, code execution, search, Apple Services, and more.",
+    url: "/docs/skills",
+  },
 };
 
 export default function SkillsPage() {

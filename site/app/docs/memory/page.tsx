@@ -1,7 +1,15 @@
+import type { Metadata } from "next";
 import { DocsContent } from "../../../components/docs/DocsContent";
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "Memory System — Edward Docs",
+  description: "How Edward remembers — hybrid vector + BM25 retrieval, memory types and confidence tiers, automatic extraction via Claude Haiku, deep retrieval, reflection, and consolidation.",
+  alternates: { canonical: "/docs/memory" },
+  openGraph: {
+    title: "Memory System — Edward Docs",
+    description: "How Edward remembers — hybrid retrieval, memory types, automatic extraction, deep retrieval, and consolidation.",
+    url: "/docs/memory",
+  },
 };
 
 export default function MemoryPage() {

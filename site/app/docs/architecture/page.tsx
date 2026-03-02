@@ -1,8 +1,16 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { DocsContent } from "../../../components/docs/DocsContent";
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "Architecture — Edward Docs",
+  description: "System architecture overview — Next.js frontend, FastAPI backend, LangGraph agent pipeline, PostgreSQL with pgvector, and background services like Heartbeat and Orchestrator.",
+  alternates: { canonical: "/docs/architecture" },
+  openGraph: {
+    title: "Architecture — Edward Docs",
+    description: "System architecture overview — Next.js frontend, FastAPI backend, LangGraph pipeline, and background services.",
+    url: "/docs/architecture",
+  },
 };
 
 export default function ArchitecturePage() {

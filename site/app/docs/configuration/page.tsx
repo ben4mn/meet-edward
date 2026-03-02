@@ -1,7 +1,15 @@
+import type { Metadata } from "next";
 import { DocsContent } from "../../../components/docs/DocsContent";
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "Configuration — Edward Docs",
+  description: "Complete environment variable reference for Edward — API keys, database settings, messaging (Twilio, WhatsApp, iMessage), search, observability, and push notifications.",
+  alternates: { canonical: "/docs/configuration" },
+  openGraph: {
+    title: "Configuration — Edward Docs",
+    description: "Complete environment variable reference for Edward — API keys, database, messaging, search, and more.",
+    url: "/docs/configuration",
+  },
 };
 
 export default function ConfigurationPage() {

@@ -1,7 +1,15 @@
+import type { Metadata } from "next";
 import { DocsContent } from "../../../components/docs/DocsContent";
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "Orchestrator & Claude Code — Edward Docs",
+  description: "Spawn parallel worker agents and Claude Code sessions — orchestrate complex multi-step tasks with full tool access, memory retrieval, and conversation persistence.",
+  alternates: { canonical: "/docs/orchestrator" },
+  openGraph: {
+    title: "Orchestrator & Claude Code — Edward Docs",
+    description: "Spawn parallel worker agents and Claude Code sessions for complex multi-step tasks with full tool access.",
+    url: "/docs/orchestrator",
+  },
 };
 
 export default function OrchestratorPage() {

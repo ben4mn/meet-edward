@@ -1,7 +1,15 @@
+import type { Metadata } from "next";
 import { DocsContent } from "../../../components/docs/DocsContent";
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "File Storage — Edward Docs",
+  description: "Persistent file storage with categories, tags, and metadata — upload files, save code execution outputs, and manage storage through Edward's LLM tools or REST API.",
+  alternates: { canonical: "/docs/file-storage" },
+  openGraph: {
+    title: "File Storage — Edward Docs",
+    description: "Persistent file storage with categories and tags — upload files, save code outputs, and manage via tools or API.",
+    url: "/docs/file-storage",
+  },
 };
 
 export default function FileStoragePage() {

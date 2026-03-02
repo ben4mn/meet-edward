@@ -1,0 +1,51 @@
+# Edward
+
+> Self-hosted AI assistant with long-term memory, extensible skills, and proactive monitoring. Built with Next.js, FastAPI, LangGraph, and PostgreSQL.
+
+Edward (Enhanced Digital Workflow Assistant for Routine Decisions) is an open-source, self-hosted AI assistant that remembers every conversation, evolves its own code, and proactively monitors your messages and calendar. Your data never leaves your machine.
+
+## Documentation
+
+- [Introduction](https://meet-edward.com/docs/introduction): Overview of Edward — what it is, key features, and how it works
+- [Beginner Guide](https://meet-edward.com/docs/beginner-guide): Step-by-step setup for non-technical users
+- [Setup with AI](https://meet-edward.com/docs/setup-with-ai): Install Edward using Claude Code, Cursor, or Windsurf
+- [Getting Started](https://meet-edward.com/docs/getting-started): Quick start for developers with prerequisites and troubleshooting
+- [Configuration](https://meet-edward.com/docs/configuration): Complete environment variable reference
+- [Platform Support](https://meet-edward.com/docs/platform-support): Cross-platform compatibility — macOS, Linux, Windows (WSL)
+- [Architecture](https://meet-edward.com/docs/architecture): System design — LangGraph pipeline, database, background services
+- [Skills & Integrations](https://meet-edward.com/docs/skills): Modular skills — messaging, code execution, search, Apple Services
+- [Memory System](https://meet-edward.com/docs/memory): Hybrid vector + BM25 retrieval, extraction, reflection, consolidation
+- [Heartbeat](https://meet-edward.com/docs/heartbeat): Proactive monitoring — iMessage, Calendar, Email triage
+- [Widget](https://meet-edward.com/docs/widget): iOS home screen widget via Scriptable
+- [File Storage](https://meet-edward.com/docs/file-storage): Persistent file storage with categories and tags
+- [Orchestrator & Claude Code](https://meet-edward.com/docs/orchestrator): Parallel worker agents and Claude Code sessions
+
+## Key Features
+
+- **Long-term memory**: Hybrid 70% vector + 30% BM25 retrieval with pgvector, automatic extraction via Claude Haiku
+- **Self-hosted**: Runs entirely on your machine — PostgreSQL, FastAPI, Next.js. No cloud dependency.
+- **Extensible skills**: Messaging (iMessage, Twilio SMS/WhatsApp, WhatsApp MCP), code execution (Python, JS, SQL, Shell), web search, Apple Services, HTML hosting
+- **Proactive heartbeat**: Monitors iMessage, Calendar, and Email — classifies and responds automatically
+- **Scheduled events**: Self-triggering reminders, messages, and tasks with cron support
+- **Worker agents**: Orchestrator spawns mini-Edwards with full tool access for parallel tasks
+- **Self-evolution**: Claude Code integration for autonomous code changes with validation
+- **Custom MCP servers**: Discover, install, and use MCP servers at runtime
+- **iOS widget**: Home screen widget via Scriptable with structured data or raw JavaScript
+- **Document store**: Persistent document storage with semantic search
+- **File storage**: Categorized file management with sandbox-to-storage flow
+- **Push notifications**: Web Push via VAPID for alerts and reminders
+
+## Tech Stack
+
+- Frontend: Next.js 14, React, Tailwind CSS
+- Backend: FastAPI, Python 3.11+, LangGraph
+- Database: PostgreSQL with pgvector, langgraph-checkpoint-postgres
+- LLM: Claude (Anthropic API) via ChatAnthropic
+- Embedding: sentence-transformers (all-MiniLM-L6-v2, 384 dims)
+
+## Links
+
+- Website: https://meet-edward.com
+- GitHub: https://github.com/ben4mn/meet-edward
+- Full documentation (markdown): https://meet-edward.com/llms-full.txt
+- License: Apache 2.0

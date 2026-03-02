@@ -1,7 +1,15 @@
+import type { Metadata } from "next";
 import { DocsContent } from "../../../components/docs/DocsContent";
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "Getting Started — Edward Docs",
+  description: "Quick start guide for developers — prerequisites, setup script, environment variables, and troubleshooting for running Edward on macOS, Linux, or Windows (WSL).",
+  alternates: { canonical: "/docs/getting-started" },
+  openGraph: {
+    title: "Getting Started — Edward Docs",
+    description: "Quick start guide for developers — prerequisites, setup script, environment variables, and troubleshooting.",
+    url: "/docs/getting-started",
+  },
 };
 
 export default function GettingStartedPage() {

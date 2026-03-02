@@ -1,7 +1,15 @@
+import type { Metadata } from "next";
 import { DocsContent } from "../../../components/docs/DocsContent";
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "Platform Support — Edward Docs",
+  description: "Platform compatibility guide for Edward — what works on all platforms vs. macOS-only features, plus setup differences for Linux and Windows (WSL2).",
+  alternates: { canonical: "/docs/platform-support" },
+  openGraph: {
+    title: "Platform Support — Edward Docs",
+    description: "Platform compatibility guide — what works everywhere vs. macOS-only, plus Linux and Windows (WSL2) setup.",
+    url: "/docs/platform-support",
+  },
 };
 
 export default function PlatformSupportPage() {

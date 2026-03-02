@@ -1,7 +1,15 @@
+import type { Metadata } from "next";
 import { DocsContent } from "../../../components/docs/DocsContent";
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "Setup with AI — Edward Docs",
+  description: "Set up Edward using an AI coding assistant like Claude Code, Cursor, or Windsurf. Paste one block and let the AI handle installation, configuration, and verification.",
+  alternates: { canonical: "/docs/setup-with-ai" },
+  openGraph: {
+    title: "Setup with AI — Edward Docs",
+    description: "Set up Edward using an AI coding assistant like Claude Code, Cursor, or Windsurf. Paste one block and go.",
+    url: "/docs/setup-with-ai",
+  },
 };
 
 export default function SetupWithAIPage() {

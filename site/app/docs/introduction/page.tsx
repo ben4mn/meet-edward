@@ -1,7 +1,15 @@
+import type { Metadata } from "next";
 import { DocsContent } from "../../../components/docs/DocsContent";
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "Introduction — Edward Docs",
+  description: "Meet Edward — an open-source, self-hosted AI assistant with long-term memory, extensible skills, and proactive monitoring. Built with Next.js, FastAPI, LangGraph, and PostgreSQL.",
+  alternates: { canonical: "/docs/introduction" },
+  openGraph: {
+    title: "Introduction — Edward Docs",
+    description: "Meet Edward — an open-source, self-hosted AI assistant with long-term memory, extensible skills, and proactive monitoring.",
+    url: "/docs/introduction",
+  },
 };
 
 export default function IntroductionPage() {
