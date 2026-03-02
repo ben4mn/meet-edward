@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Github } from "lucide-react";
+import { Github, BookOpen } from "lucide-react";
 import { EdwardAvatar } from "./EdwardAvatar";
 
 const GITHUB_URL = "https://github.com/ben4mn/meet-edward";
@@ -37,6 +37,13 @@ export function LandingNav() {
         </Link>
 
         <div className="flex items-center gap-3">
+          <Link
+            href="/docs"
+            className="flex items-center gap-2 text-sm font-medium text-white px-5 py-2 rounded-lg bg-[#52b788]/20 border border-[#52b788]/30 hover:bg-[#52b788]/30 transition-all"
+          >
+            <BookOpen className="w-4 h-4" />
+            Docs
+          </Link>
           <a
             href={GITHUB_URL}
             target="_blank"

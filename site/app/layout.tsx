@@ -17,6 +17,9 @@ export const metadata: Metadata = {
   title: "Edward — AI Assistant with Long-Term Memory",
   description:
     "An open-source AI assistant that remembers everything. Built with Next.js, FastAPI, and PostgreSQL. Self-hosted on macOS.",
+  icons: {
+    icon: "/favicon.svg",
+  },
   openGraph: {
     title: "Edward — AI Assistant with Long-Term Memory",
     description:
