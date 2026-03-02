@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Commit Rules
+
+- **Do NOT add `Co-Authored-By` lines** to any commit messages in this repository. No Claude attribution in git history.
+
 ## Project Overview
 
 Edward is a full-stack AI assistant with long-term memory, built with Next.js, FastAPI, and PostgreSQL. Uses LangGraph for conversation orchestration and pgvector for memory retrieval.
