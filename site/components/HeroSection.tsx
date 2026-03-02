@@ -88,7 +88,7 @@ export function HeroSection() {
       </motion.div>
     </section>
 
-    {/* App screenshot */}
+    {/* YouTube walkthrough */}
     <section className="relative px-6 pb-20 pt-8 flex justify-center">
       <motion.div
         className="w-full max-w-4xl"
@@ -97,11 +97,13 @@ export function HeroSection() {
         viewport={{ once: true, margin: "-50px" }}
         transition={{ duration: 0.6 }}
       >
-        <div className="relative w-full rounded-xl border border-[#334155] overflow-hidden shadow-2xl shadow-black/40">
-          <img
-            src="/screenshots/chat-welcome-desktop.png"
-            alt="Edward chat interface"
-            className="w-full h-auto"
+        <div className="relative w-full rounded-xl border border-[#334155] overflow-hidden shadow-2xl shadow-black/40" style={{ paddingBottom: "56.25%" }}>
+          <iframe
+            className="absolute inset-0 w-full h-full"
+            src="https://www.youtube.com/embed/uewYlQma1QY"
+            title="Edward walkthrough"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
           />
         </div>
       </motion.div>
