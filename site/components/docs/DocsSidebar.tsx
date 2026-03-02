@@ -99,7 +99,7 @@ export function DocsSidebar() {
 
       {/* Sidebar */}
       <aside
-        className={`fixed top-0 left-0 z-40 h-full w-64 bg-[#0f172a] border-r border-[#334155]/50 flex flex-col p-5 transition-transform duration-200 lg:translate-x-0 lg:static lg:z-auto ${
+        className={`fixed top-0 left-0 z-40 h-screen w-64 bg-[#0f172a] border-r border-[#334155]/50 flex flex-col p-5 transition-transform duration-200 lg:translate-x-0 lg:sticky lg:z-auto overflow-y-auto ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
       >
