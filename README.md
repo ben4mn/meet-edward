@@ -22,7 +22,8 @@
 <p align="center">
   <a href="https://meet-edward.com">Website</a> &nbsp;·&nbsp;
   <a href="https://meet-edward.com/docs">Docs</a> &nbsp;·&nbsp;
-  <a href="#quick-start">Quick Start</a>
+  <a href="#quick-start">Quick Start</a> &nbsp;·&nbsp;
+  <a href="https://youtu.be/uewYlQma1QY">Video Walkthrough</a>
 </p>
 
 ---
