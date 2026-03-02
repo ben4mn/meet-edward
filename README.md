@@ -14,7 +14,7 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="Apache 2.0 License" /></a>
-  <img src="https://img.shields.io/badge/platform-macOS-blue.svg" alt="macOS" />
+  <img src="https://img.shields.io/badge/platform-macOS%20·%20Linux%20·%20WSL-blue.svg" alt="macOS · Linux · WSL" />
   <img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python 3.11+" />
   <img src="https://img.shields.io/badge/Next.js-15-black.svg" alt="Next.js" />
 </p>
@@ -70,6 +70,10 @@ Frontend (Next.js :3000)  →  Backend (FastAPI :8000)  →  PostgreSQL (:5432)
 ```
 
 The backend runs natively on macOS (not in Docker) to support iMessage, AppleScript, and the scheduled event scheduler.
+
+## Platform Support
+
+Edward is built for macOS, where it integrates with iMessage, Calendar, Mail, and other Apple services. On **Windows** (via WSL) or **Linux**, the core assistant — memory, chat, scheduling, code execution, orchestration, and evolution — works fully. You lose Apple-specific integrations but gain access to alternative messaging via MCP servers (Discord, Telegram, Signal, Slack). See the [Platform Support](https://meet-edward.com/docs/platform-support) docs for setup details.
 
 <details>
 <summary><strong>Background Systems</strong></summary>
