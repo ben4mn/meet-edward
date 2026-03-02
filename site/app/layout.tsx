@@ -15,9 +15,9 @@ const geistMono = localFont({
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://meet-edward.com"),
-  title: "Edward — AI That Remembers, Evolves, and Orchestrates",
+  title: "Edward — Secure, Self-Evolving AI That Never Forgets",
   description:
-    "An open-source AI assistant with persistent memory, self-evolving code, and multi-agent orchestration. Built with LangGraph and Claude. Self-hosted on macOS.",
+    "Self-hosted AI assistant that remembers every conversation, evolves its own code, and runs complex multi-agent workflows. Your data never leaves your machine.",
   keywords: [
     "AI assistant",
     "long-term memory",
@@ -40,9 +40,9 @@ export const metadata: Metadata = {
     apple: "/favicon.svg",
   },
   openGraph: {
-    title: "Edward — AI That Remembers, Evolves, and Orchestrates",
+    title: "Edward — Secure, Self-Evolving AI That Never Forgets",
     description:
-      "Open-source AI with persistent memory, self-evolving code, and multi-agent orchestration. Built with LangGraph and Claude.",
+      "Self-hosted AI assistant that remembers every conversation, evolves its own code, and runs complex multi-agent workflows. Your data never leaves your machine.",
     type: "website",
     url: "https://meet-edward.com",
     siteName: "Edward",
@@ -51,15 +51,15 @@ export const metadata: Metadata = {
         url: "/og.png",
         width: 1200,
         height: 630,
-        alt: "Edward — AI That Remembers, Evolves, and Orchestrates",
+        alt: "Edward — Secure, Self-Evolving AI That Never Forgets",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Edward — AI That Remembers, Evolves, and Orchestrates",
+    title: "Edward — Secure, Self-Evolving AI That Never Forgets",
     description:
-      "Open-source AI with persistent memory, self-evolving code, and multi-agent orchestration. Built with LangGraph and Claude.",
+      "Self-hosted AI assistant that remembers every conversation, evolves its own code, and runs complex multi-agent workflows. Your data never leaves your machine.",
     creator: "@pennedbyben",
     images: ["/og.png"],
   },
@@ -73,7 +73,7 @@ const jsonLd = {
   "@type": "SoftwareApplication",
   name: "Edward",
   description:
-    "An open-source AI assistant with persistent memory, self-evolving code, and multi-agent orchestration. Built with LangGraph and Claude. Self-hosted on macOS.",
+    "Self-hosted AI assistant that remembers every conversation, evolves its own code, and runs complex multi-agent workflows. Your data never leaves your machine.",
   url: "https://meet-edward.com",
   applicationCategory: "DeveloperApplication",
   operatingSystem: "macOS",
