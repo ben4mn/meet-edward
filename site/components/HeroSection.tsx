@@ -8,6 +8,7 @@ const GITHUB_URL = "https://github.com/ben4mn/meet-edward";
 
 export function HeroSection() {
   return (
+    <>
     <section className="relative min-h-screen flex flex-col items-center justify-center px-6 pt-24 pb-16 overflow-hidden">
       <div className="absolute inset-0 landing-gradient-bg" />
       <div
@@ -65,23 +66,6 @@ export function HeroSection() {
           Get Started on GitHub
         </motion.a>
 
-        {/* YouTube walkthrough — swap VIDEO_ID when ready */}
-        <motion.div
-          className="w-full max-w-2xl mt-10"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.9 }}
-        >
-          <div className="relative w-full rounded-xl border border-[#334155] overflow-hidden" style={{ paddingBottom: "56.25%" }}>
-            <iframe
-              className="absolute inset-0 w-full h-full"
-              src="https://www.youtube.com/embed/VIDEO_ID_HERE"
-              title="Edward walkthrough"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-            />
-          </div>
-        </motion.div>
       </div>
 
       <motion.div
@@ -103,5 +87,27 @@ export function HeroSection() {
         </motion.div>
       </motion.div>
     </section>
+
+    {/* YouTube walkthrough — swap VIDEO_ID_HERE when ready */}
+    <section className="relative px-6 pb-20 pt-8 flex justify-center">
+      <motion.div
+        className="w-full max-w-2xl"
+        initial={{ opacity: 0, y: 30 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: "-50px" }}
+        transition={{ duration: 0.6 }}
+      >
+        <div className="relative w-full rounded-xl border border-[#334155] overflow-hidden" style={{ paddingBottom: "56.25%" }}>
+          <iframe
+            className="absolute inset-0 w-full h-full"
+            src="https://www.youtube.com/embed/VIDEO_ID_HERE"
+            title="Edward walkthrough"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+          />
+        </div>
+      </motion.div>
+    </section>
+    </>
   );
 }
