@@ -19,11 +19,22 @@ MAX_MEMORY_CONTEXT_CHARS = 8000
 # Models that support the effort parameter (Claude 4.6+)
 _EFFORT_MODELS = {"claude-sonnet-4-6", "claude-opus-4-6"}
 
+# Check if the installed Anthropic SDK accepts the effort parameter
+_EFFORT_SUPPORTED = False
+try:
+    import anthropic as _anthropic
+    import inspect as _inspect
+    _EFFORT_SUPPORTED = "effort" in _inspect.signature(
+        _anthropic.resources.messages.Messages.create
+    ).parameters
+except Exception:
+    pass
+
 
 def _build_llm(model: str, temperature: float, max_tokens: int = 16384) -> ChatAnthropic:
-    """Build a ChatAnthropic instance, adding effort parameter for 4.6 models."""
+    """Build a ChatAnthropic instance, adding effort parameter for supported 4.6 models."""
     kwargs = {"model": model, "temperature": temperature, "max_tokens": max_tokens}
-    if model in _EFFORT_MODELS:
+    if _EFFORT_SUPPORTED and model in _EFFORT_MODELS:
         kwargs["model_kwargs"] = {"effort": "high"}
     return ChatAnthropic(**kwargs)
 

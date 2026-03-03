@@ -464,7 +464,7 @@ async def wait_for_tasks(task_ids: List[str], timeout: Optional[int] = None) -> 
 async def send_message_to_worker(task_id: str, message: str) -> dict:
     """Send a follow-up message to a completed worker's conversation."""
     task = await get_task(task_id)
-    if "error" in task:
+    if task.get("error"):
         return task
 
     if task["status"] == "running":

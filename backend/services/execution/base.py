@@ -7,6 +7,8 @@ Provides common ExecutionResult, sandbox management, and subprocess helpers.
 import asyncio
 import os
 import shutil
+import subprocess
+import sys
 import tempfile
 import time
 from dataclasses import dataclass
@@ -47,6 +49,31 @@ def _get_sandbox_dir(conversation_id: str) -> Path:
     return sandbox_dir
 
 
+def _run_subprocess_sync(
+    args: list[str],
+    working_dir: Path,
+    timeout: int,
+    env: dict,
+) -> tuple[int, bytes, bytes, bool]:
+    """Run a subprocess synchronously. Returns (returncode, stdout, stderr, timed_out).
+
+    Called via asyncio.to_thread() on Windows where SelectorEventLoop
+    does not support asyncio.create_subprocess_exec().
+    """
+    try:
+        result = subprocess.run(
+            args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            cwd=str(working_dir),
+            env=env,
+            timeout=timeout,
+        )
+        return (result.returncode, result.stdout, result.stderr, False)
+    except subprocess.TimeoutExpired:
+        return (-1, b"", b"", True)
+
+
 async def run_subprocess(
     args: list[str],
     working_dir: Path,
@@ -56,14 +83,9 @@ async def run_subprocess(
     """
     Run a subprocess with timeout, output capture, and truncation.
 
-    Args:
-        args: Command and arguments to run
-        working_dir: Working directory for the process
-        timeout: Timeout in seconds (defaults to EXECUTION_LIMITS)
-        env: Environment variables (defaults to os.environ)
-
-    Returns:
-        ExecutionResult with output, errors, and execution info
+    On Windows, uses subprocess.run() in a thread (SelectorEventLoop
+    does not support create_subprocess_exec).
+    On macOS/Linux, uses asyncio.create_subprocess_exec().
     """
     timeout = timeout or EXECUTION_LIMITS["timeout_seconds"]
     start_time = time.time()
@@ -72,35 +94,52 @@ async def run_subprocess(
     files_before = set(os.listdir(working_dir)) if working_dir.exists() else set()
 
     try:
-        process = await asyncio.create_subprocess_exec(
-            *args,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=str(working_dir),
-            env=env or os.environ,
-        )
+        if sys.platform == "win32":
+            # Windows: SelectorEventLoop cannot create subprocesses.
+            # Run synchronously in a thread instead.
+            returncode, stdout_bytes, stderr_bytes, timed_out = await asyncio.to_thread(
+                _run_subprocess_sync, args, working_dir, timeout, env or os.environ
+            )
+            if timed_out:
+                duration_ms = int((time.time() - start_time) * 1000)
+                return ExecutionResult(
+                    success=False,
+                    output="",
+                    error=f"Execution timed out after {timeout} seconds",
+                    duration_ms=duration_ms,
+                )
+        else:
+            # macOS/Linux: use async subprocess
+            process = await asyncio.create_subprocess_exec(
+                *args,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=str(working_dir),
+                env=env or os.environ,
+            )
 
-        try:
-            stdout, stderr = await asyncio.wait_for(
-                process.communicate(),
-                timeout=timeout,
-            )
-        except asyncio.TimeoutError:
-            process.kill()
-            await process.wait()
-            duration_ms = int((time.time() - start_time) * 1000)
-            return ExecutionResult(
-                success=False,
-                output="",
-                error=f"Execution timed out after {timeout} seconds",
-                duration_ms=duration_ms,
-            )
+            try:
+                stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                    process.communicate(),
+                    timeout=timeout,
+                )
+            except asyncio.TimeoutError:
+                process.kill()
+                await process.wait()
+                duration_ms = int((time.time() - start_time) * 1000)
+                return ExecutionResult(
+                    success=False,
+                    output="",
+                    error=f"Execution timed out after {timeout} seconds",
+                    duration_ms=duration_ms,
+                )
+            returncode = process.returncode
 
         duration_ms = int((time.time() - start_time) * 1000)
 
         # Process output
-        stdout_text = stdout.decode("utf-8", errors="replace")
-        stderr_text = stderr.decode("utf-8", errors="replace")
+        stdout_text = stdout_bytes.decode("utf-8", errors="replace")
+        stderr_text = stderr_bytes.decode("utf-8", errors="replace")
 
         # Truncate if necessary
         truncated = False
@@ -116,7 +155,7 @@ async def run_subprocess(
 
         # Combine output
         output = stdout_text
-        if stderr_text and process.returncode != 0:
+        if stderr_text and returncode != 0:
             error = stderr_text
         else:
             error = None
@@ -129,7 +168,7 @@ async def run_subprocess(
         new_files = list(files_after - files_before - internal_files)
 
         return ExecutionResult(
-            success=process.returncode == 0,
+            success=returncode == 0,
             output=output.strip(),
             error=error.strip() if error else None,
             duration_ms=duration_ms,

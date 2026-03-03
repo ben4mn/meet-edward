@@ -21,6 +21,7 @@ Active implementation plans for the `cl-feature` branch live in `IMPLEMENTATION_
 | [002_AUTONOMY_FRAMEWORK.md](IMPLEMENTATION_PLANS/002_AUTONOMY_FRAMEWORK.md) | Values-based system prompt, platform context, channel-agnostic triage | **Complete** |
 | [003_NOTEBOOKLM_INTEGRATION.md](IMPLEMENTATION_PLANS/003_NOTEBOOKLM_INTEGRATION.md) | Google NotebookLM skill (12 tools) via notebooklm-py | **Complete** |
 | [004_PROMPT_CACHING.md](IMPLEMENTATION_PLANS/004_PROMPT_CACHING.md) | Anthropic prompt caching (all LLM call sites) | **Complete** |
+| [005_EXECUTION_FIX.md](IMPLEMENTATION_PLANS/005_EXECUTION_FIX.md) | Windows execution env fix (subprocess + orchestrator + effort) | **Complete** |
 | [DEFERRED_TELEGRAM_INTEGRATION.md](IMPLEMENTATION_PLANS/DEFERRED_TELEGRAM_INTEGRATION.md) | Telegram bot with long-polling | Deferred |
 
 **IMPORTANT**: Read the relevant plan BEFORE making changes. Each plan has STOP warnings, strict rules, and verification checklists.
