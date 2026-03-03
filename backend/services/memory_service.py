@@ -311,16 +311,16 @@ async def store_memories(memories: List[Memory]) -> List[Memory]:
     return stored
 
 
+MERGE_INSTRUCTION = "Merge these two related memories into one clear, concise memory. Return ONLY the merged text, nothing else."
+
+
 async def _llm_merge_content(content_a: str, content_b: str, model: str = "claude-haiku-4-5-20251001") -> str:
     """Use Haiku to merge two memory contents into one clean version."""
     llm = ChatAnthropic(model=model, temperature=0, max_tokens=256)
-    prompt = f"""Merge these two related memories into one clear, concise memory:
-
-Memory A: {content_a}
-Memory B: {content_b}
-
-Return ONLY the merged text, nothing else."""
-    response = await llm.ainvoke([HumanMessage(content=prompt)])
+    response = await llm.ainvoke([
+        SystemMessage(content=MERGE_INSTRUCTION, additional_kwargs={"cache_control": {"type": "ephemeral"}}),
+        HumanMessage(content=f"Memory A: {content_a}\nMemory B: {content_b}"),
+    ])
     text = response.content
     if isinstance(text, list):
         text = " ".join(block.get("text", "") if isinstance(block, dict) else str(block) for block in text)
@@ -437,7 +437,7 @@ async def store_memories_with_conflict_detection(
     return stored
 
 
-MEMORY_EXTRACTION_PROMPT = """Analyze the following conversation and extract important information that should be remembered for future conversations.
+MEMORY_EXTRACTION_INSTRUCTIONS = """Analyze the following conversation and extract important information that should be remembered for future conversations.
 
 Focus on:
 1. **Personal facts** - Name, job, location, family, hobbies, etc.
@@ -470,13 +470,7 @@ IMPORTANT:
 - Group closely related facts about the same person into a single memory when possible. Prefer fewer, richer memories over many fragmented ones.
 - Don't store trivial greetings or small talk
 - Don't duplicate information already known
-- Be concise but complete
-
-Conversation:
-{conversation}
-
-Existing memories (don't duplicate these):
-{existing_memories}"""
+- Be concise but complete"""
 
 
 async def extract_and_store_memories(
@@ -527,16 +521,16 @@ async def extract_and_store_memories(
     # Call LLM to extract memories
     llm = ChatAnthropic(model=model, temperature=0, max_tokens=2048)
 
-    prompt = MEMORY_EXTRACTION_PROMPT.format(
-        conversation=conversation_text,
-        existing_memories=existing_text
-    )
+    dynamic_content = f"Conversation:\n{conversation_text}\n\nExisting memories (don't duplicate these):\n{existing_text}"
 
-    print(f"Memory extraction: prompt ready ({len(prompt)} chars)")
+    print(f"Memory extraction: prompt ready ({len(dynamic_content)} chars)")
 
     try:
         print(f"Memory extraction: calling LLM with {len(messages)} messages")
-        response = await llm.ainvoke([HumanMessage(content=prompt)])
+        response = await llm.ainvoke([
+            SystemMessage(content=MEMORY_EXTRACTION_INSTRUCTIONS, additional_kwargs={"cache_control": {"type": "ephemeral"}}),
+            HumanMessage(content=dynamic_content),
+        ])
         print(f"Memory extraction: got LLM response")
 
         # Handle both string and list content (Claude sometimes returns list of content blocks)
@@ -1064,19 +1058,7 @@ async def find_similar_memories(content: str, threshold: float = 0.85, limit: in
         ]
 
 
-CONFLICT_RESOLUTION_PROMPT = """You are analyzing two memories to determine how to handle a potential conflict or update.
-
-EXISTING MEMORY:
-- Content: {existing_content}
-- Type: {existing_type}
-- Importance: {existing_importance}
-
-NEW MEMORY:
-- Content: {new_content}
-- Type: {new_type}
-- Importance: {new_importance}
-
-Similarity score: {similarity:.2f}
+CONFLICT_RESOLUTION_INSTRUCTIONS = """You are analyzing two memories to determine how to handle a potential conflict or update.
 
 Determine the best action:
 - UPDATE: The new memory is an update/correction to the existing one (replace old with new)
@@ -1120,18 +1102,23 @@ async def resolve_memory_conflict(
     """
     llm = ChatAnthropic(model=model, temperature=0, max_tokens=512)
 
-    prompt = CONFLICT_RESOLUTION_PROMPT.format(
-        existing_content=existing.content,
-        existing_type=existing.memory_type,
-        existing_importance=existing.importance,
-        new_content=new.content,
-        new_type=new.memory_type,
-        new_importance=new.importance,
-        similarity=similarity
-    )
+    dynamic_data = f"""EXISTING MEMORY:
+- Content: {existing.content}
+- Type: {existing.memory_type}
+- Importance: {existing.importance}
+
+NEW MEMORY:
+- Content: {new.content}
+- Type: {new.memory_type}
+- Importance: {new.importance}
+
+Similarity score: {similarity:.2f}"""
 
     try:
-        response = await llm.ainvoke([HumanMessage(content=prompt)])
+        response = await llm.ainvoke([
+            SystemMessage(content=CONFLICT_RESOLUTION_INSTRUCTIONS, additional_kwargs={"cache_control": {"type": "ephemeral"}}),
+            HumanMessage(content=dynamic_data),
+        ])
 
         response_text = response.content
         if isinstance(response_text, list):
@@ -1173,16 +1160,13 @@ async def resolve_memory_conflict(
 
 # ===== TEMPORAL NATURE BACKFILL =====
 
-BACKFILL_PROMPT = """Classify each memory's temporal nature. Ben is the user.
+BACKFILL_INSTRUCTIONS = """Classify each memory's temporal nature. Ben is the user.
 
 - "timeless": Permanent facts unlikely to change (identity, allergies, family relationships, fixed preferences)
 - "temporary": Time-bound context that expires (current projects, upcoming events, temporary situations)
 - "evolving": Things that change over time and may be superseded (favorite restaurant, current job, tools in use)
 
-Return ONLY a valid JSON array of {{"id": "...", "temporal_nature": "..."}} for each memory.
-
-Memories:
-{memories_json}"""
+Return ONLY a valid JSON array of {{"id": "...", "temporal_nature": "..."}} for each memory."""
 
 
 async def backfill_temporal_nature(
@@ -1221,12 +1205,13 @@ async def backfill_temporal_nature(
                 for m in batch
             ]
 
-            prompt = BACKFILL_PROMPT.format(
-                memories_json=json.dumps(memories_for_prompt, indent=2)
-            )
+            memories_json = json.dumps(memories_for_prompt, indent=2)
 
             try:
-                response = await llm.ainvoke([HumanMessage(content=prompt)])
+                response = await llm.ainvoke([
+                    SystemMessage(content=BACKFILL_INSTRUCTIONS, additional_kwargs={"cache_control": {"type": "ephemeral"}}),
+                    HumanMessage(content=f"Memories:\n{memories_json}"),
+                ])
                 response_text = response.content
                 if isinstance(response_text, list):
                     response_text = " ".join(
@@ -1275,7 +1260,7 @@ async def backfill_temporal_nature(
 
 # ===== TIER MIGRATION (ONE-TIME DEDUP + REINFORCE) =====
 
-DEDUP_CLASSIFY_PROMPT = """Review these groups of similar memories. For each group, decide the action:
+DEDUP_CLASSIFY_INSTRUCTIONS = """Review these groups of similar memories. For each group, decide the action:
 
 - MERGE: These are duplicates or near-duplicates. Provide a single clean merged version.
 - KEEP_ALL: These are genuinely distinct facts that should remain separate.
@@ -1300,10 +1285,7 @@ Return ONLY valid JSON:
       "memory_ids": ["id1", "id2"]
     }}
   ]
-}}
-
-Memory groups:
-{groups_json}"""
+}}"""
 
 
 async def backfill_memory_tiers(
@@ -1448,12 +1430,13 @@ async def _process_merge_groups(
     """Process a batch of merge groups via Haiku."""
     llm = ChatAnthropic(model=model, temperature=0, max_tokens=4096)
 
-    prompt = DEDUP_CLASSIFY_PROMPT.format(
-        groups_json=json.dumps(groups, indent=2)
-    )
+    groups_json = json.dumps(groups, indent=2)
 
     try:
-        response = await llm.ainvoke([HumanMessage(content=prompt)])
+        response = await llm.ainvoke([
+            SystemMessage(content=DEDUP_CLASSIFY_INSTRUCTIONS, additional_kwargs={"cache_control": {"type": "ephemeral"}}),
+            HumanMessage(content=f"Memory groups:\n{groups_json}"),
+        ])
         summary["haiku_calls"] += 1
 
         response_text = response.content

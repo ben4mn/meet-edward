@@ -14,22 +14,19 @@ from typing import List, Optional
 from datetime import datetime, timedelta
 
 from langchain_anthropic import ChatAnthropic
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 
 from services.database import async_session, MemoryEnrichmentModel
 from services.memory_service import retrieve_memories, Memory
 
 
-REFLECTION_QUERY_PROMPT = """Analyze this conversation and generate 3-5 search queries that would find relevant context from long-term memory. Focus on:
+REFLECTION_QUERY_INSTRUCTIONS = """Analyze this conversation and generate 3-5 search queries that would find relevant context from long-term memory. Focus on:
 
 1. People, places, or topics mentioned or implied
 2. Related context the user might expect you to remember
 3. Background information that would improve your next response
 
-Return ONLY a JSON array of query strings. Example: ["Ben's work projects", "previous discussions about Python", "Ben's preferences for code style"]
-
-Conversation (last 10 messages):
-{conversation}"""
+Return ONLY a JSON array of query strings. Example: ["Ben's work projects", "previous discussions about Python", "Ben's preferences for code style"]"""
 
 
 def should_reflect(messages: list, turn_count: int) -> bool:
@@ -75,11 +72,13 @@ async def generate_reflection_queries(messages: list, model: str = "claude-haiku
         return []
 
     llm = ChatAnthropic(model=model, temperature=0, max_tokens=512)
-    prompt = REFLECTION_QUERY_PROMPT.format(conversation=conversation_text)
 
     try:
         response = await asyncio.wait_for(
-            llm.ainvoke([HumanMessage(content=prompt)]),
+            llm.ainvoke([
+                SystemMessage(content=REFLECTION_QUERY_INSTRUCTIONS, additional_kwargs={"cache_control": {"type": "ephemeral"}}),
+                HumanMessage(content=f"Conversation (last 10 messages):\n{conversation_text}"),
+            ]),
             timeout=5.0,
         )
 

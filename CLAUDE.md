@@ -10,6 +10,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Edward is a full-stack AI assistant with long-term memory, built with Next.js, FastAPI, and PostgreSQL. Uses LangGraph for conversation orchestration and pgvector for memory retrieval.
 
+## Implementation Plans
+
+Active implementation plans for the `cl-feature` branch live in `IMPLEMENTATION_PLANS/`:
+
+| Plan | Description | Status |
+|------|-------------|--------|
+| [000_MASTER_PLAN.md](IMPLEMENTATION_PLANS/000_MASTER_PLAN.md) | Master architecture, decisions, cost estimates | Reference |
+| [001_CROSS_PLATFORM_FOUNDATION.md](IMPLEMENTATION_PLANS/001_CROSS_PLATFORM_FOUNDATION.md) | PowerShell scripts, platform fixes for Windows + macOS | **Complete** |
+| [002_AUTONOMY_FRAMEWORK.md](IMPLEMENTATION_PLANS/002_AUTONOMY_FRAMEWORK.md) | Values-based system prompt, platform context, channel-agnostic triage | **Complete** |
+| [003_NOTEBOOKLM_INTEGRATION.md](IMPLEMENTATION_PLANS/003_NOTEBOOKLM_INTEGRATION.md) | Google NotebookLM skill (12 tools) via notebooklm-py | **Complete** |
+| [004_PROMPT_CACHING.md](IMPLEMENTATION_PLANS/004_PROMPT_CACHING.md) | Anthropic prompt caching (all LLM call sites) | **Complete** |
+| [DEFERRED_TELEGRAM_INTEGRATION.md](IMPLEMENTATION_PLANS/DEFERRED_TELEGRAM_INTEGRATION.md) | Telegram bot with long-polling | Deferred |
+
+**IMPORTANT**: Read the relevant plan BEFORE making changes. Each plan has STOP warnings, strict rules, and verification checklists.
+
 ## Running the App
 
 **The backend runs on macOS and Windows.** macOS has full feature support; Windows runs with graceful degradation (Apple-specific features disabled, PWA + push notifications for messaging).
@@ -549,6 +564,10 @@ TWILIO_AUTH_TOKEN=...
 TWILIO_PHONE_NUMBER=+1...
 TWILIO_WEBHOOK_URL=https://your-domain.com/api/webhook/twilio
 TWILIO_WHATSAPP_WEBHOOK_URL=https://your-domain.com/api/webhook/twilio/whatsapp
+
+# Telegram Bot (long-polling, no public URL needed)
+TELEGRAM_BOT_TOKEN=...               # Get from @BotFather on Telegram
+TELEGRAM_ALLOWED_USER_ID=...         # Your Telegram user ID (get via @userinfobot)
 
 # WhatsApp via MCP (requires whatsapp-mcp Go bridge running)
 MCP_WHATSAPP_ENABLED=false
