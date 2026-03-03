@@ -48,6 +48,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"Custom MCP servers initialization skipped: {e}")
 
+    # Initialize NotebookLM client (if credentials exist)
+    try:
+        from services.notebooklm_service import initialize_notebooklm
+        await initialize_notebooklm()
+    except Exception as e:
+        print(f"NotebookLM initialization skipped: {e}")
+
     # Initialize tool registry (must be after skills and MCP)
     try:
         from services.tool_registry import initialize_registry
@@ -116,6 +123,12 @@ async def lifespan(app: FastAPI):
         await stop_scheduler()
     except Exception as e:
         print(f"Scheduler shutdown error: {e}")
+
+    try:
+        from services.notebooklm_service import shutdown_notebooklm
+        await shutdown_notebooklm()
+    except Exception as e:
+        print(f"NotebookLM shutdown error: {e}")
 
     try:
         from services.custom_mcp_service import shutdown_custom_servers
