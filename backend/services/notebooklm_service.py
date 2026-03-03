@@ -89,7 +89,7 @@ async def _resolve_notebook_id(notebook_name: str) -> Optional[str]:
 
     name_lower = notebook_name.lower()
     for nb in notebooks:
-        if getattr(nb, "name", "").lower() == name_lower:
+        if getattr(nb, "title", "").lower() == name_lower:
             return getattr(nb, "id", None)
 
     return None
@@ -108,7 +108,7 @@ async def list_notebooks() -> List[Dict[str, Any]]:
     return [
         {
             "id": getattr(nb, "id", None),
-            "name": getattr(nb, "name", "Untitled"),
+            "name": getattr(nb, "title", "Untitled"),
         }
         for nb in notebooks
     ]
@@ -121,7 +121,7 @@ async def create_notebook(name: str) -> Dict[str, Any]:
 
     return {
         "id": getattr(notebook, "id", None),
-        "name": getattr(notebook, "name", name),
+        "name": getattr(notebook, "title", name),
     }
 
 
@@ -184,7 +184,7 @@ async def add_text_source(
         raise Exception(f"Notebook '{notebook_name}' not found")
 
     client = await _get_client()
-    source = await client.sources.add_text(notebook_id, text)
+    source = await client.sources.add_text(notebook_id, title or "Text Source", text)
 
     return {
         "source_id": getattr(source, "id", None),
