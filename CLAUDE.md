@@ -12,8 +12,9 @@ Edward is a full-stack AI assistant with long-term memory, built with Next.js, F
 
 ## Running the App
 
-**The backend must run natively on macOS** (not in a container). This is required for the scheduled events scheduler and AppleScript/MCP integrations.
+**The backend runs on macOS and Windows.** macOS has full feature support; Windows runs with graceful degradation (Apple-specific features disabled, PWA + push notifications for messaging).
 
+### macOS
 ```bash
 # First-time setup
 ./setup.sh                    # Creates venv, installs deps, sets up .env
@@ -26,7 +27,24 @@ Edward is a full-stack AI assistant with long-term memory, built with Next.js, F
 # Individual services
 cd backend && ./start.sh                       # Backend (FastAPI :8000)
 cd frontend && npm install && npm run dev      # Frontend (Next.js :3000)
+```
 
+### Windows (PowerShell)
+```powershell
+# First-time setup
+.\setup.ps1                    # Creates venv, installs deps, sets up .env
+
+# Recommended: restart script (handles both services)
+.\restart.ps1                  # Restart both frontend + backend
+.\restart.ps1 frontend         # Restart only frontend
+.\restart.ps1 backend          # Stop and restart only backend
+
+# Individual services
+cd backend; .\start.ps1                        # Backend (FastAPI :8000)
+cd frontend; npm install; npm run dev          # Frontend (Next.js :3000)
+```
+
+```bash
 # Lint frontend
 cd frontend && npm run lint
 ```
