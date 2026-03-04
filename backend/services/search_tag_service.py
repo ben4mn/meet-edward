@@ -43,7 +43,10 @@ async def generate_search_tags(conversation_id: str, messages: List[Dict[str, st
     )
 
     response = await llm.ainvoke([
-        SystemMessage(content=system),
+        SystemMessage(
+            content=system,
+            additional_kwargs={"cache_control": {"type": "ephemeral"}},
+        ),
         HumanMessage(content=conversation_text),
     ])
 

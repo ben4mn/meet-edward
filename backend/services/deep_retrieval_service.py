@@ -12,18 +12,15 @@ import re
 from typing import List
 
 from langchain_anthropic import ChatAnthropic
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 
 from services.memory_service import retrieve_memories, Memory
 from services.database import async_session, MemoryEnrichmentModel
 
 
-DEEP_QUERY_PROMPT = """Given this conversation, generate exactly 3 search queries to find relevant memories. The user's latest message may be short or ambiguous — use conversation context to infer what memories would be useful.
+DEEP_QUERY_INSTRUCTIONS = """Given this conversation, generate exactly 3 search queries to find relevant memories. The user's latest message may be short or ambiguous — use conversation context to infer what memories would be useful.
 
-Return ONLY a JSON array of 3 query strings.
-
-Last 5 messages:
-{conversation}"""
+Return ONLY a JSON array of 3 query strings."""
 
 
 async def should_deep_retrieve(message: str, conversation_id: str, turn_count: int) -> bool:
@@ -72,11 +69,16 @@ async def generate_search_queries(messages: list, model: str = "claude-haiku-4-5
         return []
 
     llm = ChatAnthropic(model=model, temperature=0, max_tokens=256)
-    prompt = DEEP_QUERY_PROMPT.format(conversation=conversation_text)
 
     try:
         response = await asyncio.wait_for(
-            llm.ainvoke([HumanMessage(content=prompt)]),
+            llm.ainvoke([
+                SystemMessage(
+                    content=DEEP_QUERY_INSTRUCTIONS,
+                    additional_kwargs={"cache_control": {"type": "ephemeral"}},
+                ),
+                HumanMessage(content=f"Last 5 messages:\n{conversation_text}"),
+            ]),
             timeout=3.0,
         )
 
