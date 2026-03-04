@@ -1,31 +1,16 @@
 """
 MCP (Model Context Protocol) client for messaging integrations.
 
-Manages MCP server subprocesses for WhatsApp and Apple Services.
+Manages MCP server subprocesses for Apple Services.
+WhatsApp is now handled by the Baileys bridge (whatsapp_bridge_client.py).
 Uses langchain-mcp-adapters for seamless LangChain tool integration.
-
-IMPORTANT: WhatsApp MCP uses a persistent session (single subprocess) because
-Baileys needs a long-lived WebSocket connection. Each tool call reuses the same
-session instead of spawning a new subprocess.
 """
 
 import os
 from typing import Optional, List, Any
 
-# MCP configuration — WhatsApp
-MCP_WHATSAPP_ENABLED = os.getenv("MCP_WHATSAPP_ENABLED", "false").lower() == "true"
-
 # MCP configuration — Apple Services (unified: Calendar, Reminders, Notes, Mail, Contacts, Maps, Messages)
 MCP_APPLE_ENABLED = os.getenv("MCP_APPLE_ENABLED", "false").lower() == "true"
-
-# Global client state — WhatsApp
-_whatsapp_mcp_client = None
-_whatsapp_mcp_tools: List[Any] = []
-_whatsapp_initialized = False
-_whatsapp_last_error: Optional[str] = None
-# Persistent session state (keeps single subprocess alive)
-_whatsapp_session = None
-_whatsapp_session_context = None
 
 # Global client state — Apple Services (unified)
 _apple_mcp_client = None
@@ -37,145 +22,36 @@ _apple_session_context = None
 
 
 # ============================================================================
-# WHATSAPP MCP
+# WHATSAPP — delegated to whatsapp_bridge_client.py
 # ============================================================================
 
 async def initialize_whatsapp_mcp() -> bool:
-    """
-    Initialize the WhatsApp MCP client with a persistent session.
-
-    Uses a single long-lived subprocess so Baileys maintains its WebSocket
-    connection across tool calls (instead of reconnecting every time).
-
-    Returns:
-        True if initialization succeeded, False otherwise.
-    """
-    global _whatsapp_mcp_client, _whatsapp_mcp_tools, _whatsapp_initialized
-    global _whatsapp_last_error, _whatsapp_session, _whatsapp_session_context
-
-    if not MCP_WHATSAPP_ENABLED:
-        _whatsapp_last_error = "Disabled via MCP_WHATSAPP_ENABLED=false"
-        return False
-
-    if _whatsapp_initialized:
-        return True
-
-    try:
-        from langchain_mcp_adapters.client import MultiServerMCPClient
-        from langchain_mcp_adapters.tools import load_mcp_tools
-
-        _whatsapp_mcp_client = MultiServerMCPClient({
-            "whatsapp": {
-                "command": "npx",
-                "args": ["-y", "whatsapp-mcp-lifeosai"],
-                "transport": "stdio"
-            }
-        })
-
-        # Open a persistent session — keeps the subprocess alive
-        _whatsapp_session_context = _whatsapp_mcp_client.session("whatsapp")
-        _whatsapp_session = await _whatsapp_session_context.__aenter__()
-
-        # Load tools bound to this persistent session (no new subprocess per call)
-        raw_tools = await load_mcp_tools(_whatsapp_session)
-
-        # Prefix all tool names with whatsapp_ to avoid collisions
-        for tool in raw_tools:
-            if not tool.name.startswith("whatsapp_"):
-                tool.name = f"whatsapp_{tool.name}"
-
-        _whatsapp_mcp_tools = raw_tools
-        _whatsapp_initialized = True
-        _whatsapp_last_error = None
-
-        print(f"WhatsApp MCP client initialized with {len(_whatsapp_mcp_tools)} tools")
-        for tool in _whatsapp_mcp_tools:
-            desc = tool.description[:50] if tool.description else "No description"
-            print(f"  - {tool.name}: {desc}...")
-
-        return True
-
-    except ImportError:
-        _whatsapp_last_error = "langchain-mcp-adapters not installed"
-        print("langchain-mcp-adapters not installed. WhatsApp MCP disabled.")
-        return False
-    except Exception as e:
-        _whatsapp_last_error = str(e)
-        print(f"Failed to initialize WhatsApp MCP client: {e}")
-        _whatsapp_mcp_client = None
-        _whatsapp_session = None
-        _whatsapp_session_context = None
-        return False
+    """Initialize WhatsApp via Baileys bridge (not MCP anymore)."""
+    from services.whatsapp_bridge_client import initialize_bridge
+    return await initialize_bridge()
 
 
 async def shutdown_whatsapp_mcp():
-    """Shutdown the WhatsApp MCP client and its persistent session."""
-    global _whatsapp_mcp_client, _whatsapp_mcp_tools, _whatsapp_initialized
-    global _whatsapp_session, _whatsapp_session_context
-
-    if _whatsapp_session_context is not None:
-        try:
-            await _whatsapp_session_context.__aexit__(None, None, None)
-        except Exception as e:
-            print(f"Error shutting down WhatsApp MCP session: {e}")
-        finally:
-            _whatsapp_session = None
-            _whatsapp_session_context = None
-
-    _whatsapp_mcp_client = None
-    _whatsapp_mcp_tools = []
-    _whatsapp_initialized = False
+    """Shutdown WhatsApp bridge."""
+    from services.whatsapp_bridge_client import shutdown_bridge
+    await shutdown_bridge()
 
 
 def is_whatsapp_available() -> bool:
-    """Check if WhatsApp MCP is available."""
-    return _whatsapp_initialized and len(_whatsapp_mcp_tools) > 0
+    """Check if WhatsApp bridge is available."""
+    from services.whatsapp_bridge_client import is_available
+    return is_available()
 
 
 def get_whatsapp_mcp_tools() -> List[Any]:
-    """Get the WhatsApp MCP tools for binding to the LLM."""
-    return _whatsapp_mcp_tools
+    """No longer used — tools come from whatsapp_bridge_tools.py."""
+    return []
 
 
 def get_whatsapp_status() -> dict:
-    """
-    Get the current status of the WhatsApp MCP service.
-
-    Returns:
-        Dict with status info: status, status_message, metadata
-    """
-    if not MCP_WHATSAPP_ENABLED:
-        return {
-            "status": "error",
-            "status_message": "Set MCP_WHATSAPP_ENABLED=true in environment",
-            "metadata": None
-        }
-
-    if not _whatsapp_initialized:
-        if _whatsapp_last_error:
-            return {
-                "status": "error",
-                "status_message": _whatsapp_last_error,
-                "metadata": None
-            }
-        return {
-            "status": "connecting",
-            "status_message": "Not yet initialized",
-            "metadata": None
-        }
-
-    if len(_whatsapp_mcp_tools) == 0:
-        return {
-            "status": "error",
-            "status_message": "No tools available from WhatsApp MCP server",
-            "metadata": None
-        }
-
-    return {
-        "status": "connected",
-        "status_message": f"{len(_whatsapp_mcp_tools)} tools available",
-        "metadata": {"tools_count": len(_whatsapp_mcp_tools)}
-    }
+    """Get WhatsApp bridge status."""
+    from services.whatsapp_bridge_client import get_status
+    return get_status()
 
 
 # ============================================================================

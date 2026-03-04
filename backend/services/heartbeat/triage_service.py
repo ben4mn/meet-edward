@@ -173,7 +173,8 @@ def _build_channel_guidance(source: str = "imessage") -> str:
         )
     elif source == "whatsapp":
         return (
-            'Respond via send_whatsapp for this WhatsApp conversation.\n'
+            'Respond via whatsapp_send_message for this WhatsApp conversation. '
+            'The chat_id is provided in the event context — pass it as the chat_id argument.\n'
             'IMPORTANT: Never include "@edward" in your message — it will re-trigger the heartbeat.'
         )
     elif source == "email":
@@ -669,6 +670,9 @@ async def _execute_classification(
                     sender_line += f" ({sender_phone})"
 
             chat_context = event.chat_name or event.chat_identifier or "Direct message"
+            # For WhatsApp, include the raw chat_id so the LLM can pass it to tools
+            if event.source == "whatsapp" and event.chat_identifier:
+                chat_context += f" (chat_id: {event.chat_identifier})"
             message_text = event.summary or "(no text)"
             is_mention = classification.get("is_mention", False)
             channel_guidance = _build_channel_guidance(event.source)

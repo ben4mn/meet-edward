@@ -205,23 +205,20 @@ def _get_messaging_tools(skill_states: Dict[str, bool]) -> List[BaseTool]:
 
 def _get_whatsapp_mcp_tools(skill_states: Dict[str, bool]) -> List[Any]:
     """
-    Get WhatsApp MCP tools if whatsapp_mcp is enabled.
+    Get WhatsApp bridge tools if whatsapp_mcp is enabled.
 
-    Args:
-        skill_states: Dict of skill_id -> enabled
-
-    Returns:
-        List of WhatsApp MCP tools (LangChain-compatible)
+    Uses the custom Baileys bridge REST API instead of MCP tools.
     """
     if not skill_states.get("whatsapp_mcp"):
         return []
 
-    from services.mcp_client import get_whatsapp_mcp_tools, is_whatsapp_available
+    from services.whatsapp_bridge_client import is_available
 
-    if not is_whatsapp_available():
+    if not is_available():
         return []
 
-    return get_whatsapp_mcp_tools()
+    from services.whatsapp_bridge_tools import WHATSAPP_BRIDGE_TOOLS
+    return WHATSAPP_BRIDGE_TOOLS
 
 
 def _get_search_tools(skill_states: Dict[str, bool]) -> List[BaseTool]:

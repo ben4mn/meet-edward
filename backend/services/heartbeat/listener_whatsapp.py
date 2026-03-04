@@ -1,521 +1,66 @@
 """
 WhatsApp listener for Edward's heartbeat system.
 
-Polls WhatsApp via MCP tools (whatsapp-mcp-lifeosai) for @edward mentions.
+With the Baileys bridge, @edward detection is push-based via webhook
+(POST /api/webhook/whatsapp). No polling needed.
 
-Strategy:
-  1. Call `connect` once to establish Baileys session (persistent MCP session)
-  2. Try `get_recent_chats` — scan lastMessage for @edward (1 MCP call)
-  3. If that fails (known "Invalid time value" bug), fall back to rotating
-     through ALL contacts in batches of BATCH_SIZE per poll cycle
-  4. Store only mention-bearing messages (not all messages)
-  5. Trigger immediate triage on @edward detection
-
-The rotation ensures every contact is checked within a few minutes, even if
-the contact list is large. Previously-mentioned chats are prioritized (polled
-every cycle) so responses remain fast after initial detection.
+This module provides thread-fetching utilities used by triage_service
+to build context before responding to WhatsApp mentions.
 """
 
-import asyncio
-import json
 import re
-from datetime import datetime, timezone, timedelta
-from typing import Optional
 
-from sqlalchemy import select
-
-from services.database import async_session, HeartbeatEventModel
 
 MENTION_PATTERN = re.compile(r"@edward\b", re.IGNORECASE)
 
-_listener_task: asyncio.Task | None = None
-_poll_interval: int = 30
-_last_poll_time: Optional[datetime] = None
-_connected: bool = False
-
-# Scan-first state
-_get_recent_chats_works: bool = True  # Optimistic, flips on first failure
-_last_retry_time: Optional[datetime] = None
-_RETRY_INTERVAL = 300  # Retry get_recent_chats every 5 minutes
-
-# Rotation state for fallback mode
-_all_contacts: list[tuple[str, str]] = []  # [(chat_id, name), ...]
-_contacts_loaded: bool = False
-_rotation_offset: int = 0  # Current position in the rotation
-_BATCH_SIZE: int = 15  # Contacts to poll per cycle
-
-# Priority chats: chat IDs where @edward was previously detected.
-# These are polled EVERY cycle regardless of rotation position.
-_priority_chats: dict[str, str] = {}  # chat_id → name
-
-
-def _find_tool(name_suffix: str):
-    """Find a WhatsApp MCP tool by exact suffix match."""
-    from services.mcp_client import get_whatsapp_mcp_tools, is_whatsapp_available
-
-    if not is_whatsapp_available():
-        return None
-
-    target = f"whatsapp_{name_suffix}"
-    for t in get_whatsapp_mcp_tools():
-        if t.name.lower() == target:
-            return t
-    return None
-
-
-def _parse_mcp_result(result) -> any:
-    """Parse MCP tool result into Python object.
-
-    langchain-mcp-adapters tools use response_format="content_and_artifact",
-    so ainvoke() returns a tuple (content, artifacts). Handle that plus
-    plain strings and objects.
-    """
-    raw = result
-    # Unpack content_and_artifact tuple
-    if isinstance(raw, tuple) and len(raw) >= 1:
-        raw = raw[0]
-    if hasattr(raw, "content"):
-        raw = raw.content
-    if isinstance(raw, str):
-        raw = raw.strip()
-        if not raw or raw.lower().startswith("error"):
-            return None
-        return json.loads(raw)
-    if isinstance(raw, (dict, list)):
-        return raw
-    return json.loads(str(raw))
-
-
-# ===== Connection =====
-
-async def _ensure_connected() -> bool:
-    """Connect Baileys if not already connected. Uses persistent MCP session."""
-    global _connected
-
-    if _connected:
-        return True
-
-    connect_tool = _find_tool("connect")
-    if not connect_tool:
-        print("[Heartbeat] WhatsApp: connect tool not found")
-        return False
-
-    try:
-        print("[Heartbeat] WhatsApp: connecting Baileys...")
-        result = await asyncio.wait_for(connect_tool.ainvoke({}), timeout=60)
-        parsed = _parse_mcp_result(result)
-        if isinstance(parsed, dict):
-            status = parsed.get("status", "")
-            if status in ("connected", "already_connected"):
-                user = parsed.get("user") or {}
-                print(f"[Heartbeat] WhatsApp: connected as {user.get('name', 'unknown')} ({user.get('id', '')})")
-                _connected = True
-                return True
-            print(f"[Heartbeat] WhatsApp connect failed: {parsed}")
-        return False
-    except asyncio.TimeoutError:
-        print("[Heartbeat] WhatsApp: connect timed out after 60s")
-        return False
-    except Exception as e:
-        print(f"[Heartbeat] WhatsApp connect error: {e}")
-        return False
-
-
-# ===== Primary path: get_recent_chats scan =====
-
-async def _try_get_recent_chats() -> list[dict] | None:
-    """Try get_recent_chats. Returns parsed list or None on failure."""
-    tool = _find_tool("get_recent_chats")
-    if not tool:
-        return None
-    try:
-        result = await asyncio.wait_for(tool.ainvoke({"limit": 30}), timeout=15)
-        parsed = _parse_mcp_result(result)
-        if isinstance(parsed, list):
-            return parsed
-        return None
-    except Exception as e:
-        print(f"[Heartbeat] WhatsApp get_recent_chats error: {e}")
-        return None
-
-
-async def _scan_chats_for_mentions(chats: list[dict], since: datetime) -> None:
-    """Scan lastMessage from get_recent_chats for @edward. Drill into matches."""
-    chats_with_mentions = []
-
-    for chat in chats:
-        if not isinstance(chat, dict):
-            continue
-        last_msg = chat.get("lastMessage") or ""
-        chat_id = chat.get("id") or ""
-        chat_name = chat.get("name") or chat_id
-
-        if not chat_id:
-            continue
-
-        if MENTION_PATTERN.search(last_msg):
-            chats_with_mentions.append((chat_id, chat_name))
-            _priority_chats[chat_id] = chat_name
-
-    if not chats_with_mentions:
-        return
-
-    print(f"[Heartbeat] WhatsApp: @edward detected in {len(chats_with_mentions)} chat(s), fetching details")
-
-    stored = 0
-    for chat_id, chat_name in chats_with_mentions:
-        count = await _fetch_and_store_mentions(chat_id, chat_name, since)
-        stored += count
-
-    if stored > 0:
-        print(f"[Heartbeat] WhatsApp: stored {stored} mention event(s), triggering triage")
-        from services.heartbeat.heartbeat_service import trigger_immediate_triage
-        await trigger_immediate_triage()
-
-
-async def _fetch_and_store_mentions(chat_id: str, chat_name: str, since: datetime) -> int:
-    """Fetch messages from a specific chat, store only @edward mentions."""
-    messages_tool = _find_tool("get_chat_messages")
-    if not messages_tool:
-        return 0
-
-    try:
-        result = await asyncio.wait_for(
-            messages_tool.ainvoke({"chat_id": chat_id, "limit": 10}), timeout=10
-        )
-        msgs_data = _parse_mcp_result(result)
-    except Exception as e:
-        print(f"[Heartbeat] WhatsApp: error fetching {chat_name}: {e}")
-        return 0
-
-    if not isinstance(msgs_data, list):
-        return 0
-
-    stored = 0
-    async with async_session() as session:
-        for msg in msgs_data:
-            if not isinstance(msg, dict):
-                continue
-
-            text = msg.get("text") or msg.get("body") or msg.get("content") or ""
-
-            # Only store @edward mentions
-            if not MENTION_PATTERN.search(text):
-                continue
-
-            msg_id = msg.get("id") or ""
-            sender = msg.get("from") or chat_id
-            is_from_me = msg.get("fromMe", False)
-
-            # Timestamp filter — skip old messages
-            timestamp = msg.get("timestamp")
-            if timestamp:
-                try:
-                    if isinstance(timestamp, (int, float)):
-                        msg_time = datetime.fromtimestamp(timestamp, tz=timezone.utc)
-                    else:
-                        msg_time = datetime.fromisoformat(
-                            str(timestamp).replace("Z", "+00:00")
-                        )
-                        if msg_time.tzinfo is None:
-                            msg_time = msg_time.replace(tzinfo=timezone.utc)
-                    if msg_time < since:
-                        continue
-                except (ValueError, TypeError, OSError):
-                    pass
-
-            if not msg_id:
-                msg_id = f"{chat_id}_{hash(text)}"
-
-            source_id = f"whatsapp:{msg_id}"
-
-            # Dedup check
-            existing = await session.execute(
-                select(HeartbeatEventModel.id).where(
-                    HeartbeatEventModel.source_id == source_id
-                )
-            )
-            if existing.scalar_one_or_none():
-                continue
-
-            hb_event = HeartbeatEventModel(
-                source="whatsapp",
-                event_type="message_received",
-                sender=sender,
-                contact_name=chat_name,
-                chat_identifier=chat_id,
-                chat_name=chat_name,
-                summary=text[:200],
-                raw_data=json.dumps(msg),
-                source_id=source_id,
-                is_from_user=bool(is_from_me),
-            )
-            session.add(hb_event)
-            stored += 1
-
-        if stored:
-            await session.commit()
-
-    return stored
-
-
-# ===== Fallback path: rotating contact polling =====
-
-async def _load_all_contacts() -> None:
-    """Load ALL contacts into _all_contacts for rotation polling.
-
-    Also tries get_groups first to capture group chats (most likely @mention
-    source). Falls back to get_contacts with a high limit.
-    """
-    global _contacts_loaded, _all_contacts
-
-    if _contacts_loaded:
-        return
-
-    seen_ids: set[str] = set()
-
-    # Try groups first (most likely @mention source)
-    groups_tool = _find_tool("get_groups")
-    if groups_tool:
-        try:
-            result = await asyncio.wait_for(groups_tool.ainvoke({}), timeout=15)
-            parsed = _parse_mcp_result(result)
-            if isinstance(parsed, list):
-                for group in parsed:
-                    if isinstance(group, dict) and group.get("id"):
-                        gid = group["id"]
-                        name = group.get("subject") or group.get("name") or gid
-                        if gid not in seen_ids:
-                            seen_ids.add(gid)
-                            _all_contacts.append((gid, name))
-                print(f"[Heartbeat] WhatsApp: loaded {len(_all_contacts)} groups")
-        except Exception as e:
-            print(f"[Heartbeat] WhatsApp: get_groups failed: {e}")
-
-    # Load ALL contacts (high limit to get everyone)
-    contacts_tool = _find_tool("get_contacts")
-    if contacts_tool:
-        try:
-            result = await asyncio.wait_for(
-                contacts_tool.ainvoke({"limit": 500}), timeout=30
-            )
-            parsed = _parse_mcp_result(result)
-            if isinstance(parsed, list):
-                added = 0
-                for c in parsed:
-                    if isinstance(c, dict) and c.get("id"):
-                        cid = c["id"]
-                        if cid not in seen_ids:
-                            seen_ids.add(cid)
-                            name = c.get("name") or c.get("phone") or cid
-                            _all_contacts.append((cid, name))
-                            added += 1
-                print(f"[Heartbeat] WhatsApp: loaded {added} contacts (total: {len(_all_contacts)})")
-        except Exception as e:
-            print(f"[Heartbeat] WhatsApp: get_contacts failed: {e}")
-
-    if _all_contacts:
-        _contacts_loaded = True
-        print(f"[Heartbeat] WhatsApp: contact rotation ready — {len(_all_contacts)} chats, "
-              f"batch size {_BATCH_SIZE}, full rotation every ~{len(_all_contacts) * _poll_interval // _BATCH_SIZE}s")
-    else:
-        print("[Heartbeat] WhatsApp: no contacts loaded, will retry next cycle")
-
-
-async def _poll_rotation(since: datetime) -> None:
-    """Poll the next batch of contacts for @edward mentions.
-
-    Priority chats (where @edward was previously detected) are checked every
-    cycle. Then a rotating window of BATCH_SIZE contacts fills the rest.
-    """
-    global _get_recent_chats_works, _last_retry_time, _rotation_offset
-
-    # Periodically retry get_recent_chats in case the bug is fixed
-    now = datetime.now(timezone.utc)
-    if (_last_retry_time is None
-            or (now - _last_retry_time).total_seconds() > _RETRY_INTERVAL):
-        _last_retry_time = now
-        chats = await _try_get_recent_chats()
-        if chats is not None:
-            _get_recent_chats_works = True
-            print("[Heartbeat] WhatsApp: get_recent_chats recovered, switching back to scan mode")
-            await _scan_chats_for_mentions(chats, since)
-            return
-
-    # Ensure contacts are loaded
-    if not _contacts_loaded:
-        await _load_all_contacts()
-
-    if not _all_contacts and not _priority_chats:
-        return
-
-    # Build this cycle's poll set:
-    # 1. All priority chats (always)
-    # 2. Next BATCH_SIZE from the rotation (excluding priority chats)
-    to_poll: dict[str, str] = {}
-
-    # Priority chats first
-    for chat_id, name in _priority_chats.items():
-        to_poll[chat_id] = name
-
-    # Fill remaining slots from rotation
-    if _all_contacts:
-        remaining = _BATCH_SIZE - len(to_poll)
-        checked = 0
-        while remaining > 0 and checked < len(_all_contacts):
-            idx = (_rotation_offset + checked) % len(_all_contacts)
-            chat_id, name = _all_contacts[idx]
-            if chat_id not in to_poll:
-                to_poll[chat_id] = name
-                remaining -= 1
-            checked += 1
-        # Advance rotation offset for next cycle
-        _rotation_offset = (_rotation_offset + _BATCH_SIZE) % max(len(_all_contacts), 1)
-
-    print(f"[Heartbeat] WhatsApp: polling {len(to_poll)} chats "
-          f"(priority={len(_priority_chats)}, rotation offset={_rotation_offset}/{len(_all_contacts)})")
-
-    stored = 0
-    for chat_id, chat_name in to_poll.items():
-        count = await _fetch_and_store_mentions(chat_id, chat_name, since)
-        stored += count
-        if count > 0:
-            # New mention found — add to priority set for future cycles
-            _priority_chats[chat_id] = chat_name
-
-    if stored > 0:
-        print(f"[Heartbeat] WhatsApp: stored {stored} mention event(s), triggering triage")
-        from services.heartbeat.heartbeat_service import trigger_immediate_triage
-        await trigger_immediate_triage()
-
-
-# ===== Main poll loop =====
-
-async def _poll_once() -> None:
-    """Single poll: scan get_recent_chats for @mentions, drill into matches only."""
-    global _last_poll_time, _get_recent_chats_works
-
-    if not await _ensure_connected():
-        return
-
-    now = datetime.now(timezone.utc)
-
-    # On first poll, only look back 5 minutes
-    if _last_poll_time is None:
-        since = now - timedelta(minutes=5)
-    else:
-        since = _last_poll_time
-    _last_poll_time = now
-
-    # Primary path: single get_recent_chats call
-    if _get_recent_chats_works:
-        chats = await _try_get_recent_chats()
-        if chats is not None:
-            await _scan_chats_for_mentions(chats, since)
-            return
-        # Failed — switch to rotation mode
-        _get_recent_chats_works = False
-        print("[Heartbeat] WhatsApp: get_recent_chats failed, switching to rotation mode")
-
-    # Fallback path: rotating contact poll
-    await _poll_rotation(since)
-
-
-# ===== Thread context (used by triage service) =====
 
 async def get_chat_thread(chat_id: str, limit: int = 15) -> list[dict]:
     """Fetch recent messages from a WhatsApp chat for thread context."""
-    tool = _find_tool("get_chat_messages")
-    if tool is None:
+    from services.whatsapp_bridge_client import get_chat_messages, is_available
+
+    if not is_available():
         return []
 
     try:
-        result = await tool.ainvoke({"chat_id": chat_id, "limit": limit})
-        parsed = _parse_mcp_result(result)
-        if isinstance(parsed, list):
-            return parsed
-        if isinstance(parsed, dict):
-            return parsed.get("messages", parsed.get("items", []))
-        return []
+        return await get_chat_messages(chat_id, limit)
     except Exception as e:
         print(f"[Heartbeat] WhatsApp chat thread fetch error: {e}")
         return []
 
 
 def format_chat_thread(messages: list[dict]) -> str:
-    """Format WhatsApp messages into a readable thread context string."""
+    """Format WhatsApp messages into a readable thread context string.
+
+    Note: The bridge is logged in as the user's WhatsApp account, so
+    fromMe=true means the USER sent it (or Edward sent it via the bridge).
+    We label fromMe messages as "You" (the user), not "Edward".
+    """
     lines = []
     for msg in messages:
         if not isinstance(msg, dict):
             continue
-        sender = msg.get("from") or "Unknown"
-        is_from_me = msg.get("fromMe", False)
+        sender = msg.get("sender_name") or msg.get("from") or "Unknown"
+        is_from_me = msg.get("fromMe") or msg.get("is_from_me", False)
         if is_from_me:
-            sender = "Edward"
+            sender = "You"
         text = msg.get("text") or msg.get("body") or "(media/no text)"
         lines.append(f"{sender}: {text}")
     return "\n".join(lines)
 
 
-# ===== Start/Stop =====
-
-async def _listener_loop() -> None:
-    """Main polling loop."""
-    print(f"[Heartbeat] WhatsApp listener started (poll every {_poll_interval}s)")
-
-    while True:
-        try:
-            await _poll_once()
-        except Exception as e:
-            print(f"[Heartbeat] WhatsApp poll error: {e}")
-        await asyncio.sleep(_poll_interval)
-
+# Start/stop are no-ops — the webhook handles everything
 
 async def start_whatsapp_listener(config) -> None:
-    """Start the WhatsApp listener with config-driven poll interval."""
-    global _listener_task, _poll_interval
-
-    print("[Heartbeat] WhatsApp listener start requested")
-
-    if _listener_task is not None:
-        print("[Heartbeat] WhatsApp listener already running, skipping")
-        return
-
-    from services.mcp_client import is_whatsapp_available, get_whatsapp_mcp_tools
-
-    available = is_whatsapp_available()
-    tool_count = len(get_whatsapp_mcp_tools())
-    print(f"[Heartbeat] WhatsApp MCP available={available}, tools={tool_count}")
-
-    if not available:
-        print("[Heartbeat] WhatsApp listener skipped: WhatsApp MCP not available")
-        return
-
-    _poll_interval = getattr(config, "whatsapp_poll_seconds", 30)
-
-    _listener_task = asyncio.create_task(_listener_loop())
-    print(f"[Heartbeat] WhatsApp listener task created (poll every {_poll_interval}s)")
+    """No-op: WhatsApp mentions arrive via bridge webhook."""
+    print("[Heartbeat] WhatsApp listener: webhook mode (no polling needed)")
 
 
 async def stop_whatsapp_listener() -> None:
-    """Stop the WhatsApp listener."""
-    global _listener_task, _connected
-    if _listener_task is None:
-        return
-    _listener_task.cancel()
-    try:
-        await _listener_task
-    except asyncio.CancelledError:
-        pass
-    _listener_task = None
-    _connected = False
-    print("[Heartbeat] WhatsApp listener stopped")
+    """No-op."""
+    pass
 
 
 def get_whatsapp_listener_status() -> str:
-    """Get the current listener status."""
-    if _listener_task is None:
-        return "stopped"
-    if _listener_task.done():
-        return "error"
-    return "running"
+    """Status reflects bridge connection, not a poll loop."""
+    from services.whatsapp_bridge_client import is_available
+    return "running" if is_available() else "stopped"

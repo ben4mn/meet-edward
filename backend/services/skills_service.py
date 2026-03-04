@@ -31,8 +31,8 @@ SKILL_DEFINITIONS = {
         "get_status": lambda: _get_twilio_whatsapp_status(),
     },
     "whatsapp_mcp": {
-        "name": "WhatsApp (MCP)",
-        "description": "Read/send WhatsApp as the user via whatsapp-mcp bridge",
+        "name": "WhatsApp (Bridge)",
+        "description": "Read/send WhatsApp as the user via Baileys bridge with real-time @mention detection",
         "get_status": lambda: _get_whatsapp_mcp_status(),
     },
     "brave_search": {
@@ -121,9 +121,9 @@ def _get_twilio_whatsapp_status() -> dict:
 
 
 def _get_whatsapp_mcp_status() -> dict:
-    """Get status from WhatsApp MCP client."""
-    from services.mcp_client import get_whatsapp_status
-    return get_whatsapp_status()
+    """Get status from WhatsApp bridge client."""
+    from services.whatsapp_bridge_client import get_status
+    return get_status()
 
 
 def _get_brave_search_status() -> dict:
