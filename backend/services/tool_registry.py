@@ -29,7 +29,7 @@ SKILL_TOOL_MAPPING: Dict[str, List[str]] = {
     "orchestrator": ["spawn_worker", "check_worker", "list_workers", "cancel_worker", "wait_for_workers", "send_to_worker", "spawn_cc_worker"],
     "notebooklm": [
         "nlm_list_notebooks", "nlm_create_notebook", "nlm_delete_notebook",
-        "nlm_add_source", "nlm_list_sources", "nlm_get_source_text",
+        "nlm_add_source", "nlm_list_sources", "nlm_delete_source", "nlm_get_source_text",
         "nlm_ask", "nlm_research", "nlm_generate_artifact", "nlm_wait_artifact",
         "nlm_push_document", "nlm_push_file",
     ],

@@ -205,7 +205,7 @@ Tool loop (in respond node):
 - Name-based notebook references (case-insensitive, no raw IDs exposed to LLM)
 - Credential check at startup, graceful skip if missing
 - Requires one-time browser login (`notebooklm login`), credentials expire ~1-2 weeks
-- Tools: `nlm_list_notebooks`, `nlm_create_notebook`, `nlm_delete_notebook`, `nlm_add_source`, `nlm_list_sources`, `nlm_get_source_text`, `nlm_ask`, `nlm_research`, `nlm_generate_artifact`, `nlm_wait_artifact`, `nlm_push_document`, `nlm_push_file`
+- Tools: `nlm_list_notebooks`, `nlm_create_notebook`, `nlm_delete_notebook`, `nlm_add_source`, `nlm_list_sources`, `nlm_delete_source`, `nlm_get_source_text`, `nlm_ask`, `nlm_research`, `nlm_generate_artifact`, `nlm_wait_artifact`, `nlm_push_document`, `nlm_push_file`
 
 **Execution System** (`backend/services/execution/`)
 - Shared base: `base.py` with `ExecutionResult`, sandbox management, `run_subprocess()` helper
@@ -322,6 +322,7 @@ NotebookLM tools available to LLM (when notebooklm skill enabled):
 - `nlm_delete_notebook` - Delete a notebook
 - `nlm_add_source` - Add source (url/youtube/text/file) to notebook
 - `nlm_list_sources` - List sources in a notebook
+- `nlm_delete_source` - Delete a source from a notebook
 - `nlm_get_source_text` - Extract indexed fulltext from a source
 - `nlm_ask` - Ask a question with source citations
 - `nlm_research` - Run web research, auto-import sources

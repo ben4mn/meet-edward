@@ -3550,6 +3550,32 @@ async def nlm_list_sources(notebook_name: str) -> str:
 
 
 @tool
+async def nlm_delete_source(notebook_name: str, source_id: str) -> str:
+    """
+    Delete a source from a Google NotebookLM notebook.
+
+    Use nlm_list_sources first to find source IDs.
+
+    Args:
+        notebook_name: Notebook name
+        source_id: Source ID to delete (from nlm_list_sources)
+
+    Returns:
+        Confirmation message
+    """
+    from services.notebooklm_service import is_configured, delete_source
+
+    if not is_configured():
+        return "NotebookLM not configured. Run: notebooklm login"
+
+    try:
+        result = await delete_source(notebook_name, source_id)
+        return f"Deleted source '{result['title']}' from notebook '{notebook_name}'"
+    except Exception as e:
+        return f"Error deleting source: {str(e)}"
+
+
+@tool
 async def nlm_get_source_text(notebook_name: str, source_id: str) -> str:
     """
     Get the indexed fulltext content of a source.
@@ -3803,6 +3829,7 @@ NOTEBOOKLM_TOOLS = [
     nlm_delete_notebook,
     nlm_add_source,
     nlm_list_sources,
+    nlm_delete_source,
     nlm_get_source_text,
     nlm_ask,
     nlm_research,
@@ -3834,22 +3861,23 @@ collections of diverse sources that can be queried together with citations.
    - source_type: "url", "youtube", "text", "file" (PDF)
    - content: URL, YouTube link, text content, or file path
 5. **nlm_list_sources(notebook_name)**: List sources in a notebook
-6. **nlm_get_source_text(notebook_name, source_id)**: Extract indexed text from a source
+6. **nlm_delete_source(notebook_name, source_id)**: Delete a source (use nlm_list_sources for IDs)
+7. **nlm_get_source_text(notebook_name, source_id)**: Extract indexed text from a source
 
 ### Querying & Research
-7. **nlm_ask(notebook_name, question)**: Ask a question with source citations
-8. **nlm_research(notebook_name, query, mode?)**: Run web research, auto-import sources
+8. **nlm_ask(notebook_name, question)**: Ask a question with source citations
+9. **nlm_research(notebook_name, query, mode?)**: Run web research, auto-import sources
    - mode: "fast" (5-10 sources) or "deep" (15-25 sources)
 
 ### Artifact Generation
-9. **nlm_generate_artifact(notebook_name, artifact_type, instructions?)**: Generate artifacts
+10. **nlm_generate_artifact(notebook_name, artifact_type, instructions?)**: Generate artifacts
    - Types: audio, video, quiz, flashcards, slide_deck, infographic, mind_map, data_table, report
    - Returns task_id for polling
-10. **nlm_wait_artifact(notebook_name, task_id)**: Check artifact generation status
+11. **nlm_wait_artifact(notebook_name, task_id)**: Check artifact generation status
 
 ### Edward Integration
-11. **nlm_push_document(document_id, notebook_name)**: Push Edward document to notebook
-12. **nlm_push_file(file_id, notebook_name)**: Push Edward PDF file to notebook
+12. **nlm_push_document(document_id, notebook_name)**: Push Edward document to notebook
+13. **nlm_push_file(file_id, notebook_name)**: Push Edward PDF file to notebook
 
 Workflow tips:
 - Create notebooks for distinct topics (e.g., "Pet Care", "Project Research")

@@ -246,6 +246,29 @@ async def get_source_fulltext(notebook_name: str, source_id: str) -> str:
     return str(result) if result else ""
 
 
+async def delete_source(notebook_name: str, source_id: str) -> Dict[str, Any]:
+    """Delete a source from a notebook. Returns source title if found."""
+    notebook_id = await _resolve_notebook_id(notebook_name)
+    if not notebook_id:
+        raise Exception(f"Notebook '{notebook_name}' not found")
+
+    client = await _get_client()
+
+    # Resolve source to get title for confirmation message
+    sources = await client.sources.list(notebook_id)
+    source_title = None
+    for s in sources:
+        if getattr(s, "id", None) == source_id:
+            source_title = getattr(s, "title", "Untitled")
+            break
+
+    if source_title is None:
+        raise Exception(f"Source '{source_id}' not found in notebook '{notebook_name}'")
+
+    await client.sources.delete(notebook_id, source_id)
+    return {"source_id": source_id, "title": source_title}
+
+
 # ============================================================================
 # CHAT/QUERY OPERATIONS
 # ============================================================================
