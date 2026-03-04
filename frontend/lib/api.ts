@@ -964,6 +964,8 @@ export interface HeartbeatStatus {
   calendar_lookahead_minutes: number;
   email_enabled: boolean;
   email_poll_seconds: number;
+  whatsapp_enabled: boolean;
+  whatsapp_poll_seconds: number;
 }
 
 export interface HeartbeatConfig {
@@ -978,6 +980,8 @@ export interface HeartbeatConfig {
   calendar_lookahead_minutes: number;
   email_enabled: boolean;
   email_poll_seconds: number;
+  whatsapp_enabled: boolean;
+  whatsapp_poll_seconds: number;
 }
 
 export async function getHeartbeatStatus(): Promise<HeartbeatStatus> {

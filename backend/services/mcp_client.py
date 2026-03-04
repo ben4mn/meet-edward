@@ -3,6 +3,10 @@ MCP (Model Context Protocol) client for messaging integrations.
 
 Manages MCP server subprocesses for WhatsApp and Apple Services.
 Uses langchain-mcp-adapters for seamless LangChain tool integration.
+
+IMPORTANT: WhatsApp MCP uses a persistent session (single subprocess) because
+Baileys needs a long-lived WebSocket connection. Each tool call reuses the same
+session instead of spawning a new subprocess.
 """
 
 import os
@@ -10,7 +14,6 @@ from typing import Optional, List, Any
 
 # MCP configuration — WhatsApp
 MCP_WHATSAPP_ENABLED = os.getenv("MCP_WHATSAPP_ENABLED", "false").lower() == "true"
-MCP_WHATSAPP_SERVER_DIR = os.getenv("MCP_WHATSAPP_SERVER_DIR", "")
 
 # MCP configuration — Apple Services (unified: Calendar, Reminders, Notes, Mail, Contacts, Maps, Messages)
 MCP_APPLE_ENABLED = os.getenv("MCP_APPLE_ENABLED", "false").lower() == "true"
@@ -20,12 +23,17 @@ _whatsapp_mcp_client = None
 _whatsapp_mcp_tools: List[Any] = []
 _whatsapp_initialized = False
 _whatsapp_last_error: Optional[str] = None
+# Persistent session state (keeps single subprocess alive)
+_whatsapp_session = None
+_whatsapp_session_context = None
 
 # Global client state — Apple Services (unified)
 _apple_mcp_client = None
 _apple_mcp_tools: List[Any] = []
 _apple_initialized = False
 _apple_last_error: Optional[str] = None
+_apple_session = None
+_apple_session_context = None
 
 
 # ============================================================================
@@ -34,21 +42,19 @@ _apple_last_error: Optional[str] = None
 
 async def initialize_whatsapp_mcp() -> bool:
     """
-    Initialize the WhatsApp MCP client.
+    Initialize the WhatsApp MCP client with a persistent session.
 
-    Connects to the whatsapp-mcp Python server (which talks to the Go bridge).
+    Uses a single long-lived subprocess so Baileys maintains its WebSocket
+    connection across tool calls (instead of reconnecting every time).
 
     Returns:
         True if initialization succeeded, False otherwise.
     """
-    global _whatsapp_mcp_client, _whatsapp_mcp_tools, _whatsapp_initialized, _whatsapp_last_error
+    global _whatsapp_mcp_client, _whatsapp_mcp_tools, _whatsapp_initialized
+    global _whatsapp_last_error, _whatsapp_session, _whatsapp_session_context
 
     if not MCP_WHATSAPP_ENABLED:
         _whatsapp_last_error = "Disabled via MCP_WHATSAPP_ENABLED=false"
-        return False
-
-    if not MCP_WHATSAPP_SERVER_DIR:
-        _whatsapp_last_error = "MCP_WHATSAPP_SERVER_DIR not set"
         return False
 
     if _whatsapp_initialized:
@@ -56,16 +62,22 @@ async def initialize_whatsapp_mcp() -> bool:
 
     try:
         from langchain_mcp_adapters.client import MultiServerMCPClient
+        from langchain_mcp_adapters.tools import load_mcp_tools
 
         _whatsapp_mcp_client = MultiServerMCPClient({
             "whatsapp": {
-                "command": "uv",
-                "args": ["--directory", MCP_WHATSAPP_SERVER_DIR, "run", "main.py"],
+                "command": "npx",
+                "args": ["-y", "whatsapp-mcp-lifeosai"],
                 "transport": "stdio"
             }
         })
 
-        raw_tools = await _whatsapp_mcp_client.get_tools()
+        # Open a persistent session — keeps the subprocess alive
+        _whatsapp_session_context = _whatsapp_mcp_client.session("whatsapp")
+        _whatsapp_session = await _whatsapp_session_context.__aenter__()
+
+        # Load tools bound to this persistent session (no new subprocess per call)
+        raw_tools = await load_mcp_tools(_whatsapp_session)
 
         # Prefix all tool names with whatsapp_ to avoid collisions
         for tool in raw_tools:
@@ -90,22 +102,29 @@ async def initialize_whatsapp_mcp() -> bool:
     except Exception as e:
         _whatsapp_last_error = str(e)
         print(f"Failed to initialize WhatsApp MCP client: {e}")
+        _whatsapp_mcp_client = None
+        _whatsapp_session = None
+        _whatsapp_session_context = None
         return False
 
 
 async def shutdown_whatsapp_mcp():
-    """Shutdown the WhatsApp MCP client."""
+    """Shutdown the WhatsApp MCP client and its persistent session."""
     global _whatsapp_mcp_client, _whatsapp_mcp_tools, _whatsapp_initialized
+    global _whatsapp_session, _whatsapp_session_context
 
-    if _whatsapp_mcp_client is not None:
+    if _whatsapp_session_context is not None:
         try:
-            pass  # Client manages its own cleanup
+            await _whatsapp_session_context.__aexit__(None, None, None)
         except Exception as e:
-            print(f"Error shutting down WhatsApp MCP client: {e}")
+            print(f"Error shutting down WhatsApp MCP session: {e}")
         finally:
-            _whatsapp_mcp_client = None
-            _whatsapp_mcp_tools = []
-            _whatsapp_initialized = False
+            _whatsapp_session = None
+            _whatsapp_session_context = None
+
+    _whatsapp_mcp_client = None
+    _whatsapp_mcp_tools = []
+    _whatsapp_initialized = False
 
 
 def is_whatsapp_available() -> bool:
@@ -129,13 +148,6 @@ def get_whatsapp_status() -> dict:
         return {
             "status": "error",
             "status_message": "Set MCP_WHATSAPP_ENABLED=true in environment",
-            "metadata": None
-        }
-
-    if not MCP_WHATSAPP_SERVER_DIR:
-        return {
-            "status": "error",
-            "status_message": "Set MCP_WHATSAPP_SERVER_DIR to whatsapp-mcp server path",
             "metadata": None
         }
 
@@ -172,7 +184,7 @@ def get_whatsapp_status() -> dict:
 
 async def initialize_apple_mcp() -> bool:
     """
-    Initialize the unified Apple Services MCP client.
+    Initialize the unified Apple Services MCP client with a persistent session.
 
     Uses the 'apple-mcp' package which provides access to:
     - Calendar
@@ -185,7 +197,8 @@ async def initialize_apple_mcp() -> bool:
     Returns:
         True if initialization succeeded, False otherwise.
     """
-    global _apple_mcp_client, _apple_mcp_tools, _apple_initialized, _apple_last_error
+    global _apple_mcp_client, _apple_mcp_tools, _apple_initialized
+    global _apple_last_error, _apple_session, _apple_session_context
 
     if not MCP_APPLE_ENABLED:
         _apple_last_error = "Disabled via MCP_APPLE_ENABLED=false"
@@ -196,6 +209,7 @@ async def initialize_apple_mcp() -> bool:
 
     try:
         from langchain_mcp_adapters.client import MultiServerMCPClient
+        from langchain_mcp_adapters.tools import load_mcp_tools
 
         # Use jxnl/apple-mcp fork with working calendar code (requires bun)
         bun_path = os.path.expanduser("~/.bun/bin/bun")
@@ -209,7 +223,12 @@ async def initialize_apple_mcp() -> bool:
             }
         })
 
-        _apple_mcp_tools = await _apple_mcp_client.get_tools()
+        # Open a persistent session
+        _apple_session_context = _apple_mcp_client.session("apple")
+        _apple_session = await _apple_session_context.__aenter__()
+
+        # Load tools bound to persistent session
+        _apple_mcp_tools = await load_mcp_tools(_apple_session)
         _apple_initialized = True
         _apple_last_error = None
 
@@ -227,22 +246,29 @@ async def initialize_apple_mcp() -> bool:
     except Exception as e:
         _apple_last_error = str(e)
         print(f"Failed to initialize Apple Services MCP client: {e}")
+        _apple_mcp_client = None
+        _apple_session = None
+        _apple_session_context = None
         return False
 
 
 async def shutdown_apple_mcp():
-    """Shutdown the Apple Services MCP client."""
+    """Shutdown the Apple Services MCP client and its persistent session."""
     global _apple_mcp_client, _apple_mcp_tools, _apple_initialized
+    global _apple_session, _apple_session_context
 
-    if _apple_mcp_client is not None:
+    if _apple_session_context is not None:
         try:
-            pass  # Client manages its own cleanup
+            await _apple_session_context.__aexit__(None, None, None)
         except Exception as e:
-            print(f"Error shutting down Apple Services MCP client: {e}")
+            print(f"Error shutting down Apple Services MCP session: {e}")
         finally:
-            _apple_mcp_client = None
-            _apple_mcp_tools = []
-            _apple_initialized = False
+            _apple_session = None
+            _apple_session_context = None
+
+    _apple_mcp_client = None
+    _apple_mcp_tools = []
+    _apple_initialized = False
 
 
 def is_apple_available() -> bool:

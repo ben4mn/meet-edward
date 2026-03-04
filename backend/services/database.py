@@ -315,6 +315,8 @@ class HeartbeatConfigModel(Base):
     calendar_lookahead_minutes = Column(Integer, default=30)
     email_enabled = Column(Boolean, default=False)
     email_poll_seconds = Column(Integer, default=300)
+    whatsapp_enabled = Column(Boolean, default=False)
+    whatsapp_poll_seconds = Column(Integer, default=30)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
@@ -618,6 +620,12 @@ async def init_db():
         """))
         await conn.execute(text("""
             ALTER TABLE heartbeat_config ADD COLUMN IF NOT EXISTS email_poll_seconds INTEGER DEFAULT 300;
+        """))
+        await conn.execute(text("""
+            ALTER TABLE heartbeat_config ADD COLUMN IF NOT EXISTS whatsapp_enabled BOOLEAN DEFAULT false;
+        """))
+        await conn.execute(text("""
+            ALTER TABLE heartbeat_config ADD COLUMN IF NOT EXISTS whatsapp_poll_seconds INTEGER DEFAULT 30;
         """))
 
         # Memory: tier system columns

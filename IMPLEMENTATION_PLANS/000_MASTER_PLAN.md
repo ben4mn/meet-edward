@@ -144,7 +144,8 @@ Plan 004: Prompt Caching
 | 001 | [Cross-Platform Foundation](001_CROSS_PLATFORM_FOUNDATION.md) | **Complete** | 0.5-1 day |
 | 002 | [Autonomy Framework](002_AUTONOMY_FRAMEWORK.md) | **Complete** | 0.5-1 day |
 | 003 | [NotebookLM Integration](003_NOTEBOOKLM_INTEGRATION.md) | **Complete** | 2-3 days |
-| 004 | [Prompt Caching](004_PROMPT_CACHING.md) | Active | 0.5-1 day |
+| 004 | [Prompt Caching](004_PROMPT_CACHING.md) | **Complete** | 0.5-1 day |
+| 005 | [Execution Fix](005_EXECUTION_FIX.md) | Active | 1-2 hours |
 | — | [Telegram Integration](DEFERRED_TELEGRAM_INTEGRATION.md) | Deferred | — |
 
 **Total estimated effort**: ~4-6 days

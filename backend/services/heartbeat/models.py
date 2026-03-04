@@ -54,6 +54,8 @@ class HeartbeatConfigSchema(BaseModel):
     calendar_lookahead_minutes: int = 30
     email_enabled: bool = False
     email_poll_seconds: int = 300
+    whatsapp_enabled: bool = False
+    whatsapp_poll_seconds: int = 30
 
 
 class HeartbeatConfigUpdate(BaseModel):
@@ -68,6 +70,8 @@ class HeartbeatConfigUpdate(BaseModel):
     calendar_lookahead_minutes: Optional[int] = None
     email_enabled: Optional[bool] = None
     email_poll_seconds: Optional[int] = None
+    whatsapp_enabled: Optional[bool] = None
+    whatsapp_poll_seconds: Optional[int] = None
 
 
 class HeartbeatStatusSchema(BaseModel):

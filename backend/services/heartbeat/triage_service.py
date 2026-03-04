@@ -171,6 +171,11 @@ def _build_channel_guidance(source: str = "imessage") -> str:
             'Respond via send_imessage for this iMessage conversation.\n'
             'IMPORTANT: Never include "@edward" in your message — it will re-trigger the heartbeat.'
         )
+    elif source == "whatsapp":
+        return (
+            'Respond via send_whatsapp for this WhatsApp conversation.\n'
+            'IMPORTANT: Never include "@edward" in your message — it will re-trigger the heartbeat.'
+        )
     elif source == "email":
         return "This came from email. Store relevant context and consider whether a reply is needed."
     elif source == "calendar":
@@ -595,7 +600,23 @@ async def _execute_classification(
 
         # Fetch thread context
         thread_context = ""
-        if event.chat_identifier:
+        if event.source == "whatsapp" and event.chat_identifier:
+            try:
+                from services.heartbeat.listener_whatsapp import (
+                    get_chat_thread as wa_get_chat_thread,
+                    format_chat_thread as wa_format_chat_thread,
+                )
+
+                thread_messages = await wa_get_chat_thread(event.chat_identifier, 15)
+                if thread_messages:
+                    thread_context = wa_format_chat_thread(thread_messages)
+                    print(
+                        f"[Heartbeat] Fetched {len(thread_messages)} WhatsApp thread messages "
+                        f"for {event.chat_identifier}"
+                    )
+            except Exception as e:
+                print(f"[Heartbeat] WhatsApp thread fetch failed: {e}")
+        elif event.chat_identifier:
             try:
                 import asyncio
                 from services.heartbeat.listener_imessage import (

@@ -10,6 +10,7 @@ import {
   Loader2,
   Mail,
   MessageCircle,
+  Phone,
   RefreshCw,
   Settings2,
   Shield,
@@ -297,6 +298,8 @@ export function HeartbeatPanel({ isExpanded: initialExpanded = false, hideHeader
     calendar_lookahead_minutes: 30,
     email_enabled: false,
     email_poll_seconds: 300,
+    whatsapp_enabled: false,
+    whatsapp_poll_seconds: 30,
   });
   const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
   const [recentSenders, setRecentSenders] = useState<AllowedSender[]>([]);
@@ -335,6 +338,8 @@ export function HeartbeatPanel({ isExpanded: initialExpanded = false, hideHeader
         calendar_lookahead_minutes: statusData.calendar_lookahead_minutes ?? 30,
         email_enabled: statusData.email_enabled ?? false,
         email_poll_seconds: statusData.email_poll_seconds ?? 300,
+        whatsapp_enabled: statusData.whatsapp_enabled ?? false,
+        whatsapp_poll_seconds: statusData.whatsapp_poll_seconds ?? 30,
       });
     } catch (err) {
       console.error("Failed to load heartbeat data:", err);
@@ -602,6 +607,7 @@ export function HeartbeatPanel({ isExpanded: initialExpanded = false, hideHeader
               { label: "Messages", value: "imessage" },
               { label: "Calendar", value: "calendar" },
               { label: "Email", value: "email" },
+              { label: "WhatsApp", value: "whatsapp" },
             ] as { label: string; value: string | undefined }[]).map((opt) => (
               <button
                 key={opt.label}
@@ -657,6 +663,8 @@ export function HeartbeatPanel({ isExpanded: initialExpanded = false, hideHeader
                             <Calendar className="w-3 h-3 text-text-muted shrink-0" />
                           ) : event.source === "email" ? (
                             <Mail className="w-3 h-3 text-text-muted shrink-0" />
+                          ) : event.source === "whatsapp" ? (
+                            <Phone className="w-3 h-3 text-text-muted shrink-0" />
                           ) : (
                             <MessageCircle className="w-3 h-3 text-text-muted shrink-0" />
                           )}
@@ -998,6 +1006,76 @@ export function HeartbeatPanel({ isExpanded: initialExpanded = false, hideHeader
                               className={cn(
                                 "px-2 py-1 rounded text-xs font-mono border transition-colors",
                                 config.email_poll_seconds === opt.value
+                                  ? "bg-terminal/20 text-terminal border-terminal/30"
+                                  : "bg-primary-bg text-text-muted border-input-border hover:border-text-muted",
+                              )}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* WhatsApp Track */}
+                  <div className="p-3 bg-surface rounded-lg border border-input-border space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Phone className="w-3.5 h-3.5 text-text-muted" />
+                        <span className="text-sm text-text-primary">WhatsApp</span>
+                        <span
+                          className={cn(
+                            "w-2 h-2 rounded-full",
+                            status?.tracks?.whatsapp?.status === "running"
+                              ? "bg-terminal"
+                              : status?.tracks?.whatsapp?.status === "error"
+                                ? "bg-red-400"
+                                : "bg-gray-500",
+                          )}
+                        />
+                      </div>
+                      <button
+                        onClick={async () => {
+                          const v = !config.whatsapp_enabled;
+                          try {
+                            await updateHeartbeatConfig({ whatsapp_enabled: v });
+                            setConfig((prev) => ({ ...prev, whatsapp_enabled: v }));
+                          } catch (err) {
+                            console.error("Failed to toggle WhatsApp:", err);
+                          }
+                        }}
+                        className={cn(
+                          "relative inline-flex h-5 w-9 items-center rounded-full transition-colors",
+                          config.whatsapp_enabled ? "bg-terminal" : "bg-gray-600",
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "inline-block h-3 w-3 transform rounded-full bg-white transition-transform",
+                            config.whatsapp_enabled ? "translate-x-5" : "translate-x-1",
+                          )}
+                        />
+                      </button>
+                    </div>
+                    {config.whatsapp_enabled && (
+                      <div>
+                        <span className="text-xs text-text-muted block mb-1">Poll interval</span>
+                        <div className="flex gap-1">
+                          {POLL_OPTIONS.map((opt) => (
+                            <button
+                              key={opt.value}
+                              onClick={async () => {
+                                try {
+                                  await updateHeartbeatConfig({ whatsapp_poll_seconds: opt.value });
+                                  setConfig((prev) => ({ ...prev, whatsapp_poll_seconds: opt.value }));
+                                } catch (err) {
+                                  console.error("Failed to update WhatsApp poll:", err);
+                                }
+                              }}
+                              className={cn(
+                                "px-2 py-1 rounded text-xs font-mono border transition-colors",
+                                config.whatsapp_poll_seconds === opt.value
                                   ? "bg-terminal/20 text-terminal border-terminal/30"
                                   : "bg-primary-bg text-text-muted border-input-border hover:border-text-muted",
                               )}
