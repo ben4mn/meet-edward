@@ -2,19 +2,18 @@
 WhatsApp listener for Edward's heartbeat system.
 
 Polls WhatsApp via MCP tools (whatsapp-mcp-lifeosai) for @edward mentions.
-Uses a scan-first strategy: one `get_recent_chats` call per cycle to check
-lastMessage previews, then drills into specific chats only when a mention
-is detected.
 
 Strategy:
   1. Call `connect` once to establish Baileys session (persistent MCP session)
-  2. Call `get_recent_chats` (1 MCP call) to scan lastMessage for @edward
-  3. Only call `get_chat_messages` for chats where a mention was found
+  2. Try `get_recent_chats` — scan lastMessage for @edward (1 MCP call)
+  3. If that fails (known "Invalid time value" bug), fall back to rotating
+     through ALL contacts in batches of BATCH_SIZE per poll cycle
   4. Store only mention-bearing messages (not all messages)
   5. Trigger immediate triage on @edward detection
 
-Fallback: if `get_recent_chats` fails (known "Invalid time value" bug),
-poll a watchlist of group chats seeded from `get_groups`.
+The rotation ensures every contact is checked within a few minutes, even if
+the contact list is large. Previously-mentioned chats are prioritized (polled
+every cycle) so responses remain fast after initial detection.
 """
 
 import asyncio
@@ -39,9 +38,15 @@ _get_recent_chats_works: bool = True  # Optimistic, flips on first failure
 _last_retry_time: Optional[datetime] = None
 _RETRY_INTERVAL = 300  # Retry get_recent_chats every 5 minutes
 
-# Watchlist for fallback mode: chat_id → name
-_watchlist: dict[str, str] = {}
-_watchlist_seeded: bool = False
+# Rotation state for fallback mode
+_all_contacts: list[tuple[str, str]] = []  # [(chat_id, name), ...]
+_contacts_loaded: bool = False
+_rotation_offset: int = 0  # Current position in the rotation
+_BATCH_SIZE: int = 15  # Contacts to poll per cycle
+
+# Priority chats: chat IDs where @edward was previously detected.
+# These are polled EVERY cycle regardless of rotation position.
+_priority_chats: dict[str, str] = {}  # chat_id → name
 
 
 def _find_tool(name_suffix: str):
@@ -150,8 +155,7 @@ async def _scan_chats_for_mentions(chats: list[dict], since: datetime) -> None:
 
         if MENTION_PATTERN.search(last_msg):
             chats_with_mentions.append((chat_id, chat_name))
-            # Add to watchlist so fallback mode can also monitor this chat
-            _watchlist[chat_id] = chat_name
+            _priority_chats[chat_id] = chat_name
 
     if not chats_with_mentions:
         return
@@ -255,39 +259,78 @@ async def _fetch_and_store_mentions(chat_id: str, chat_name: str, since: datetim
     return stored
 
 
-# ===== Fallback path: watchlist polling =====
+# ===== Fallback path: rotating contact polling =====
 
-async def _seed_watchlist_from_groups() -> None:
-    """Seed the watchlist with group chats (@mentions are most common in groups)."""
-    global _watchlist_seeded
+async def _load_all_contacts() -> None:
+    """Load ALL contacts into _all_contacts for rotation polling.
 
-    if _watchlist_seeded:
+    Also tries get_groups first to capture group chats (most likely @mention
+    source). Falls back to get_contacts with a high limit.
+    """
+    global _contacts_loaded, _all_contacts
+
+    if _contacts_loaded:
         return
-    _watchlist_seeded = True
 
+    seen_ids: set[str] = set()
+
+    # Try groups first (most likely @mention source)
     groups_tool = _find_tool("get_groups")
-    if not groups_tool:
-        return
+    if groups_tool:
+        try:
+            result = await asyncio.wait_for(groups_tool.ainvoke({}), timeout=15)
+            parsed = _parse_mcp_result(result)
+            if isinstance(parsed, list):
+                for group in parsed:
+                    if isinstance(group, dict) and group.get("id"):
+                        gid = group["id"]
+                        name = group.get("subject") or group.get("name") or gid
+                        if gid not in seen_ids:
+                            seen_ids.add(gid)
+                            _all_contacts.append((gid, name))
+                print(f"[Heartbeat] WhatsApp: loaded {len(_all_contacts)} groups")
+        except Exception as e:
+            print(f"[Heartbeat] WhatsApp: get_groups failed: {e}")
 
-    try:
-        result = await asyncio.wait_for(groups_tool.ainvoke({}), timeout=15)
-        parsed = _parse_mcp_result(result)
-        if isinstance(parsed, list):
-            for group in parsed:
-                if isinstance(group, dict) and group.get("id"):
-                    _watchlist[group["id"]] = group.get("subject") or group.get("name") or group["id"]
-            if _watchlist:
-                print(f"[Heartbeat] WhatsApp: seeded watchlist with {len(_watchlist)} groups")
-    except Exception as e:
-        print(f"[Heartbeat] WhatsApp: group seed failed (non-critical): {e}")
-        _watchlist_seeded = False  # Allow retry next cycle
+    # Load ALL contacts (high limit to get everyone)
+    contacts_tool = _find_tool("get_contacts")
+    if contacts_tool:
+        try:
+            result = await asyncio.wait_for(
+                contacts_tool.ainvoke({"limit": 500}), timeout=30
+            )
+            parsed = _parse_mcp_result(result)
+            if isinstance(parsed, list):
+                added = 0
+                for c in parsed:
+                    if isinstance(c, dict) and c.get("id"):
+                        cid = c["id"]
+                        if cid not in seen_ids:
+                            seen_ids.add(cid)
+                            name = c.get("name") or c.get("phone") or cid
+                            _all_contacts.append((cid, name))
+                            added += 1
+                print(f"[Heartbeat] WhatsApp: loaded {added} contacts (total: {len(_all_contacts)})")
+        except Exception as e:
+            print(f"[Heartbeat] WhatsApp: get_contacts failed: {e}")
+
+    if _all_contacts:
+        _contacts_loaded = True
+        print(f"[Heartbeat] WhatsApp: contact rotation ready — {len(_all_contacts)} chats, "
+              f"batch size {_BATCH_SIZE}, full rotation every ~{len(_all_contacts) * _poll_interval // _BATCH_SIZE}s")
+    else:
+        print("[Heartbeat] WhatsApp: no contacts loaded, will retry next cycle")
 
 
-async def _poll_watchlist(since: datetime) -> None:
-    """Fallback: poll only watchlisted chats for @mentions."""
-    global _get_recent_chats_works, _last_retry_time
+async def _poll_rotation(since: datetime) -> None:
+    """Poll the next batch of contacts for @edward mentions.
 
-    # Periodically retry get_recent_chats
+    Priority chats (where @edward was previously detected) are checked every
+    cycle. Then a rotating window of BATCH_SIZE contacts fills the rest.
+    """
+    global _get_recent_chats_works, _last_retry_time, _rotation_offset
+
+    # Periodically retry get_recent_chats in case the bug is fixed
     now = datetime.now(timezone.utc)
     if (_last_retry_time is None
             or (now - _last_retry_time).total_seconds() > _RETRY_INTERVAL):
@@ -299,19 +342,49 @@ async def _poll_watchlist(since: datetime) -> None:
             await _scan_chats_for_mentions(chats, since)
             return
 
-    if not _watchlist:
-        await _seed_watchlist_from_groups()
+    # Ensure contacts are loaded
+    if not _contacts_loaded:
+        await _load_all_contacts()
 
-    if not _watchlist:
+    if not _all_contacts and not _priority_chats:
         return
 
+    # Build this cycle's poll set:
+    # 1. All priority chats (always)
+    # 2. Next BATCH_SIZE from the rotation (excluding priority chats)
+    to_poll: dict[str, str] = {}
+
+    # Priority chats first
+    for chat_id, name in _priority_chats.items():
+        to_poll[chat_id] = name
+
+    # Fill remaining slots from rotation
+    if _all_contacts:
+        remaining = _BATCH_SIZE - len(to_poll)
+        checked = 0
+        while remaining > 0 and checked < len(_all_contacts):
+            idx = (_rotation_offset + checked) % len(_all_contacts)
+            chat_id, name = _all_contacts[idx]
+            if chat_id not in to_poll:
+                to_poll[chat_id] = name
+                remaining -= 1
+            checked += 1
+        # Advance rotation offset for next cycle
+        _rotation_offset = (_rotation_offset + _BATCH_SIZE) % max(len(_all_contacts), 1)
+
+    print(f"[Heartbeat] WhatsApp: polling {len(to_poll)} chats "
+          f"(priority={len(_priority_chats)}, rotation offset={_rotation_offset}/{len(_all_contacts)})")
+
     stored = 0
-    for chat_id, chat_name in list(_watchlist.items()):
+    for chat_id, chat_name in to_poll.items():
         count = await _fetch_and_store_mentions(chat_id, chat_name, since)
         stored += count
+        if count > 0:
+            # New mention found — add to priority set for future cycles
+            _priority_chats[chat_id] = chat_name
 
     if stored > 0:
-        print(f"[Heartbeat] WhatsApp: stored {stored} mention event(s) from watchlist, triggering triage")
+        print(f"[Heartbeat] WhatsApp: stored {stored} mention event(s), triggering triage")
         from services.heartbeat.heartbeat_service import trigger_immediate_triage
         await trigger_immediate_triage()
 
@@ -340,12 +413,12 @@ async def _poll_once() -> None:
         if chats is not None:
             await _scan_chats_for_mentions(chats, since)
             return
-        # Failed — switch to watchlist mode
+        # Failed — switch to rotation mode
         _get_recent_chats_works = False
-        print("[Heartbeat] WhatsApp: get_recent_chats failed, switching to watchlist mode")
+        print("[Heartbeat] WhatsApp: get_recent_chats failed, switching to rotation mode")
 
-    # Fallback path: poll watchlist
-    await _poll_watchlist(since)
+    # Fallback path: rotating contact poll
+    await _poll_rotation(since)
 
 
 # ===== Thread context (used by triage service) =====
