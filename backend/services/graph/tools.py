@@ -3379,3 +3379,510 @@ data formatting, or a short demo snippet).
 - Spawn multiple workers at once, then wait_for_workers to collect results
 - Workers create their own conversations (visible in sidebar with purple icon)
 """
+
+
+# ============================================================================
+# NOTEBOOKLM TOOLS
+# ============================================================================
+
+@tool
+async def nlm_list_notebooks() -> str:
+    """
+    List all Google NotebookLM notebooks.
+
+    Use this to see what notebooks exist before querying or adding sources.
+
+    Returns:
+        List of notebook names
+    """
+    from services.notebooklm_service import is_configured, list_notebooks
+
+    if not is_configured():
+        return "NotebookLM not configured. Run: notebooklm login"
+
+    try:
+        notebooks = await list_notebooks()
+        if not notebooks:
+            return "No notebooks found. Create one with nlm_create_notebook."
+
+        return "Notebooks:\n" + "\n".join(
+            f"- {nb['name']}" for nb in notebooks
+        )
+    except Exception as e:
+        return f"Error listing notebooks: {str(e)}"
+
+
+@tool
+async def nlm_create_notebook(name: str) -> str:
+    """
+    Create a new Google NotebookLM notebook.
+
+    Use this to create a knowledge base before adding sources.
+
+    Args:
+        name: Notebook name (descriptive, e.g. "Lana's TPLO Recovery")
+
+    Returns:
+        Confirmation with notebook name
+    """
+    from services.notebooklm_service import is_configured, create_notebook
+
+    if not is_configured():
+        return "NotebookLM not configured. Run: notebooklm login"
+
+    try:
+        notebook = await create_notebook(name)
+        return f"Created notebook '{notebook['name']}'"
+    except Exception as e:
+        return f"Error creating notebook: {str(e)}"
+
+
+@tool
+async def nlm_delete_notebook(notebook_name: str) -> str:
+    """
+    Delete a Google NotebookLM notebook permanently.
+
+    Use with caution — this is permanent and deletes all sources.
+
+    Args:
+        notebook_name: Name of the notebook to delete
+
+    Returns:
+        Confirmation message
+    """
+    from services.notebooklm_service import is_configured, delete_notebook
+
+    if not is_configured():
+        return "NotebookLM not configured. Run: notebooklm login"
+
+    try:
+        deleted = await delete_notebook(notebook_name)
+        if not deleted:
+            return f"Notebook '{notebook_name}' not found"
+        return f"Deleted notebook '{notebook_name}'"
+    except Exception as e:
+        return f"Error deleting notebook: {str(e)}"
+
+
+@tool
+async def nlm_add_source(
+    notebook_name: str,
+    source_type: str,
+    content: str,
+    title: Optional[str] = None,
+) -> str:
+    """
+    Add a source to a Google NotebookLM notebook.
+
+    Supports URLs, YouTube videos, text snippets, and file paths (PDFs).
+
+    Args:
+        notebook_name: Notebook name
+        source_type: Type of source ("url", "youtube", "text", "file")
+        content: URL, YouTube link, text content, or file path
+        title: Optional title (for text sources only)
+
+    Returns:
+        Confirmation with source title and status
+    """
+    from services.notebooklm_service import (
+        is_configured,
+        add_url_source,
+        add_youtube_source,
+        add_text_source,
+        add_file_source,
+    )
+
+    if not is_configured():
+        return "NotebookLM not configured. Run: notebooklm login"
+
+    try:
+        if source_type == "url":
+            result = await add_url_source(notebook_name, content)
+        elif source_type == "youtube":
+            result = await add_youtube_source(notebook_name, content)
+        elif source_type == "text":
+            result = await add_text_source(notebook_name, content, title=title)
+        elif source_type == "file":
+            result = await add_file_source(notebook_name, content)
+        else:
+            return f"Invalid source type: {source_type}. Use: url, youtube, text, file"
+
+        return (
+            f"Added source '{result['title']}' to notebook '{notebook_name}' "
+            f"(status: {result['status']})"
+        )
+    except Exception as e:
+        return f"Error adding source: {str(e)}"
+
+
+@tool
+async def nlm_list_sources(notebook_name: str) -> str:
+    """
+    List all sources in a Google NotebookLM notebook.
+
+    Use this to see what sources are available for querying.
+
+    Args:
+        notebook_name: Notebook name
+
+    Returns:
+        List of source titles with IDs and types
+    """
+    from services.notebooklm_service import is_configured, list_sources
+
+    if not is_configured():
+        return "NotebookLM not configured. Run: notebooklm login"
+
+    try:
+        sources = await list_sources(notebook_name)
+        if not sources:
+            return f"No sources in notebook '{notebook_name}'. Add sources with nlm_add_source."
+
+        lines = [f"Sources in '{notebook_name}':"]
+        for s in sources:
+            lines.append(
+                f"- {s['title']} ({s['type']}, ID: {s['source_id']}, status: {s['status']})"
+            )
+        return "\n".join(lines)
+    except Exception as e:
+        return f"Error listing sources: {str(e)}"
+
+
+@tool
+async def nlm_delete_source(notebook_name: str, source_id: str) -> str:
+    """
+    Delete a source from a Google NotebookLM notebook.
+
+    Use nlm_list_sources first to find source IDs.
+
+    Args:
+        notebook_name: Notebook name
+        source_id: Source ID to delete (from nlm_list_sources)
+
+    Returns:
+        Confirmation message
+    """
+    from services.notebooklm_service import is_configured, delete_source
+
+    if not is_configured():
+        return "NotebookLM not configured. Run: notebooklm login"
+
+    try:
+        result = await delete_source(notebook_name, source_id)
+        return f"Deleted source '{result['title']}' from notebook '{notebook_name}'"
+    except Exception as e:
+        return f"Error deleting source: {str(e)}"
+
+
+@tool
+async def nlm_get_source_text(notebook_name: str, source_id: str) -> str:
+    """
+    Get the indexed fulltext content of a source.
+
+    Use this to read the actual text that was indexed from a source.
+    Useful for extracting content back out of NotebookLM.
+
+    Args:
+        notebook_name: Notebook name
+        source_id: Source ID (from nlm_list_sources)
+
+    Returns:
+        Fulltext content
+    """
+    from services.notebooklm_service import is_configured, get_source_fulltext
+
+    if not is_configured():
+        return "NotebookLM not configured. Run: notebooklm login"
+
+    try:
+        fulltext = await get_source_fulltext(notebook_name, source_id)
+        if not fulltext:
+            return f"No text content available for source {source_id}"
+
+        if len(fulltext) > 8000:
+            return fulltext[:8000] + "\n\n[Content truncated — use nlm_ask for specific queries]"
+        return fulltext
+    except Exception as e:
+        return f"Error retrieving source text: {str(e)}"
+
+
+@tool
+async def nlm_ask(notebook_name: str, question: str) -> str:
+    """
+    Ask a question grounded in notebook sources with citations.
+
+    Responses include source citations from the notebook's knowledge base.
+
+    Args:
+        notebook_name: Notebook name
+        question: Question to ask
+
+    Returns:
+        Answer with source citations
+    """
+    from services.notebooklm_service import is_configured, ask_notebook
+
+    if not is_configured():
+        return "NotebookLM not configured. Run: notebooklm login"
+
+    try:
+        result = await ask_notebook(notebook_name, question)
+        answer = result["answer"]
+        sources = result.get("sources", [])
+
+        if sources:
+            source_list = "\n\nSources:\n" + "\n".join(
+                f"- {s}" for s in sources
+            )
+            return answer + source_list
+        return answer
+    except Exception as e:
+        return f"Error asking notebook: {str(e)}"
+
+
+@tool
+async def nlm_research(
+    notebook_name: str, query: str, mode: str = "fast"
+) -> str:
+    """
+    Run web research and auto-import discovered sources to notebook.
+
+    Sources are automatically imported after research completes.
+
+    Args:
+        notebook_name: Notebook name
+        query: Research query
+        mode: "fast" (5-10 sources) or "deep" (15-25 sources)
+
+    Returns:
+        Research results summary
+    """
+    from services.notebooklm_service import is_configured, web_research
+
+    if not is_configured():
+        return "NotebookLM not configured. Run: notebooklm login"
+
+    if mode not in ("fast", "deep"):
+        return "Invalid mode. Use 'fast' or 'deep'"
+
+    try:
+        result = await web_research(notebook_name, query, mode=mode)
+        return (
+            f"Research complete for '{query}' ({mode} mode). "
+            f"{result.get('result', 'Sources imported to notebook.')}"
+        )
+    except Exception as e:
+        return f"Error running research: {str(e)}"
+
+
+@tool
+async def nlm_generate_artifact(
+    notebook_name: str,
+    artifact_type: str,
+    instructions: Optional[str] = None,
+) -> str:
+    """
+    Generate an artifact from notebook sources.
+
+    Creates audio overviews (podcasts), videos, quizzes, flashcards, slide decks,
+    infographics, mind maps, data tables, or reports from your knowledge base.
+
+    Args:
+        notebook_name: Notebook name
+        artifact_type: Type — "audio", "video", "quiz", "flashcards", "slide_deck",
+            "infographic", "mind_map", "data_table", "report"
+        instructions: Optional generation instructions (for audio/data_table)
+
+    Returns:
+        Task ID for polling with nlm_wait_artifact
+    """
+    from services.notebooklm_service import is_configured, generate_artifact
+
+    if not is_configured():
+        return "NotebookLM not configured. Run: notebooklm login"
+
+    valid_types = [
+        "audio", "video", "quiz", "flashcards", "slide_deck",
+        "infographic", "mind_map", "data_table", "report",
+    ]
+    if artifact_type not in valid_types:
+        return f"Invalid artifact type. Use: {', '.join(valid_types)}"
+
+    try:
+        result = await generate_artifact(
+            notebook_name, artifact_type, instructions=instructions
+        )
+        task_id = result["task_id"]
+        return (
+            f"Artifact generation started (type: {artifact_type}, task_id: {task_id}). "
+            f"Use nlm_wait_artifact to check status."
+        )
+    except Exception as e:
+        return f"Error generating artifact: {str(e)}"
+
+
+@tool
+async def nlm_wait_artifact(notebook_name: str, task_id: str) -> str:
+    """
+    Wait for artifact generation to complete.
+
+    Use after nlm_generate_artifact to check if the artifact is ready.
+
+    Args:
+        notebook_name: Notebook name
+        task_id: Task ID from nlm_generate_artifact
+
+    Returns:
+        Status message
+    """
+    from services.notebooklm_service import is_configured, wait_artifact
+
+    if not is_configured():
+        return "NotebookLM not configured. Run: notebooklm login"
+
+    try:
+        result = await wait_artifact(notebook_name, task_id)
+        if result["ready"]:
+            return f"Artifact ready (status: {result['status']}). Access it via the NotebookLM web UI."
+        return f"Artifact still processing (status: {result['status']}). Check again in a moment."
+    except Exception as e:
+        return f"Error checking artifact status: {str(e)}"
+
+
+@tool
+async def nlm_push_document(document_id: str, notebook_name: str) -> str:
+    """
+    Push an Edward document to a NotebookLM notebook as a text source.
+
+    Bridges Edward's document store with NotebookLM knowledge bases.
+
+    Args:
+        document_id: Edward document ID
+        notebook_name: Notebook name
+
+    Returns:
+        Confirmation message
+    """
+    from services.notebooklm_service import is_configured, add_text_source
+    from services.document_service import get_document_by_id
+
+    if not is_configured():
+        return "NotebookLM not configured. Run: notebooklm login"
+
+    try:
+        doc = await get_document_by_id(document_id)
+        if not doc:
+            return f"Document {document_id} not found in Edward's store"
+
+        result = await add_text_source(notebook_name, doc.content, title=doc.title)
+        return (
+            f"Pushed document '{doc.title}' to notebook '{notebook_name}' "
+            f"(source_id: {result['source_id']})"
+        )
+    except Exception as e:
+        return f"Error pushing document: {str(e)}"
+
+
+@tool
+async def nlm_push_file(file_id: str, notebook_name: str) -> str:
+    """
+    Push an Edward stored file (PDF) to a NotebookLM notebook as a file source.
+
+    Bridges Edward's file storage with NotebookLM knowledge bases.
+
+    Args:
+        file_id: Edward file ID
+        notebook_name: Notebook name
+
+    Returns:
+        Confirmation message
+    """
+    from services.notebooklm_service import is_configured, add_file_source
+    from services.file_storage_service import get_file, get_file_path
+
+    if not is_configured():
+        return "NotebookLM not configured. Run: notebooklm login"
+
+    try:
+        file_meta = await get_file(file_id)
+        if not file_meta:
+            return f"File {file_id} not found in Edward's storage"
+
+        file_path = await get_file_path(file_id)
+        if not file_path:
+            return f"File {file_id} path not found on disk"
+
+        result = await add_file_source(notebook_name, str(file_path))
+        return (
+            f"Pushed file '{file_meta.filename}' to notebook '{notebook_name}' "
+            f"(source_id: {result['source_id']})"
+        )
+    except Exception as e:
+        return f"Error pushing file: {str(e)}"
+
+
+# Tool group constants
+NOTEBOOKLM_TOOLS = [
+    nlm_list_notebooks,
+    nlm_create_notebook,
+    nlm_delete_notebook,
+    nlm_add_source,
+    nlm_list_sources,
+    nlm_delete_source,
+    nlm_get_source_text,
+    nlm_ask,
+    nlm_research,
+    nlm_generate_artifact,
+    nlm_wait_artifact,
+    nlm_push_document,
+    nlm_push_file,
+]
+
+NOTEBOOKLM_TOOL_NAMES = {t.name for t in NOTEBOOKLM_TOOLS}
+
+
+def get_notebooklm_tools_description() -> str:
+    """Get a description of NotebookLM tools for the system prompt."""
+    return """
+## Google NotebookLM (Knowledge Bases)
+
+You have access to Google NotebookLM for creating curated, source-grounded knowledge bases.
+Unlike memories (short snippets) or documents (standalone text), NotebookLM notebooks are
+collections of diverse sources that can be queried together with citations.
+
+### Notebook Management
+1. **nlm_list_notebooks()**: List all notebooks
+2. **nlm_create_notebook(name)**: Create a new notebook
+3. **nlm_delete_notebook(notebook_name)**: Delete a notebook (permanent)
+
+### Source Management
+4. **nlm_add_source(notebook_name, source_type, content, title?)**: Add a source
+   - source_type: "url", "youtube", "text", "file" (PDF)
+   - content: URL, YouTube link, text content, or file path
+5. **nlm_list_sources(notebook_name)**: List sources in a notebook
+6. **nlm_delete_source(notebook_name, source_id)**: Delete a source (use nlm_list_sources for IDs)
+7. **nlm_get_source_text(notebook_name, source_id)**: Extract indexed text from a source
+
+### Querying & Research
+8. **nlm_ask(notebook_name, question)**: Ask a question with source citations
+9. **nlm_research(notebook_name, query, mode?)**: Run web research, auto-import sources
+   - mode: "fast" (5-10 sources) or "deep" (15-25 sources)
+
+### Artifact Generation
+10. **nlm_generate_artifact(notebook_name, artifact_type, instructions?)**: Generate artifacts
+   - Types: audio, video, quiz, flashcards, slide_deck, infographic, mind_map, data_table, report
+   - Returns task_id for polling
+11. **nlm_wait_artifact(notebook_name, task_id)**: Check artifact generation status
+
+### Edward Integration
+12. **nlm_push_document(document_id, notebook_name)**: Push Edward document to notebook
+13. **nlm_push_file(file_id, notebook_name)**: Push Edward PDF file to notebook
+
+Workflow tips:
+- Create notebooks for distinct topics (e.g., "Pet Care", "Project Research")
+- Use research to quickly populate notebooks with web sources
+- Reference by notebook name (case-insensitive), not ID
+- Artifacts are accessible via NotebookLM web UI after generation
+- Use nlm_ask for grounded Q&A, web_search for ungrounded lookups
+"""

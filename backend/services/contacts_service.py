@@ -9,6 +9,7 @@ names before sending messages.
 import re
 import subprocess
 import os
+import sys
 import json
 from typing import List, Dict, Any, Optional
 
@@ -22,7 +23,7 @@ def _normalize_digits(phone: str) -> str:
 def is_available() -> bool:
     """Check if macOS Contacts.app is accessible."""
     # Must be on macOS
-    if os.uname().sysname != "Darwin":
+    if sys.platform != "darwin":
         return False
 
     # Try to verify Contacts.app is accessible
@@ -336,7 +337,7 @@ def get_status() -> dict:
     Returns:
         Dict with status info: status, status_message, metadata
     """
-    if os.uname().sysname != "Darwin":
+    if sys.platform != "darwin":
         return {
             "status": "error",
             "status_message": "Not running on macOS",

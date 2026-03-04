@@ -112,7 +112,13 @@ You are currently in your inner mind. This is not a conversation with anyone —
 
 **Critical:**
 - Your text responses here are INTERNAL THOUGHTS. Nobody sees them. They are only your reasoning.
-- Tool calls are your ONLY way to interact with the outside world. To reply to someone, you MUST call a messaging tool (send_imessage, send_message, etc.). To take any action, you MUST use a tool.
+- Tool calls are your ONLY way to interact with the outside world. To reply to someone, you MUST call a messaging tool. To take any action, you MUST use a tool.
+
+You have full tool access here — not just messaging. You can:
+- Save knowledge (memories, documents, NotebookLM notebooks)
+- Schedule follow-up actions for later
+- Research before responding (web search, notebook queries)
+- Decide NOT to act if that's the right call
 
 Think freely, reason through what's needed, then ACT through tools.
 
@@ -126,11 +132,11 @@ MENTION_TRIGGER = (
     "Message: \"{message_text}\"\n\n"
     "This person tagged you directly — they are waiting for a response.\n\n"
     "Expected flow:\n"
-    "1. Acknowledge via iMessage (brief — let them know you saw it)\n"
+    "1. Acknowledge briefly — let them know you saw it\n"
     "2. Think through what they need, use tools if needed\n"
-    "3. Reply via iMessage with your answer/result\n\n"
-    "You MUST send at least one iMessage reply — someone is waiting.\n"
-    "IMPORTANT: Never include \"@edward\" in your iMessage — it will re-trigger the heartbeat."
+    "3. Reply with your answer/result\n\n"
+    "You MUST send at least one reply — someone is waiting.\n"
+    "{channel_guidance}"
 )
 
 ACT_TRIGGER = (
@@ -141,8 +147,8 @@ ACT_TRIGGER = (
     "Message: \"{message_text}\"\n\n"
     "Triage assessment: {action_desc}\n\n"
     "Decide what action to take and execute it using your tools. "
-    "If a reply to this person is warranted, use send_imessage.\n"
-    "IMPORTANT: Never include \"@edward\" in any response — it will re-trigger the heartbeat."
+    "If a reply to this person is warranted, use the appropriate messaging tool.\n"
+    "{channel_guidance}"
 )
 
 REPLY_TRIGGER = (
@@ -153,9 +159,24 @@ REPLY_TRIGGER = (
     "Message: \"{message_text}\"\n\n"
     "This is a follow-up to your recent conversation in this chat. "
     "The person replied after your last message — they may be continuing the discussion.\n\n"
-    "Review the conversation history and respond naturally via iMessage if appropriate.\n"
-    "IMPORTANT: Never include \"@edward\" in your iMessage — it will re-trigger the heartbeat."
+    "Review the conversation history and respond naturally if appropriate.\n"
+    "{channel_guidance}"
 )
+
+
+def _build_channel_guidance(source: str = "imessage") -> str:
+    """Build channel-specific guidance for heartbeat triggers."""
+    if source == "imessage":
+        return (
+            'Respond via send_imessage for this iMessage conversation.\n'
+            'IMPORTANT: Never include "@edward" in your message — it will re-trigger the heartbeat.'
+        )
+    elif source == "email":
+        return "This came from email. Store relevant context and consider whether a reply is needed."
+    elif source == "calendar":
+        return "This is a calendar event notification."
+    else:
+        return "Use the appropriate messaging tool to respond."
 
 
 async def _rule_pre_filter(
@@ -336,7 +357,7 @@ async def _rule_pre_filter(
 
 # ===== Layer 2: Haiku classification =====
 
-TRIAGE_PROMPT = """You are Edward's triage classifier. Your job is to classify incoming messages by urgency.
+TRIAGE_INSTRUCTIONS = """You are Edward's triage classifier. Your job is to classify incoming messages by urgency.
 You are NOT acting on these messages — just classifying them so Edward can decide what to do.
 
 Be conservative: most messages should be DISMISS or NOTE. Only use ACT for messages that clearly require Edward to do something. Only use ESCALATE for genuinely urgent messages that need immediate attention.
@@ -346,11 +367,6 @@ For each event, return a classification:
 - NOTE: Worth remembering but no action needed (store a memory about this)
 - ACT: Edward should take action (reply, look something up, do a task)
 - ESCALATE: Urgent — needs Edward's immediate attention AND a push notification
-
-{contact_context}
-
-Events to classify:
-{events_digest}
 
 Return ONLY a valid JSON array with one object per event:
 [{{"event_id": "...", "classification": "DISMISS|NOTE|ACT|ESCALATE", "reasoning": "brief why", "note_content": "memory text if NOTE", "action_description": "what to do if ACT/ESCALATE"}}]"""
@@ -426,10 +442,7 @@ async def _haiku_classify(
     contact_context = await _build_contact_context(events)
     events_digest = _build_events_digest(events, config.digest_token_cap)
 
-    prompt = TRIAGE_PROMPT.format(
-        contact_context=contact_context or "No contact context available.",
-        events_digest=events_digest,
-    )
+    dynamic_data = f"{contact_context or 'No contact context available.'}\n\nEvents to classify:\n{events_digest}"
 
     llm = ChatAnthropic(
         model="claude-haiku-4-5-20251001",
@@ -438,7 +451,10 @@ async def _haiku_classify(
     )
 
     try:
-        response = await llm.ainvoke([HumanMessage(content=prompt)])
+        response = await llm.ainvoke([
+            SystemMessage(content=TRIAGE_INSTRUCTIONS, additional_kwargs={"cache_control": {"type": "ephemeral"}}),
+            HumanMessage(content=dynamic_data),
+        ])
 
         # Extract token usage
         input_tokens = 0
@@ -634,6 +650,7 @@ async def _execute_classification(
             chat_context = event.chat_name or event.chat_identifier or "Direct message"
             message_text = event.summary or "(no text)"
             is_mention = classification.get("is_mention", False)
+            channel_guidance = _build_channel_guidance(event.source)
 
             if is_follow_up:
                 trigger = REPLY_TRIGGER.format(
@@ -641,6 +658,7 @@ async def _execute_classification(
                     chat_context=chat_context,
                     thread_block=thread_block,
                     message_text=message_text,
+                    channel_guidance=channel_guidance,
                 )
             elif is_mention:
                 trigger = MENTION_TRIGGER.format(
@@ -648,6 +666,7 @@ async def _execute_classification(
                     chat_context=chat_context,
                     thread_block=thread_block,
                     message_text=message_text,
+                    channel_guidance=channel_guidance,
                 )
             else:
                 trigger = ACT_TRIGGER.format(
@@ -656,6 +675,7 @@ async def _execute_classification(
                     thread_block=thread_block,
                     message_text=message_text,
                     action_desc=action_desc,
+                    channel_guidance=channel_guidance,
                 )
 
             # Set conversation context so tools (send_imessage etc.) can find it

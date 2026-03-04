@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import json as _json
 import re
+import sys
 from datetime import datetime
 from typing import AsyncGenerator, List, Any, Dict, Optional
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
@@ -18,11 +19,22 @@ MAX_MEMORY_CONTEXT_CHARS = 8000
 # Models that support the effort parameter (Claude 4.6+)
 _EFFORT_MODELS = {"claude-sonnet-4-6", "claude-opus-4-6"}
 
+# Check if the installed Anthropic SDK accepts the effort parameter
+_EFFORT_SUPPORTED = False
+try:
+    import anthropic as _anthropic
+    import inspect as _inspect
+    _EFFORT_SUPPORTED = "effort" in _inspect.signature(
+        _anthropic.resources.messages.Messages.create
+    ).parameters
+except Exception:
+    pass
+
 
 def _build_llm(model: str, temperature: float, max_tokens: int = 16384) -> ChatAnthropic:
-    """Build a ChatAnthropic instance, adding effort parameter for 4.6 models."""
+    """Build a ChatAnthropic instance, adding effort parameter for supported 4.6 models."""
     kwargs = {"model": model, "temperature": temperature, "max_tokens": max_tokens}
-    if model in _EFFORT_MODELS:
+    if _EFFORT_SUPPORTED and model in _EFFORT_MODELS:
         kwargs["model_kwargs"] = {"effort": "high"}
     return ChatAnthropic(**kwargs)
 
@@ -58,6 +70,48 @@ When you make inferences not explicitly stated in tool results or user messages,
 - The assumption doesn't change the core answer
 
 When uncertain, ask the user rather than guess wrong."""
+
+AUTONOMY_FRAMEWORK = """
+
+## Identity & Values
+
+You are a personal AI assistant who grows smarter over time. You are not a generic chatbot — you serve a specific person, remember their context, and build knowledge proactively.
+
+Core values:
+- Genuine usefulness over impressiveness
+- Action over inaction when the cost of being wrong is low
+- Proactive knowledge building — don't wait to be asked to learn
+- Honesty about uncertainty — say what you don't know
+
+## Your Systems
+
+You have multiple knowledge layers — use the right one for the situation:
+- **Memories**: Short snippets auto-extracted from conversations. Good for quick recall of facts and preferences.
+- **Documents**: Full text storage for articles, notes, and reference material. Search by title/content.
+- **NotebookLM notebooks**: Deep, curated knowledge bases with source-grounded Q&A and citations. Use for research topics that need multiple sources cross-referenced.
+- **Scheduled events**: Future actions and proactive outreach. You can remind, check in, and follow up.
+- **Web search**: Real-time information. Use when your stored knowledge might be outdated.
+- **File storage**: Persistent files and PDFs. Can be pushed to NotebookLM as sources.
+- **Evolution engine**: You can modify your own code to fix bugs or improve capabilities. Consider this when you encounter recurring limitations.
+
+## Autonomy
+
+- Prefer action when reversible. Ask when consequences are hard to undo.
+- Build knowledge proactively — if a topic comes up repeatedly, create a notebook for it.
+- When uncertain, try then adjust. Don't ask-wait-ask repeatedly.
+- You can evolve your own capabilities. If a tool doesn't exist for something you need, consider whether to build it.
+
+"""
+
+
+def _build_platform_context() -> str:
+    """Build platform-aware context for the system prompt."""
+    if sys.platform == "darwin":
+        return "\n\n## Platform\nRunning on macOS. All capabilities available including iMessage, Apple Services, and Contacts."
+    elif sys.platform == "win32":
+        return "\n\n## Platform\nRunning on Windows. Apple-specific features (iMessage, Apple Contacts, Apple Services) are unavailable. Use push notifications, Twilio, or web chat for messaging."
+    else:
+        return "\n\n## Platform\nRunning on Linux. Apple-specific features are unavailable."
 
 
 # Event types for structured SSE streaming
@@ -709,7 +763,14 @@ async def stream_with_memory_events(
     )
     now = datetime.now()
     time_context = f"\n\nCurrent date and time: {now.strftime('%A, %B %d, %Y at %I:%M %p')}"
-    enhanced_system_prompt = system_prompt + memory_context + briefing_context + time_context + ASSUMPTION_AWARENESS_CONTEXT + PLANNING_DIRECTIVE
+    # Split system prompt into static (cacheable) and dynamic (per-turn) parts
+    static_system = (
+        system_prompt
+        + AUTONOMY_FRAMEWORK
+        + _build_platform_context()
+        + ASSUMPTION_AWARENESS_CONTEXT + PLANNING_DIRECTIVE
+    )
+    dynamic_context = memory_context + briefing_context + time_context
 
     # Create LLM with dynamic tool binding
     llm = _build_llm(model, temperature)
@@ -724,6 +785,13 @@ async def stream_with_memory_events(
     # Track consecutive iterations where ALL tool calls fail
     consecutive_error_iterations = 0
 
+    # Cache conversation history prefix (second-to-last message is breakpoint)
+    if len(messages) > 1:
+        prev_msg = messages[-2]
+        if not prev_msg.additional_kwargs:
+            prev_msg.additional_kwargs = {}
+        prev_msg.additional_kwargs["cache_control"] = {"type": "ephemeral"}
+
     # Tool call loop - default 30 rounds, scales up to 100 when a plan is active
     max_tool_iterations = 30
     iteration = 0
@@ -736,7 +804,10 @@ async def stream_with_memory_events(
             yield create_event(EventType.THINKING, conversation_id, content="Thinking...")
 
         # Get response (may include tool calls)
-        full_messages = [SystemMessage(content=enhanced_system_prompt)] + messages
+        full_messages = [
+            SystemMessage(content=static_system, additional_kwargs={"cache_control": {"type": "ephemeral"}}),
+            SystemMessage(content=dynamic_context),
+        ] + messages
         response = await llm_with_tools.ainvoke(full_messages)
 
         # Check if there are tool calls
@@ -877,8 +948,11 @@ async def stream_with_memory_events(
     # Only stream a new response if the loop didn't produce one
     if needs_streaming:
         print(f"[WARNING] Tool loop exited after {iteration}/{max_tool_iterations} iterations without final response, streaming new response")
-        fallback_prompt = enhanced_system_prompt + "\n\nYou have used all available tool iterations. Summarize what you accomplished and respond to the user. Do not attempt any more tool calls."
-        full_messages = [SystemMessage(content=fallback_prompt)] + messages
+        fallback_static = static_system + "\n\nYou have used all available tool iterations. Summarize what you accomplished and respond to the user. Do not attempt any more tool calls."
+        full_messages = [
+            SystemMessage(content=fallback_static, additional_kwargs={"cache_control": {"type": "ephemeral"}}),
+            SystemMessage(content=dynamic_context),
+        ] + messages
         llm_no_tools = _build_llm(model, temperature)
         async for chunk in llm_no_tools.astream(full_messages):
             if chunk.content:
@@ -1103,7 +1177,14 @@ async def chat_with_memory(
     )
     now = datetime.now()
     time_context = f"\n\nCurrent date and time: {now.strftime('%A, %B %d, %Y at %I:%M %p')}"
-    enhanced_system_prompt = system_prompt + memory_context + briefing_context_sync + orchestrator_context + time_context + ASSUMPTION_AWARENESS_CONTEXT + PLANNING_DIRECTIVE
+    # Split system prompt into static (cacheable) and dynamic (per-turn) parts
+    static_system = (
+        system_prompt
+        + AUTONOMY_FRAMEWORK
+        + _build_platform_context()
+        + ASSUMPTION_AWARENESS_CONTEXT + PLANNING_DIRECTIVE
+    )
+    dynamic_context = memory_context + briefing_context_sync + orchestrator_context + time_context
 
     # Create LLM with dynamic tool binding
     llm = _build_llm(model, temperature)
@@ -1117,6 +1198,13 @@ async def chat_with_memory(
     # Track consecutive iterations where ALL tool calls fail
     consecutive_error_iterations = 0
 
+    # Cache conversation history prefix (second-to-last message is breakpoint)
+    if len(messages) > 1:
+        prev_msg = messages[-2]
+        if not prev_msg.additional_kwargs:
+            prev_msg.additional_kwargs = {}
+        prev_msg.additional_kwargs["cache_control"] = {"type": "ephemeral"}
+
     # Tool call loop - default 30 rounds, scales up to 100 when a plan is active
     max_tool_iterations = 30
     iteration = 0
@@ -1125,7 +1213,10 @@ async def chat_with_memory(
         iteration += 1
 
         # Get response (may include tool calls)
-        full_messages = [SystemMessage(content=enhanced_system_prompt)] + messages
+        full_messages = [
+            SystemMessage(content=static_system, additional_kwargs={"cache_control": {"type": "ephemeral"}}),
+            SystemMessage(content=dynamic_context),
+        ] + messages
         response = await llm_with_tools.ainvoke(full_messages)
 
         # Check if there are tool calls
@@ -1220,8 +1311,11 @@ async def chat_with_memory(
     # If we exhausted iterations, get final response without tools
     if not full_response:
         print(f"[WARNING] Tool loop exited after {iteration} iterations without final response, invoking fallback")
-        fallback_prompt = enhanced_system_prompt + "\n\nYou have used all available tool iterations. Summarize what you accomplished and respond to the user. Do not attempt any more tool calls."
-        full_messages = [SystemMessage(content=fallback_prompt)] + messages
+        fallback_static = static_system + "\n\nYou have used all available tool iterations. Summarize what you accomplished and respond to the user. Do not attempt any more tool calls."
+        full_messages = [
+            SystemMessage(content=fallback_static, additional_kwargs={"cache_control": {"type": "ephemeral"}}),
+            SystemMessage(content=dynamic_context),
+        ] + messages
         llm_no_tools = _build_llm(model, temperature)
         final_response = await llm_no_tools.ainvoke(full_messages)
         full_response = final_response.content

@@ -10,10 +10,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Edward is a full-stack AI assistant with long-term memory, built with Next.js, FastAPI, and PostgreSQL. Uses LangGraph for conversation orchestration and pgvector for memory retrieval.
 
+## Implementation Plans
+
+Active implementation plans for the `cl-feature` branch live in `IMPLEMENTATION_PLANS/`:
+
+| Plan | Description | Status |
+|------|-------------|--------|
+| [000_MASTER_PLAN.md](IMPLEMENTATION_PLANS/000_MASTER_PLAN.md) | Master architecture, decisions, cost estimates | Reference |
+| [001_CROSS_PLATFORM_FOUNDATION.md](IMPLEMENTATION_PLANS/001_CROSS_PLATFORM_FOUNDATION.md) | PowerShell scripts, platform fixes for Windows + macOS | **Complete** |
+| [002_AUTONOMY_FRAMEWORK.md](IMPLEMENTATION_PLANS/002_AUTONOMY_FRAMEWORK.md) | Values-based system prompt, platform context, channel-agnostic triage | **Complete** |
+| [003_NOTEBOOKLM_INTEGRATION.md](IMPLEMENTATION_PLANS/003_NOTEBOOKLM_INTEGRATION.md) | Google NotebookLM skill (12 tools) via notebooklm-py | **Complete** |
+| [004_PROMPT_CACHING.md](IMPLEMENTATION_PLANS/004_PROMPT_CACHING.md) | Anthropic prompt caching (all LLM call sites) | **Complete** |
+| [005_EXECUTION_FIX.md](IMPLEMENTATION_PLANS/005_EXECUTION_FIX.md) | Windows execution env fix (subprocess + orchestrator + effort) | **Complete** |
+| [DEFERRED_TELEGRAM_INTEGRATION.md](IMPLEMENTATION_PLANS/DEFERRED_TELEGRAM_INTEGRATION.md) | Telegram bot with long-polling | Deferred |
+
+**IMPORTANT**: Read the relevant plan BEFORE making changes. Each plan has STOP warnings, strict rules, and verification checklists.
+
 ## Running the App
 
-**The backend must run natively on macOS** (not in a container). This is required for the scheduled events scheduler and AppleScript/MCP integrations.
+**The backend runs on macOS and Windows.** macOS has full feature support; Windows runs with graceful degradation (Apple-specific features disabled, PWA + push notifications for messaging).
 
+### macOS
 ```bash
 # First-time setup
 ./setup.sh                    # Creates venv, installs deps, sets up .env
@@ -26,7 +43,24 @@ Edward is a full-stack AI assistant with long-term memory, built with Next.js, F
 # Individual services
 cd backend && ./start.sh                       # Backend (FastAPI :8000)
 cd frontend && npm install && npm run dev      # Frontend (Next.js :3000)
+```
 
+### Windows (PowerShell)
+```powershell
+# First-time setup
+.\setup.ps1                    # Creates venv, installs deps, sets up .env
+
+# Recommended: restart script (handles both services)
+.\restart.ps1                  # Restart both frontend + backend
+.\restart.ps1 frontend         # Restart only frontend
+.\restart.ps1 backend          # Stop and restart only backend
+
+# Individual services
+cd backend; .\start.ps1                        # Backend (FastAPI :8000)
+cd frontend; npm install; npm run dev          # Frontend (Next.js :3000)
+```
+
+```bash
 # Lint frontend
 cd frontend && npm run lint
 ```
@@ -72,12 +106,13 @@ Init order matters — tool registry must come after skills/MCP:
 2. `init_skills()` — Load skill enabled states
 3. MCP clients — WhatsApp, Apple Services subprocesses
 4. Custom MCP servers — User-added servers from DB
-5. Tool registry — Must be after all tool sources are initialized
-6. Scheduler — Polls every 30s for due scheduled events
-7. Heartbeat — iMessage listener + triage loop
-8. Consolidation — Hourly memory clustering
-9. Evolution — Check for pending deploys after restart
-10. Orchestrator — Recover crashed worker tasks
+5. NotebookLM client — Lazy init if credentials exist
+6. Tool registry — Must be after all tool sources are initialized
+7. Scheduler — Polls every 30s for due scheduled events
+8. Heartbeat — iMessage listener + triage loop
+9. Consolidation — Hourly memory clustering
+10. Evolution — Check for pending deploys after restart
+11. Orchestrator — Recover crashed worker tasks
 
 All have matching shutdown hooks in reverse order.
 
@@ -148,7 +183,7 @@ Tool loop (in respond node):
 - GitHub search uses `GITHUB_TOKEN` env var for API access
 
 **Skills System** (`backend/services/skills_service.py`)
-- Manages integrations (iMessage AppleScript, Twilio SMS, Twilio WhatsApp, WhatsApp MCP, Brave Search, Code Interpreter, JavaScript Interpreter, SQL Database, Shell/Bash, Apple Services, HTML Hosting)
+- Manages integrations (iMessage AppleScript, Twilio SMS, Twilio WhatsApp, WhatsApp MCP, Brave Search, Code Interpreter, JavaScript Interpreter, SQL Database, Shell/Bash, Apple Services, HTML Hosting, Google NotebookLM)
 - Tracks enabled/disabled state in database
 - Reports connection status for each skill
 - Initializes MCP client on skill enable (not just DB toggle)
@@ -163,6 +198,14 @@ Tool loop (in respond node):
 - Create, update, and delete hosted HTML pages on html.zyroi.com
 - Uses v2 JSON API with `X-API-Key` authentication
 - Tools: `create_hosted_page`, `update_hosted_page`, `delete_hosted_page`, `check_hosted_slug`
+
+**Google NotebookLM** (`backend/services/notebooklm_service.py`)
+- Curated, source-grounded knowledge bases via `notebooklm-py` library (undocumented Google APIs)
+- Lazy singleton client — created on first use, persists until shutdown
+- Name-based notebook references (case-insensitive, no raw IDs exposed to LLM)
+- Credential check at startup, graceful skip if missing
+- Requires one-time browser login (`notebooklm login`), credentials expire ~1-2 weeks
+- Tools: `nlm_list_notebooks`, `nlm_create_notebook`, `nlm_delete_notebook`, `nlm_add_source`, `nlm_list_sources`, `nlm_delete_source`, `nlm_get_source_text`, `nlm_ask`, `nlm_research`, `nlm_generate_artifact`, `nlm_wait_artifact`, `nlm_push_document`, `nlm_push_file`
 
 **Execution System** (`backend/services/execution/`)
 - Shared base: `base.py` with `ExecutionResult`, sandbox management, `run_subprocess()` helper
@@ -272,6 +315,21 @@ HTML hosting tools available to LLM (when skill enabled):
 - `update_hosted_page` - Update an existing hosted page
 - `delete_hosted_page` - Delete a hosted page
 - `check_hosted_slug` - Check if a URL slug is available
+
+NotebookLM tools available to LLM (when notebooklm skill enabled):
+- `nlm_list_notebooks` - List all notebooks
+- `nlm_create_notebook` - Create a new notebook
+- `nlm_delete_notebook` - Delete a notebook
+- `nlm_add_source` - Add source (url/youtube/text/file) to notebook
+- `nlm_list_sources` - List sources in a notebook
+- `nlm_delete_source` - Delete a source from a notebook
+- `nlm_get_source_text` - Extract indexed fulltext from a source
+- `nlm_ask` - Ask a question with source citations
+- `nlm_research` - Run web research, auto-import sources
+- `nlm_generate_artifact` - Generate audio/video/quiz/flashcards/slides/infographic/mind_map/data_table/report
+- `nlm_wait_artifact` - Check artifact generation status
+- `nlm_push_document` - Push Edward document to notebook as text source
+- `nlm_push_file` - Push Edward PDF file to notebook as file source
 
 Apple Services tools available to LLM (when apple_services skill enabled):
 - Calendar tools - Read/manage calendar events
@@ -509,6 +567,10 @@ TWILIO_PHONE_NUMBER=+1...
 TWILIO_WEBHOOK_URL=https://your-domain.com/api/webhook/twilio
 TWILIO_WHATSAPP_WEBHOOK_URL=https://your-domain.com/api/webhook/twilio/whatsapp
 
+# Telegram Bot (long-polling, no public URL needed)
+TELEGRAM_BOT_TOKEN=...               # Get from @BotFather on Telegram
+TELEGRAM_ALLOWED_USER_ID=...         # Your Telegram user ID (get via @userinfobot)
+
 # WhatsApp via MCP (requires whatsapp-mcp Go bridge running)
 MCP_WHATSAPP_ENABLED=false
 MCP_WHATSAPP_SERVER_DIR=/path/to/whatsapp-mcp/whatsapp-mcp-server
@@ -539,6 +601,10 @@ FILE_STORAGE_ROOT=./storage  # Optional: defaults to ./storage
 # Claude Code (for evolution service + orchestrator CC tasks)
 # Requires `claude-agent-sdk` in requirements.txt
 # Claude Code CLI must be installed and authenticated on the host
+
+# Google NotebookLM (requires one-time browser login: notebooklm login)
+# NOTEBOOKLM_STORAGE_PATH=~/.notebooklm/storage_state.json  # Optional: override credential path
+# NOTEBOOKLM_AUTH_JSON=  # Optional: inline auth for headless environments
 ```
 
 Database defaults to `edward`/`edward`/`edward` (user/password/database).
@@ -564,6 +630,7 @@ Database defaults to `edward`/`edward`/`edward` (user/password/database).
 - Code execution tools filtered by skill state: code_interpreter, javascript_interpreter, sql_interpreter, shell_interpreter
 - Apple Services tools filtered by skill state: apple_services
 - HTML hosting tools filtered by skill state: html_hosting
+- NotebookLM tools filtered by skill state: notebooklm
 - Twilio inbound webhooks process SMS and WhatsApp asynchronously to avoid timeouts, responds via API not TwiML
 - WhatsApp and SMS from same phone number share the same external contact and conversation; `last_channel` tracks reply channel
 - MCP client manages multiple subprocess servers: WhatsApp, Apple Services (includes Messages)
