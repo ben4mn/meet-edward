@@ -3109,7 +3109,7 @@ async def spawn_worker(
         wait=wait,
     )
 
-    if "error" in result:
+    if result.get("error"):
         return f"Error: {result['error']}"
 
     if wait:
@@ -3139,7 +3139,7 @@ async def check_worker(task_id: str) -> str:
     from services.orchestrator_service import get_task
 
     result = await get_task(task_id)
-    if "error" in result:
+    if result.get("error"):
         return f"Error: {result['error']}"
 
     status = result["status"]
@@ -3209,7 +3209,7 @@ async def cancel_worker(task_id: str) -> str:
     from services.orchestrator_service import cancel_task
 
     result = await cancel_task(task_id)
-    if "error" in result:
+    if result.get("error"):
         return f"Error: {result['error']}"
     return f"Worker {task_id[:8]}... cancelled. Status: {result['status']}"
 
@@ -3235,7 +3235,7 @@ async def wait_for_workers(task_ids: str) -> str:
 
     lines = []
     for r in results:
-        if "error" in r and not r.get("status"):
+        if r.get("error") and not r.get("status"):
             lines.append(f"- Error: {r['error']}")
             continue
         desc = r.get("task_description", "unknown")[:60]
@@ -3270,7 +3270,7 @@ async def send_to_worker(task_id: str, message: str) -> str:
     from services.orchestrator_service import send_message_to_worker
 
     result = await send_message_to_worker(task_id, message)
-    if "error" in result:
+    if result.get("error"):
         return f"Error: {result['error']}"
     return result.get("response", "No response")
 
@@ -3312,7 +3312,7 @@ async def spawn_cc_worker(task: str, cwd: Optional[str] = None, wait: bool = Tru
         wait=wait,
     )
 
-    if "error" in result:
+    if result.get("error"):
         return f"Error: {result['error']}"
 
     if wait:
