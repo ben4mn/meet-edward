@@ -27,6 +27,12 @@ SKILL_TOOL_MAPPING: Dict[str, List[str]] = {
     "ios_widget": ["update_widget", "get_widget_state_tool"],
     "contacts_lookup": ["lookup_contact", "lookup_phone"],
     "orchestrator": ["spawn_worker", "check_worker", "list_workers", "cancel_worker", "wait_for_workers", "send_to_worker", "spawn_cc_worker"],
+    "notebooklm": [
+        "nlm_list_notebooks", "nlm_create_notebook", "nlm_delete_notebook",
+        "nlm_add_source", "nlm_list_sources", "nlm_get_source_text",
+        "nlm_ask", "nlm_research", "nlm_generate_artifact", "nlm_wait_artifact",
+        "nlm_push_document", "nlm_push_file",
+    ],
     # "whatsapp_mcp" and "apple_services" tools are handled dynamically since they come from MCP
 }
 
@@ -96,6 +102,7 @@ async def _get_skill_states(force_refresh: bool = False) -> Dict[str, bool]:
         "html_hosting": await is_skill_enabled("html_hosting"),
         "ios_widget": await is_skill_enabled("ios_widget"),
         "orchestrator": await is_skill_enabled("orchestrator"),
+        "notebooklm": await is_skill_enabled("notebooklm"),
     }
     _cache_timestamp = now
 
@@ -338,6 +345,15 @@ def _get_orchestrator_tools(skill_states: Dict[str, bool]) -> List[BaseTool]:
     return ORCHESTRATOR_TOOLS
 
 
+def _get_notebooklm_tools(skill_states: Dict[str, bool]) -> List[BaseTool]:
+    """Get NotebookLM tools if notebooklm skill is enabled."""
+    if not skill_states.get("notebooklm"):
+        return []
+
+    from services.graph.tools import NOTEBOOKLM_TOOLS
+    return NOTEBOOKLM_TOOLS
+
+
 def _get_custom_mcp_tools() -> List[Any]:
     """Get tools from all running custom MCP servers."""
     try:
@@ -427,6 +443,9 @@ async def get_available_tools() -> List[Any]:
 
     # Orchestrator tools if enabled
     add_tools(_get_orchestrator_tools(skill_states))
+
+    # NotebookLM tools if enabled
+    add_tools(_get_notebooklm_tools(skill_states))
 
     # Custom MCP self-service tools (always available)
     add_tools(_get_custom_mcp_self_service_tools())
@@ -545,6 +564,11 @@ def get_tool_descriptions(tools: List[Any]) -> str:
     if "spawn_worker" in tool_names:
         from services.graph.tools import get_orchestrator_tools_description
         sections.append(get_orchestrator_tools_description())
+
+    # NotebookLM tools section
+    if any(name.startswith("nlm_") for name in tool_names):
+        from services.graph.tools import get_notebooklm_tools_description
+        sections.append(get_notebooklm_tools_description())
 
     # Apple Reminders tools section (special guidance to avoid confusion with scheduled events)
     if any(name.startswith("reminders_") for name in tool_names):

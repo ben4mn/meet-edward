@@ -7,6 +7,7 @@ Requires macOS with Messages.app configured.
 
 import subprocess
 import os
+import sys
 from collections import deque
 from typing import Optional
 
@@ -23,7 +24,7 @@ def is_available() -> bool:
     if not IMESSAGE_ENABLED:
         return False
     # Check if we're on macOS
-    return os.uname().sysname == "Darwin"
+    return sys.platform == "darwin"
 
 
 def send_imessage(recipient: str, message: str) -> dict:
@@ -140,8 +141,6 @@ def get_status() -> dict:
     Returns:
         Dict with status info: status, status_message, metadata
     """
-    import os as _os
-
     if not IMESSAGE_ENABLED:
         return {
             "status": "error",
@@ -150,7 +149,7 @@ def get_status() -> dict:
         }
 
     # Check if we're on macOS
-    if _os.uname().sysname != "Darwin":
+    if sys.platform != "darwin":
         return {
             "status": "error",
             "status_message": "Not running on macOS",

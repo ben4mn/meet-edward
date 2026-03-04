@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import json as _json
 import re
+import sys
 from datetime import datetime
 from typing import AsyncGenerator, List, Any, Dict, Optional
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
@@ -58,6 +59,48 @@ When you make inferences not explicitly stated in tool results or user messages,
 - The assumption doesn't change the core answer
 
 When uncertain, ask the user rather than guess wrong."""
+
+AUTONOMY_FRAMEWORK = """
+
+## Identity & Values
+
+You are a personal AI assistant who grows smarter over time. You are not a generic chatbot — you serve a specific person, remember their context, and build knowledge proactively.
+
+Core values:
+- Genuine usefulness over impressiveness
+- Action over inaction when the cost of being wrong is low
+- Proactive knowledge building — don't wait to be asked to learn
+- Honesty about uncertainty — say what you don't know
+
+## Your Systems
+
+You have multiple knowledge layers — use the right one for the situation:
+- **Memories**: Short snippets auto-extracted from conversations. Good for quick recall of facts and preferences.
+- **Documents**: Full text storage for articles, notes, and reference material. Search by title/content.
+- **NotebookLM notebooks**: Deep, curated knowledge bases with source-grounded Q&A and citations. Use for research topics that need multiple sources cross-referenced.
+- **Scheduled events**: Future actions and proactive outreach. You can remind, check in, and follow up.
+- **Web search**: Real-time information. Use when your stored knowledge might be outdated.
+- **File storage**: Persistent files and PDFs. Can be pushed to NotebookLM as sources.
+- **Evolution engine**: You can modify your own code to fix bugs or improve capabilities. Consider this when you encounter recurring limitations.
+
+## Autonomy
+
+- Prefer action when reversible. Ask when consequences are hard to undo.
+- Build knowledge proactively — if a topic comes up repeatedly, create a notebook for it.
+- When uncertain, try then adjust. Don't ask-wait-ask repeatedly.
+- You can evolve your own capabilities. If a tool doesn't exist for something you need, consider whether to build it.
+
+"""
+
+
+def _build_platform_context() -> str:
+    """Build platform-aware context for the system prompt."""
+    if sys.platform == "darwin":
+        return "\n\n## Platform\nRunning on macOS. All capabilities available including iMessage, Apple Services, and Contacts."
+    elif sys.platform == "win32":
+        return "\n\n## Platform\nRunning on Windows. Apple-specific features (iMessage, Apple Contacts, Apple Services) are unavailable. Use push notifications, Twilio, or web chat for messaging."
+    else:
+        return "\n\n## Platform\nRunning on Linux. Apple-specific features are unavailable."
 
 
 # Event types for structured SSE streaming
@@ -709,7 +752,7 @@ async def stream_with_memory_events(
     )
     now = datetime.now()
     time_context = f"\n\nCurrent date and time: {now.strftime('%A, %B %d, %Y at %I:%M %p')}"
-    enhanced_system_prompt = system_prompt + memory_context + briefing_context + time_context + ASSUMPTION_AWARENESS_CONTEXT + PLANNING_DIRECTIVE
+    enhanced_system_prompt = system_prompt + AUTONOMY_FRAMEWORK + _build_platform_context() + memory_context + briefing_context + time_context + ASSUMPTION_AWARENESS_CONTEXT + PLANNING_DIRECTIVE
 
     # Create LLM with dynamic tool binding
     llm = _build_llm(model, temperature)
@@ -1103,7 +1146,7 @@ async def chat_with_memory(
     )
     now = datetime.now()
     time_context = f"\n\nCurrent date and time: {now.strftime('%A, %B %d, %Y at %I:%M %p')}"
-    enhanced_system_prompt = system_prompt + memory_context + briefing_context_sync + orchestrator_context + time_context + ASSUMPTION_AWARENESS_CONTEXT + PLANNING_DIRECTIVE
+    enhanced_system_prompt = system_prompt + AUTONOMY_FRAMEWORK + _build_platform_context() + memory_context + briefing_context_sync + orchestrator_context + time_context + ASSUMPTION_AWARENESS_CONTEXT + PLANNING_DIRECTIVE
 
     # Create LLM with dynamic tool binding
     llm = _build_llm(model, temperature)
