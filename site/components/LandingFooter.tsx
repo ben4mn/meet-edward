@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Github, BookOpen } from "lucide-react";
+import { Github, BookOpen, Newspaper } from "lucide-react";
 import { EdwardAvatar } from "./EdwardAvatar";
 
 const GITHUB_URL = "https://github.com/ben4mn/meet-edward";
@@ -17,6 +17,12 @@ export function LandingFooter() {
             className="text-[#94a3b8] hover:text-[#f1f5f9] transition-colors"
           >
             <BookOpen className="w-5 h-5" />
+          </Link>
+          <Link
+            href="/blog"
+            className="text-[#94a3b8] hover:text-[#f1f5f9] transition-colors"
+          >
+            <Newspaper className="w-5 h-5" />
           </Link>
           <a
             href={GITHUB_URL}
