@@ -35,4 +35,4 @@ pywebpush>=1.14.0
 # Claude Code integration (agent SDK)
 claude-agent-sdk>=0.1.35
 # Google NotebookLM integration
-notebooklm-py[browser]>=0.3.2
+notebooklm-mcp-cli>=0.3.19

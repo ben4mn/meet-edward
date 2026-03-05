@@ -22,6 +22,7 @@ Active implementation plans for the `cl-feature` branch live in `IMPLEMENTATION_
 | [003_NOTEBOOKLM_INTEGRATION.md](IMPLEMENTATION_PLANS/003_NOTEBOOKLM_INTEGRATION.md) | Google NotebookLM skill (12 tools) via notebooklm-py | **Complete** |
 | [004_PROMPT_CACHING.md](IMPLEMENTATION_PLANS/004_PROMPT_CACHING.md) | Anthropic prompt caching (all LLM call sites) | **Complete** |
 | [005_EXECUTION_FIX.md](IMPLEMENTATION_PLANS/005_EXECUTION_FIX.md) | Windows execution env fix (subprocess + orchestrator + effort) | **Complete** |
+| [007_NOTEBOOKLM_REVAMP.md](IMPLEMENTATION_PLANS/007_NOTEBOOKLM_REVAMP.md) | Replace notebooklm-py with notebooklm-mcp-cli, expand to 28 tools | **Complete** |
 | [DEFERRED_TELEGRAM_INTEGRATION.md](IMPLEMENTATION_PLANS/DEFERRED_TELEGRAM_INTEGRATION.md) | Telegram bot with long-polling | Deferred |
 
 **IMPORTANT**: Read the relevant plan BEFORE making changes. Each plan has STOP warnings, strict rules, and verification checklists.
@@ -200,12 +201,14 @@ Tool loop (in respond node):
 - Tools: `create_hosted_page`, `update_hosted_page`, `delete_hosted_page`, `check_hosted_slug`
 
 **Google NotebookLM** (`backend/services/notebooklm_service.py`)
-- Curated, source-grounded knowledge bases via `notebooklm-py` library (undocumented Google APIs)
+- Curated, source-grounded knowledge bases via `notebooklm-mcp-cli` library (undocumented Google APIs)
+- Cookie-based auth with 3-layer auto-recovery (re-fetch tokens, reload cookies, headless re-auth)
+- Synchronous client wrapped in `asyncio.to_thread()` for all calls
 - Lazy singleton client — created on first use, persists until shutdown
 - Name-based notebook references (case-insensitive, no raw IDs exposed to LLM)
 - Credential check at startup, graceful skip if missing
-- Requires one-time browser login (`notebooklm login`), credentials expire ~1-2 weeks
-- Tools: `nlm_list_notebooks`, `nlm_create_notebook`, `nlm_delete_notebook`, `nlm_add_source`, `nlm_list_sources`, `nlm_delete_source`, `nlm_get_source_text`, `nlm_ask`, `nlm_research`, `nlm_generate_artifact`, `nlm_wait_artifact`, `nlm_push_document`, `nlm_push_file`
+- Requires one-time login (`nlm login`), credentials last weeks (not 1-2 weeks)
+- 28 tools: notebooks (list/create/delete/get/describe/rename), sources (add/list/delete/get-text/add-drive/rename/describe), chat (ask/configure), research (start/poll/import), artifacts (generate/wait/delete/revise-slides), sharing (status/public/invite), notes (CRUD), Edward bridge (push-document/push-file)
 
 **Execution System** (`backend/services/execution/`)
 - Shared base: `base.py` with `ExecutionResult`, sandbox management, `run_subprocess()` helper
@@ -320,14 +323,29 @@ NotebookLM tools available to LLM (when notebooklm skill enabled):
 - `nlm_list_notebooks` - List all notebooks
 - `nlm_create_notebook` - Create a new notebook
 - `nlm_delete_notebook` - Delete a notebook
+- `nlm_get_notebook` - Get notebook details with sources
+- `nlm_describe_notebook` - Get AI-generated summary and suggested topics
+- `nlm_rename_notebook` - Rename a notebook
 - `nlm_add_source` - Add source (url/youtube/text/file) to notebook
 - `nlm_list_sources` - List sources in a notebook
 - `nlm_delete_source` - Delete a source from a notebook
 - `nlm_get_source_text` - Extract indexed fulltext from a source
+- `nlm_add_drive_source` - Add Google Drive document as source
+- `nlm_rename_source` - Rename a source
+- `nlm_describe_source` - Get AI-generated source summary and keywords
 - `nlm_ask` - Ask a question with source citations
-- `nlm_research` - Run web research, auto-import sources
+- `nlm_configure_chat` - Configure chat persona, goal, and response length
+- `nlm_research` - Start web research (returns task_id for polling)
+- `nlm_poll_research` - Check research progress
+- `nlm_import_research` - Import discovered research sources
 - `nlm_generate_artifact` - Generate audio/video/quiz/flashcards/slides/infographic/mind_map/data_table/report
 - `nlm_wait_artifact` - Check artifact generation status
+- `nlm_delete_artifact` - Delete a studio artifact
+- `nlm_revise_slides` - Revise individual slides in a slide deck
+- `nlm_share_status` - Get sharing settings and collaborators
+- `nlm_share_public` - Toggle public link access
+- `nlm_share_invite` - Invite collaborator by email
+- `nlm_note` - Manage notebook notes (create/list/update/delete)
 - `nlm_push_document` - Push Edward document to notebook as text source
 - `nlm_push_file` - Push Edward PDF file to notebook as file source
 
@@ -602,9 +620,8 @@ FILE_STORAGE_ROOT=./storage  # Optional: defaults to ./storage
 # Requires `claude-agent-sdk` in requirements.txt
 # Claude Code CLI must be installed and authenticated on the host
 
-# Google NotebookLM (requires one-time browser login: notebooklm login)
-# NOTEBOOKLM_STORAGE_PATH=~/.notebooklm/storage_state.json  # Optional: override credential path
-# NOTEBOOKLM_AUTH_JSON=  # Optional: inline auth for headless environments
+# Google NotebookLM (requires one-time login: nlm login)
+# No env vars needed — credentials at ~/.notebooklm-mcp-cli/profiles/default/
 ```
 
 Database defaults to `edward`/`edward`/`edward` (user/password/database).

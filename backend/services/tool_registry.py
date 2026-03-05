@@ -28,9 +28,25 @@ SKILL_TOOL_MAPPING: Dict[str, List[str]] = {
     "contacts_lookup": ["lookup_contact", "lookup_phone"],
     "orchestrator": ["spawn_worker", "check_worker", "list_workers", "cancel_worker", "wait_for_workers", "send_to_worker", "spawn_cc_worker"],
     "notebooklm": [
+        # Notebook management
         "nlm_list_notebooks", "nlm_create_notebook", "nlm_delete_notebook",
-        "nlm_add_source", "nlm_list_sources", "nlm_delete_source", "nlm_get_source_text",
-        "nlm_ask", "nlm_research", "nlm_generate_artifact", "nlm_wait_artifact",
+        "nlm_get_notebook", "nlm_describe_notebook", "nlm_rename_notebook",
+        # Source management
+        "nlm_add_source", "nlm_list_sources", "nlm_delete_source",
+        "nlm_get_source_text", "nlm_add_drive_source", "nlm_rename_source",
+        "nlm_describe_source",
+        # Chat
+        "nlm_ask", "nlm_configure_chat",
+        # Research
+        "nlm_research", "nlm_poll_research", "nlm_import_research",
+        # Artifacts / Studio
+        "nlm_generate_artifact", "nlm_wait_artifact",
+        "nlm_delete_artifact", "nlm_revise_slides",
+        # Sharing
+        "nlm_share_status", "nlm_share_public", "nlm_share_invite",
+        # Notes
+        "nlm_note",
+        # Edward bridge tools
         "nlm_push_document", "nlm_push_file",
     ],
     # "whatsapp_mcp" and "apple_services" tools are handled dynamically since they come from MCP

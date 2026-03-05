@@ -7,6 +7,7 @@ Handles:
 - Memory extraction from conversations using LLM
 """
 
+import asyncio
 import json
 import math
 import uuid
@@ -278,10 +279,12 @@ async def retrieve_memories(
 
 async def store_memory(memory: Memory) -> Memory:
     """Store a single memory in the database."""
-    async with async_session() as session:
-        memory_id = memory.id or str(uuid.uuid4())
-        embedding = get_embedding(memory.content)
+    memory_id = memory.id or str(uuid.uuid4())
+    # Compute embedding OUTSIDE async session to avoid blocking the
+    # asyncpg greenlet context (sentence-transformers is sync/CPU-bound)
+    embedding = get_embedding(memory.content)
 
+    async with async_session() as session:
         db_memory = MemoryModel(
             id=memory_id,
             content=memory.content,
@@ -771,8 +774,9 @@ async def update_memory(
         # Update fields if provided
         if content is not None and content != memory.content:
             memory.content = content
-            # Re-generate embedding for new content
-            memory.embedding = get_embedding(content)
+            # Re-generate embedding via to_thread to avoid blocking the
+            # asyncpg greenlet context (sentence-transformers is sync/CPU-bound)
+            memory.embedding = await asyncio.to_thread(get_embedding, content)
 
         if memory_type is not None:
             valid_types = ["fact", "preference", "context", "instruction"]
