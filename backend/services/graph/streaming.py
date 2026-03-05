@@ -709,7 +709,10 @@ async def stream_with_memory_events(
     )
     now = datetime.now()
     time_context = f"\n\nCurrent date and time: {now.strftime('%A, %B %d, %Y at %I:%M %p')}"
-    enhanced_system_prompt = system_prompt + memory_context + briefing_context + time_context + ASSUMPTION_AWARENESS_CONTEXT + PLANNING_DIRECTIVE
+
+    # Split system prompt into static (cacheable) and dynamic (per-request) parts
+    static_system = system_prompt + ASSUMPTION_AWARENESS_CONTEXT + PLANNING_DIRECTIVE
+    dynamic_context = memory_context + briefing_context + time_context
 
     # Create LLM with dynamic tool binding
     llm = _build_llm(model, temperature)
@@ -736,7 +739,19 @@ async def stream_with_memory_events(
             yield create_event(EventType.THINKING, conversation_id, content="Thinking...")
 
         # Get response (may include tool calls)
-        full_messages = [SystemMessage(content=enhanced_system_prompt)] + messages
+        # Use two SystemMessages: static (cached) + dynamic (uncached)
+        full_messages = [
+            SystemMessage(content=static_system, additional_kwargs={"cache_control": {"type": "ephemeral"}}),
+            SystemMessage(content=dynamic_context),
+        ] + messages
+        # Add cache breakpoint on conversation history for multi-turn caching
+        if len(full_messages) > 3:
+            second_to_last = full_messages[-2]
+            if not getattr(second_to_last, 'additional_kwargs', {}).get('cache_control'):
+                second_to_last.additional_kwargs = {
+                    **getattr(second_to_last, 'additional_kwargs', {}),
+                    "cache_control": {"type": "ephemeral"},
+                }
         response = await llm_with_tools.ainvoke(full_messages)
 
         # Check if there are tool calls
@@ -877,8 +892,11 @@ async def stream_with_memory_events(
     # Only stream a new response if the loop didn't produce one
     if needs_streaming:
         print(f"[WARNING] Tool loop exited after {iteration}/{max_tool_iterations} iterations without final response, streaming new response")
-        fallback_prompt = enhanced_system_prompt + "\n\nYou have used all available tool iterations. Summarize what you accomplished and respond to the user. Do not attempt any more tool calls."
-        full_messages = [SystemMessage(content=fallback_prompt)] + messages
+        fallback_suffix = "\n\nYou have used all available tool iterations. Summarize what you accomplished and respond to the user. Do not attempt any more tool calls."
+        full_messages = [
+            SystemMessage(content=static_system, additional_kwargs={"cache_control": {"type": "ephemeral"}}),
+            SystemMessage(content=dynamic_context + fallback_suffix),
+        ] + messages
         llm_no_tools = _build_llm(model, temperature)
         async for chunk in llm_no_tools.astream(full_messages):
             if chunk.content:
@@ -1103,7 +1121,10 @@ async def chat_with_memory(
     )
     now = datetime.now()
     time_context = f"\n\nCurrent date and time: {now.strftime('%A, %B %d, %Y at %I:%M %p')}"
-    enhanced_system_prompt = system_prompt + memory_context + briefing_context_sync + orchestrator_context + time_context + ASSUMPTION_AWARENESS_CONTEXT + PLANNING_DIRECTIVE
+
+    # Split system prompt into static (cacheable) and dynamic (per-request) parts
+    static_system = system_prompt + ASSUMPTION_AWARENESS_CONTEXT + PLANNING_DIRECTIVE
+    dynamic_context = memory_context + briefing_context_sync + orchestrator_context + time_context
 
     # Create LLM with dynamic tool binding
     llm = _build_llm(model, temperature)
@@ -1125,7 +1146,19 @@ async def chat_with_memory(
         iteration += 1
 
         # Get response (may include tool calls)
-        full_messages = [SystemMessage(content=enhanced_system_prompt)] + messages
+        # Use two SystemMessages: static (cached) + dynamic (uncached)
+        full_messages = [
+            SystemMessage(content=static_system, additional_kwargs={"cache_control": {"type": "ephemeral"}}),
+            SystemMessage(content=dynamic_context),
+        ] + messages
+        # Add cache breakpoint on conversation history for multi-turn caching
+        if len(full_messages) > 3:
+            second_to_last = full_messages[-2]
+            if not getattr(second_to_last, 'additional_kwargs', {}).get('cache_control'):
+                second_to_last.additional_kwargs = {
+                    **getattr(second_to_last, 'additional_kwargs', {}),
+                    "cache_control": {"type": "ephemeral"},
+                }
         response = await llm_with_tools.ainvoke(full_messages)
 
         # Check if there are tool calls
@@ -1220,8 +1253,11 @@ async def chat_with_memory(
     # If we exhausted iterations, get final response without tools
     if not full_response:
         print(f"[WARNING] Tool loop exited after {iteration} iterations without final response, invoking fallback")
-        fallback_prompt = enhanced_system_prompt + "\n\nYou have used all available tool iterations. Summarize what you accomplished and respond to the user. Do not attempt any more tool calls."
-        full_messages = [SystemMessage(content=fallback_prompt)] + messages
+        fallback_suffix = "\n\nYou have used all available tool iterations. Summarize what you accomplished and respond to the user. Do not attempt any more tool calls."
+        full_messages = [
+            SystemMessage(content=static_system, additional_kwargs={"cache_control": {"type": "ephemeral"}}),
+            SystemMessage(content=dynamic_context + fallback_suffix),
+        ] + messages
         llm_no_tools = _build_llm(model, temperature)
         final_response = await llm_no_tools.ainvoke(full_messages)
         full_response = final_response.content

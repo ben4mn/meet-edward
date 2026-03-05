@@ -16,6 +16,8 @@ from typing import List, Tuple
 
 from sqlalchemy import select, func, or_, and_, delete
 
+from langchain_core.messages import SystemMessage, HumanMessage
+
 from services.database import (
     async_session,
     MemoryModel,
@@ -138,25 +140,28 @@ async def _run_consolidation_cycle() -> None:
             "type": m.memory_type,
         })
 
-    cluster_prompt = f"""Analyze these memories and group them into clusters by person, topic, or event.
+    cluster_instructions = """Analyze these memories and group them into clusters by person, topic, or event.
 Each memory should appear in at most one cluster. Only create clusters with 2+ memories.
 
-Memories:
-{json.dumps(memory_list, indent=2)}
-
 Return ONLY valid JSON with this structure:
-{{
+{
   "clusters": [
-    {{
+    {
       "label": "short description of what connects these",
       "type": "same_person | same_topic | same_event | related",
       "memory_ids": ["id1", "id2", ...]
-    }}
+    }
   ]
-}}"""
+}"""
 
     try:
-        cluster_response = await llm.ainvoke(cluster_prompt)
+        cluster_response = await llm.ainvoke([
+            SystemMessage(
+                content=cluster_instructions,
+                additional_kwargs={"cache_control": {"type": "ephemeral"}},
+            ),
+            HumanMessage(content=f"Memories:\n{json.dumps(memory_list, indent=2)}"),
+        ])
         haiku_calls += 1
         cluster_text = cluster_response.content
         # Extract JSON from response (handle markdown code blocks)
@@ -193,26 +198,29 @@ Return ONLY valid JSON with this structure:
             for mid in cluster_ids
         ]
 
-        contradiction_prompt = f"""Review these related memories for contradictions (conflicting facts, outdated info, or inconsistencies).
-
-Memories:
-{json.dumps(cluster_memories, indent=2)}
+        contradiction_instructions = """Review these related memories for contradictions (conflicting facts, outdated info, or inconsistencies).
 
 Return ONLY valid JSON:
-{{
+{
   "contradictions": [
-    {{
+    {
       "memory_id_a": "id of first memory",
       "memory_id_b": "id of second memory",
       "description": "brief description of the contradiction"
-    }}
+    }
   ]
-}}
+}
 
-If no contradictions found, return {{"contradictions": []}}"""
+If no contradictions found, return {"contradictions": []}"""
 
         try:
-            contradiction_response = await llm.ainvoke(contradiction_prompt)
+            contradiction_response = await llm.ainvoke([
+                SystemMessage(
+                    content=contradiction_instructions,
+                    additional_kwargs={"cache_control": {"type": "ephemeral"}},
+                ),
+                HumanMessage(content=f"Memories:\n{json.dumps(cluster_memories, indent=2)}"),
+            ])
             haiku_calls += 1
             contradiction_text = contradiction_response.content
             if "```" in contradiction_text:
