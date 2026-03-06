@@ -36,29 +36,29 @@ export function LandingNav() {
           </span>
         </Link>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           <Link
             href="/docs"
-            className="flex-shrink-0 flex items-center gap-2 text-sm font-medium text-white px-5 py-2 rounded-lg bg-[#52b788]/20 border border-[#52b788]/30 hover:bg-[#52b788]/30 transition-all"
+            className="flex-shrink-0 flex items-center gap-2 text-sm font-medium text-white px-3 sm:px-5 py-2 rounded-lg bg-[#52b788]/20 border border-[#52b788]/30 hover:bg-[#52b788]/30 transition-all"
           >
             <BookOpen className="w-4 h-4" />
-            Docs
+            <span className="hidden sm:inline">Docs</span>
           </Link>
           <Link
             href="/blog"
-            className="flex-shrink-0 flex items-center gap-2 text-sm font-medium text-white px-5 py-2 rounded-lg bg-[#52b788]/20 border border-[#52b788]/30 hover:bg-[#52b788]/30 transition-all"
+            className="flex-shrink-0 flex items-center gap-2 text-sm font-medium text-white px-3 sm:px-5 py-2 rounded-lg bg-[#52b788]/20 border border-[#52b788]/30 hover:bg-[#52b788]/30 transition-all"
           >
             <Newspaper className="w-4 h-4" />
-            Blog
+            <span className="hidden sm:inline">Blog</span>
           </Link>
           <a
             href={GITHUB_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex-shrink-0 flex items-center gap-2 text-sm font-medium text-white px-5 py-2 rounded-lg bg-[#52b788]/20 border border-[#52b788]/30 hover:bg-[#52b788]/30 transition-all"
+            className="flex-shrink-0 flex items-center gap-2 text-sm font-medium text-white px-3 sm:px-5 py-2 rounded-lg bg-[#52b788]/20 border border-[#52b788]/30 hover:bg-[#52b788]/30 transition-all"
           >
             <Github className="w-4 h-4" />
-            <span className="hidden sm:inline">View on GitHub</span>
+            <span className="hidden sm:inline">GitHub</span>
           </a>
         </div>
       </div>
