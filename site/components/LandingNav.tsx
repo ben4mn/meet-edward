@@ -28,15 +28,15 @@ export function LandingNav() {
       animate={{ y: 0 }}
       transition={{ duration: 0.5, ease: [0.25, 0.1, 0.25, 1] }}
     >
-      <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2.5 group">
           <EdwardAvatar size={32} animated />
-          <span className="font-mono font-bold text-lg text-[#f1f5f9] tracking-tight">
+          <span className="hidden sm:block font-mono font-bold text-lg text-[#f1f5f9] tracking-tight">
             Edward
           </span>
         </Link>
 
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-3">
           <Link
             href="/docs"
             className="flex-shrink-0 flex items-center gap-2 text-sm font-medium text-white px-3 sm:px-5 py-2 rounded-lg bg-[#52b788]/20 border border-[#52b788]/30 hover:bg-[#52b788]/30 transition-all"
