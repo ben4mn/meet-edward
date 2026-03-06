@@ -12,12 +12,12 @@
  *   MENTION_PATTERN         — Regex pattern for mention detection (default: @edward)
  */
 
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require("@whiskeysockets/baileys");
-const express = require("express");
-const path = require("path");
-const os = require("os");
-const pino = require("pino");
-const qrcode = require("qrcode-terminal");
+import makeWASocket, { useMultiFileAuthState, DisconnectReason, Browsers, fetchLatestBaileysVersion } from "baileys";
+import express from "express";
+import path from "path";
+import os from "os";
+import pino from "pino";
+import qrcode from "qrcode-terminal";
 
 const PORT = parseInt(process.env.WHATSAPP_BRIDGE_PORT || "3100", 10);
 const WEBHOOK_URL = process.env.EDWARD_WEBHOOK_URL || "http://localhost:8000/api/webhook/whatsapp";
@@ -34,6 +34,47 @@ let userInfo = null; // { id, name }
 let contactNames = {}; // jid → display name
 let reconnectTimer = null;
 
+// ─── LID-to-JID mapping ──────────────────────────────────────────────────────
+// Baileys 7.x uses LID (Linked Device ID) as the default addressing mode.
+// Messages sent to @lid targets may not replicate properly to all devices.
+// We maintain a cache mapping @lid → @s.whatsapp.net for reliable sending.
+const lidToJid = {};    // normalized @lid → @s.whatsapp.net
+let selfJid = null;     // user's own normalized @s.whatsapp.net JID
+let selfLid = null;     // user's own @lid JID (if known)
+
+/**
+ * Strip the :device suffix from a JID and normalize @c.us → @s.whatsapp.net.
+ * e.g. "6598587940:4@s.whatsapp.net" → "6598587940@s.whatsapp.net"
+ */
+function normalizeJid(jid) {
+  if (!jid) return "";
+  const atIdx = jid.indexOf("@");
+  if (atIdx < 0) return jid;
+  const userPart = jid.slice(0, atIdx).split(":")[0]; // strip :device
+  let server = jid.slice(atIdx + 1);
+  if (server === "c.us") server = "s.whatsapp.net";
+  return `${userPart}@${server}`;
+}
+
+/**
+ * Resolve an @lid JID to @s.whatsapp.net using the cache.
+ * Returns the original JID unchanged if it's not @lid or no mapping exists.
+ */
+function resolveLid(jid) {
+  if (!jid || !jid.endsWith("@lid")) return jid;
+
+  const normalized = normalizeJid(jid);
+
+  // Check cache
+  if (lidToJid[normalized]) return lidToJid[normalized];
+
+  // Self-chat detection via selfLid
+  if (selfLid && normalized === normalizeJid(selfLid) && selfJid) return selfJid;
+
+  console.log(`[WhatsApp Bridge] WARNING: No JID mapping for LID ${jid}`);
+  return jid;
+}
+
 // Track message IDs sent by Edward (via /send endpoint) so we can skip
 // only those in the event listener, not ALL fromMe messages (since the
 // user's own WhatsApp messages also appear as fromMe).
@@ -45,8 +86,8 @@ function trackSentMessage(msgId) {
 }
 
 // In-memory message buffer: chatId → array of messages (newest last).
-// Baileys 6.x doesn't export makeInMemoryStore and fetchMessageHistory is
-// async/event-based, so we capture messages ourselves from messages.upsert.
+// Baileys 7.x doesn't export makeInMemoryStore, so we capture messages
+// ourselves from messages.upsert.
 const messageBuffer = {};  // { [chatId]: WAMessage[] }
 const MAX_MESSAGES_PER_CHAT = 100;
 
@@ -84,12 +125,21 @@ function extractText(msg) {
 async function startBaileys() {
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
   const { version } = await fetchLatestBaileysVersion();
+  console.log(`[WhatsApp Bridge] Using WA version: ${version}`);
 
   sock = makeWASocket({
     version,
     auth: state,
     logger,
+    browser: Browsers.ubuntu("Chrome"),
+    markOnlineOnConnect: false,
     syncFullHistory: false,
+    getMessage: async (key) => {
+      // Provide stored messages for retry/decrypt requests
+      const msgs = messageBuffer[key.remoteJid] || [];
+      const msg = msgs.find((m) => m.key?.id === key.id);
+      return msg?.message || undefined;
+    },
   });
 
   sock.ev.on("creds.update", saveCreds);
@@ -105,8 +155,22 @@ async function startBaileys() {
       userInfo = {
         id: sock.user?.id || "",
         name: sock.user?.name || "",
+        lid: sock.user?.lid || "",
       };
-      console.log(`[WhatsApp Bridge] Connected as ${userInfo.name} (${userInfo.id})`);
+
+      // Build self-JID mapping for @lid resolution
+      if (sock.user?.id) {
+        selfJid = normalizeJid(sock.user.id);
+      }
+      if (sock.user?.lid) {
+        selfLid = sock.user.lid;
+        if (selfJid) {
+          lidToJid[normalizeJid(selfLid)] = selfJid;
+          console.log(`[WhatsApp Bridge] Self LID mapping: ${selfLid} → ${selfJid}`);
+        }
+      }
+
+      console.log(`[WhatsApp Bridge] Connected as ${userInfo.name} (${userInfo.id}${userInfo.lid ? `, lid: ${userInfo.lid}` : ""})`);
     }
     if (connection === "close") {
       connected = false;
@@ -122,11 +186,18 @@ async function startBaileys() {
     }
   });
 
-  // Cache contact names
+  // Cache contact names + LID-to-JID mappings
   sock.ev.on("contacts.update", (updates) => {
     for (const contact of updates) {
       if (contact.id && contact.notify) {
         contactNames[contact.id] = contact.notify;
+      }
+      // Capture LID → JID mapping if both fields present
+      if (contact.lid && contact.jid) {
+        lidToJid[normalizeJid(contact.lid)] = normalizeJid(contact.jid);
+      }
+      if (contact.id?.endsWith("@lid") && contact.jid) {
+        lidToJid[normalizeJid(contact.id)] = normalizeJid(contact.jid);
       }
     }
   });
@@ -135,6 +206,21 @@ async function startBaileys() {
       if (contact.id) {
         contactNames[contact.id] = contact.notify || contact.name || contact.id;
       }
+      // Capture LID → JID mapping if both fields present
+      if (contact.lid && contact.jid) {
+        lidToJid[normalizeJid(contact.lid)] = normalizeJid(contact.jid);
+      }
+      if (contact.id?.endsWith("@lid") && contact.jid) {
+        lidToJid[normalizeJid(contact.id)] = normalizeJid(contact.jid);
+      }
+    }
+  });
+
+  // Explicit LID → JID mappings from phone number share events
+  sock.ev.on("chats.phoneNumberShare", (update) => {
+    if (update.lid && update.jid) {
+      lidToJid[normalizeJid(update.lid)] = normalizeJid(update.jid);
+      console.log(`[WhatsApp Bridge] Phone number share: ${update.lid} → ${update.jid}`);
     }
   });
 
@@ -146,13 +232,19 @@ async function startBaileys() {
     // Buffer ALL messages (including history sync) for chat history retrieval
     for (const msg of messages) {
       const cid = msg.key?.remoteJid;
-      if (cid) bufferMessage(cid, msg);
+      if (cid) {
+        bufferMessage(cid, msg);
+        // Also buffer under resolved JID so lookups work with either format
+        const resolvedCid = resolveLid(cid);
+        if (resolvedCid !== cid) bufferMessage(resolvedCid, msg);
+      }
     }
 
     if (type !== "notify") return; // Only detect mentions in new messages
 
     for (const msg of messages) {
-      const chatId = msg.key?.remoteJid;
+      const rawChatId = msg.key?.remoteJid;
+      const chatId = resolveLid(rawChatId); // Convert @lid → @s.whatsapp.net if possible
       const text = extractText(msg);
 
       // Skip messages that Edward sent via the /send endpoint.
@@ -183,6 +275,10 @@ async function startBaileys() {
         is_group: isGroup,
         is_from_me: msg.key.fromMe || false,
       };
+      // Include original @lid for debugging if it was resolved
+      if (rawChatId !== chatId) {
+        payload.original_chat_id = rawChatId;
+      }
 
       console.log(`[WhatsApp Bridge] @edward detected in ${chatName} from ${senderName}: "${text.slice(0, 80)}"`);
 
@@ -223,7 +319,19 @@ app.get("/health", (_req, res) => {
 });
 
 app.get("/status", (_req, res) => {
-  res.json({ connected, user: userInfo });
+  res.json({
+    connected,
+    user: userInfo,
+    self_jid: selfJid,
+    self_lid: selfLid,
+    lid_mappings_count: Object.keys(lidToJid).length,
+  });
+});
+
+app.get("/resolve-lid/:lid", (_req, res) => {
+  const lid = decodeURIComponent(_req.params.lid);
+  const resolved = resolveLid(lid);
+  res.json({ original: lid, resolved, was_resolved: resolved !== lid });
 });
 
 app.get("/chats", async (req, res) => {
@@ -255,8 +363,12 @@ app.get("/chats/:id/messages", async (req, res) => {
     const chatId = req.params.id;
     const limit = parseInt(req.query.limit || "15", 10);
 
-    // Read from our in-memory buffer (populated from messages.upsert events)
-    const buffered = messageBuffer[chatId] || [];
+    // Try both original and resolved JID for buffer lookup
+    let buffered = messageBuffer[chatId] || [];
+    if (buffered.length === 0) {
+      const resolved = resolveLid(chatId);
+      if (resolved !== chatId) buffered = messageBuffer[resolved] || [];
+    }
     const messages = buffered.slice(-limit);
 
     const result = messages.map((m) => ({
@@ -321,14 +433,24 @@ app.post("/send", async (req, res) => {
   if (!chat_id || !message) {
     return res.status(400).json({ error: "chat_id and message required" });
   }
-  console.log(`[WhatsApp Bridge] /send to ${chat_id}: "${message.slice(0, 80)}"`);
+
+  // Resolve @lid to @s.whatsapp.net before sending
+  const resolvedId = resolveLid(chat_id);
+  if (resolvedId !== chat_id) {
+    console.log(`[WhatsApp Bridge] /send LID resolved: ${chat_id} → ${resolvedId}`);
+  }
+
+  console.log(`[WhatsApp Bridge] /send to ${resolvedId}: "${message.slice(0, 80)}"`);
   try {
-    const sent = await sock.sendMessage(chat_id, { text: message });
+    const sent = await sock.sendMessage(resolvedId, { text: message });
     const msgId = sent?.key?.id;
     // Track this ID so the event listener skips it (it's Edward's reply, not user)
     if (msgId) trackSentMessage(msgId);
-    // Also buffer the sent message so it appears in chat history
-    if (sent) bufferMessage(chat_id, sent);
+    // Buffer under both IDs so chat history lookups work with either format
+    if (sent) {
+      bufferMessage(resolvedId, sent);
+      if (resolvedId !== chat_id) bufferMessage(chat_id, sent);
+    }
     console.log(`[WhatsApp Bridge] /send success (id: ${msgId})`);
     res.json({ success: true, message_id: msgId });
   } catch (err) {
