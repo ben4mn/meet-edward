@@ -694,6 +694,7 @@ async def _execute_classification(
                 system_prompt=HEARTBEAT_MIND_PROMPT + settings.system_prompt,
                 model=settings.model,
                 temperature=settings.temperature,
+                skip_routing=True,
             )
 
             # Register/extend listening window if Edward sent an iMessage

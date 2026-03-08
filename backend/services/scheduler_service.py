@@ -154,6 +154,7 @@ async def _execute_event(event) -> None:
             system_prompt=system_prompt,
             model=settings.model,
             temperature=settings.temperature,
+            skip_routing=True,
         )
 
         result_summary = str(response)[:500] if response else "No response"

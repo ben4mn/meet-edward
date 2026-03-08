@@ -19,7 +19,7 @@ TOOL_CATEGORIES: Dict[str, Dict[str, Any]] = {
     "file_storage": {"description": "Persist sandbox files, list/download/tag stored files", "always_on": True},
     "planning": {"description": "Create and manage multi-step plans", "always_on": True},
     "custom_mcp": {"description": "Discover, install, manage MCP servers", "always_on": True},
-    "scheduled_events": {"description": "Schedule reminders, messages, recurring tasks", "always_on": False},
+    "scheduled_events": {"description": "Schedule reminders, messages, recurring tasks", "always_on": True},
     "messaging": {"description": "Send SMS, WhatsApp, iMessage; read messages", "always_on": False},
     "whatsapp_bridge": {"description": "Read/send WhatsApp via Baileys bridge", "always_on": False},
     "web_search": {"description": "Search web and fetch page content", "always_on": False},
@@ -32,7 +32,7 @@ TOOL_CATEGORIES: Dict[str, Dict[str, Any]] = {
     "widget": {"description": "Update iOS home screen widget", "always_on": False},
     "contacts": {"description": "Search contacts by name or phone", "always_on": False},
     "persistent_db": {"description": "Create and query persistent PostgreSQL databases", "always_on": False},
-    "push_notifications": {"description": "Send push notification to user's devices", "always_on": False},
+    "push_notifications": {"description": "Send push notification to user's devices", "always_on": True},
     "heartbeat": {"description": "Review incoming messages from background monitoring", "always_on": False},
 }
 

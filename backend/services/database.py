@@ -488,6 +488,19 @@ class ConversationMessagesModel(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
+class CodexOAuthTokenModel(Base):
+    """Codex OAuth tokens for ChatGPT subscription-based GPT-5.4 access."""
+    __tablename__ = "codex_oauth_tokens"
+
+    id = Column(String, primary_key=True, default="default")
+    access_token = Column(Text, nullable=False)
+    refresh_token = Column(Text, nullable=False)
+    account_id = Column(String(255), nullable=False)
+    email = Column(String(255), nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
 async def init_db():
     """Initialize the database tables."""
     async with engine.begin() as conn:

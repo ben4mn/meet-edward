@@ -1,8 +1,10 @@
 """
-Tool schema conversion for Anthropic API.
+Tool schema conversion for Anthropic and OpenAI APIs.
 
 Converts EdwardTool and MCPToolWrapper objects into the tool schema format
-expected by anthropic.messages.create(tools=[...]).
+expected by each provider's API:
+- Anthropic: anthropic.messages.create(tools=[...])
+- OpenAI: openai.responses.create(tools=[...])
 """
 
 from typing import Any
@@ -34,6 +36,33 @@ def tool_to_anthropic_schema(tool: Any) -> dict:
 def tools_to_anthropic_schemas(tools: list) -> list[dict]:
     """Convert a list of tools to Anthropic tool schema format."""
     return [tool_to_anthropic_schema(t) for t in tools]
+
+
+def tool_to_openai_schema(tool: Any) -> dict:
+    """Convert a tool object to OpenAI Responses API function tool format.
+
+    Works with both EdwardTool and MCPToolWrapper (same as Anthropic converter).
+    """
+    schema = _extract_json_schema(tool)
+
+    clean_schema = {
+        "type": schema.get("type", "object"),
+        "properties": schema.get("properties", {}),
+    }
+    if "required" in schema:
+        clean_schema["required"] = schema["required"]
+
+    return {
+        "type": "function",
+        "name": tool.name,
+        "description": tool.description or "",
+        "parameters": clean_schema,
+    }
+
+
+def tools_to_openai_schemas(tools: list) -> list[dict]:
+    """Convert a list of tools to OpenAI function tool schema format."""
+    return [tool_to_openai_schema(t) for t in tools]
 
 
 def _extract_json_schema(tool: Any) -> dict:

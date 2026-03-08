@@ -1,6 +1,7 @@
 fastapi>=0.109.2
 uvicorn[standard]>=0.31.1
 anthropic>=0.40.0
+openai>=1.60.0
 sqlalchemy>=2.0.36
 asyncpg>=0.30.0
 psycopg2-binary>=2.9.10
@@ -26,6 +27,8 @@ httpx>=0.25.0
 trafilatura>=1.6.0
 # Scheduled events (cron pattern parsing)
 croniter>=1.3.0
+# OAuth callback server (Codex OAuth)
+aiohttp>=3.9.0
 # Authentication
 python-jose[cryptography]>=3.3.0
 bcrypt>=4.0.0

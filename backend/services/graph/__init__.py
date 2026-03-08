@@ -1,5 +1,25 @@
-from .graph import get_graph_structure
 from .streaming import stream_with_memory, stream_with_memory_events, chat_with_memory, EventType, create_event
+
+# get_graph_structure — try legacy module, fall back to static dict
+try:
+    from .graph import get_graph_structure
+except Exception:
+    def get_graph_structure() -> dict:
+        return {
+            "nodes": [
+                {"id": "preprocess", "name": "Preprocess", "description": "Initialize state and prepare for processing"},
+                {"id": "retrieve_memory", "name": "Retrieve Memory", "description": "Query pgvector for relevant memories based on user message"},
+                {"id": "respond", "name": "Respond", "description": "Generate response using Claude with memory context"},
+                {"id": "extract_memory", "name": "Extract Memory", "description": "Analyze conversation and store new memories"},
+            ],
+            "edges": [
+                {"from": "__start__", "to": "preprocess"},
+                {"from": "preprocess", "to": "retrieve_memory"},
+                {"from": "retrieve_memory", "to": "respond"},
+                {"from": "respond", "to": "extract_memory"},
+                {"from": "extract_memory", "to": "__end__"},
+            ],
+        }
 
 # Legacy LangGraph graph for migrating old conversations
 _legacy_graph = None

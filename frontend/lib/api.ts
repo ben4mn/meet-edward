@@ -32,6 +32,14 @@ export interface Settings {
 export interface Model {
   id: string;
   name: string;
+  provider?: "anthropic" | "openai";
+  recommended?: boolean;
+}
+
+export interface OpenAIStatus {
+  has_api_key: boolean;
+  codex_connected: boolean;
+  codex_email: string | null;
 }
 
 // Auth API types
@@ -129,6 +137,30 @@ export async function getModels(): Promise<Model[]> {
   }
   const data = await response.json();
   return data.models;
+}
+
+export async function getOpenAIStatus(): Promise<OpenAIStatus> {
+  const response = await authFetch(`${API_URL}/api/settings/openai/status`);
+  if (!response.ok) {
+    return { has_api_key: false, codex_connected: false, codex_email: null };
+  }
+  return response.json();
+}
+
+export async function startCodexLogin(): Promise<{ auth_url: string }> {
+  const response = await authFetch(`${API_URL}/api/settings/openai/login`, {
+    method: "POST",
+  });
+  if (!response.ok) {
+    throw new Error("Failed to start OpenAI login");
+  }
+  return response.json();
+}
+
+export async function logoutCodex(): Promise<void> {
+  await authFetch(`${API_URL}/api/settings/openai/logout`, {
+    method: "POST",
+  });
 }
 
 export interface MemoryItem {
