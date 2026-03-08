@@ -1203,6 +1203,7 @@ async def _call_llm(
     """
     if _is_openai_model(model):
         # Priority 1: Codex OAuth (subscription credits)
+        codex_failed = False
         try:
             from services.codex_oauth_service import has_valid_tokens
             if await has_valid_tokens():
@@ -1210,9 +1211,22 @@ async def _call_llm(
                 return await _call_codex(model, static_system, dynamic_context, messages, tool_schemas, temperature, max_tokens)
         except ImportError:
             pass
+        except (ValueError, Exception) as e:
+            codex_failed = True
+            print(f"[LLM] Codex OAuth failed ({e}), checking API key fallback...")
 
         # Priority 2: API key (pay-per-token)
         if os.getenv("OPENAI_API_KEY"):
+            if codex_failed:
+                # Notify user that we fell back to pay-per-token
+                try:
+                    from services.push_service import send_push_notification
+                    asyncio.create_task(send_push_notification(
+                        "OpenAI Auth Fallback",
+                        "Codex OAuth failed — using API key (pay-per-token). Re-login in Settings.",
+                    ))
+                except Exception:
+                    pass
             print(f"[LLM] Calling OpenAI API ({model})")
             return await _call_openai(model, static_system, dynamic_context, messages, tool_schemas, temperature, max_tokens)
 
