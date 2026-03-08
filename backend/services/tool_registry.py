@@ -6,7 +6,6 @@ based on skill enabled state from the database.
 """
 
 from typing import List, Any, Dict
-from langchain_core.tools import BaseTool
 
 
 # Skill-to-tool mapping
@@ -125,43 +124,43 @@ async def _get_skill_states(force_refresh: bool = False) -> Dict[str, bool]:
     return _skill_cache
 
 
-def _get_memory_tools() -> List[BaseTool]:
+def _get_memory_tools() -> List[Any]:
     """Get memory tools (always available)."""
     from services.graph.tools import MEMORY_TOOLS
     return MEMORY_TOOLS
 
 
-def _get_document_tools() -> List[BaseTool]:
+def _get_document_tools() -> List[Any]:
     """Get document tools (always available)."""
     from services.graph.tools import DOCUMENT_TOOLS
     return DOCUMENT_TOOLS
 
 
-def _get_file_storage_tools() -> List[BaseTool]:
+def _get_file_storage_tools() -> List[Any]:
     """Get file storage tools (always available)."""
     from services.graph.tools import FILE_STORAGE_TOOLS
     return FILE_STORAGE_TOOLS
 
 
-def _get_plan_tools() -> List[BaseTool]:
+def _get_plan_tools() -> List[Any]:
     """Get plan tools (always available)."""
     from services.graph.tools import PLAN_TOOLS
     return PLAN_TOOLS
 
 
-def _get_scheduled_event_tools() -> List[BaseTool]:
+def _get_scheduled_event_tools() -> List[Any]:
     """Get scheduled event tools (always available)."""
     from services.graph.tools import SCHEDULED_EVENT_TOOLS
     return SCHEDULED_EVENT_TOOLS
 
 
-def _get_heartbeat_tools() -> List[BaseTool]:
+def _get_heartbeat_tools() -> List[Any]:
     """Get heartbeat tools (always available)."""
     from services.graph.tools import HEARTBEAT_TOOLS
     return HEARTBEAT_TOOLS
 
 
-async def _get_push_notification_tools(skill_states: Dict[str, bool]) -> List[BaseTool]:
+async def _get_push_notification_tools(skill_states: Dict[str, bool]) -> List[Any]:
     """Get push notification tools (available when skill enabled and configured)."""
     if not skill_states.get("push_notifications"):
         return []
@@ -174,7 +173,7 @@ async def _get_push_notification_tools(skill_states: Dict[str, bool]) -> List[Ba
     return PUSH_NOTIFICATION_TOOLS
 
 
-def _get_messaging_tools(skill_states: Dict[str, bool]) -> List[BaseTool]:
+def _get_messaging_tools(skill_states: Dict[str, bool]) -> List[Any]:
     """
     Get messaging tools filtered by skill enabled state.
 
@@ -237,7 +236,7 @@ def _get_whatsapp_mcp_tools(skill_states: Dict[str, bool]) -> List[Any]:
     return WHATSAPP_BRIDGE_TOOLS
 
 
-def _get_search_tools(skill_states: Dict[str, bool]) -> List[BaseTool]:
+def _get_search_tools(skill_states: Dict[str, bool]) -> List[Any]:
     """
     Get search tools if brave_search is enabled.
 
@@ -255,7 +254,7 @@ def _get_search_tools(skill_states: Dict[str, bool]) -> List[BaseTool]:
     return [web_search, fetch_page_content]
 
 
-def _get_html_hosting_tools(skill_states: Dict[str, bool]) -> List[BaseTool]:
+def _get_html_hosting_tools(skill_states: Dict[str, bool]) -> List[Any]:
     """Get HTML hosting tools if html_hosting is enabled."""
     if not skill_states.get("html_hosting"):
         return []
@@ -264,7 +263,7 @@ def _get_html_hosting_tools(skill_states: Dict[str, bool]) -> List[BaseTool]:
     return HTML_HOSTING_TOOLS
 
 
-def _get_widget_tools(skill_states: Dict[str, bool]) -> List[BaseTool]:
+def _get_widget_tools(skill_states: Dict[str, bool]) -> List[Any]:
     """Get iOS widget tools if ios_widget is enabled."""
     if not skill_states.get("ios_widget"):
         return []
@@ -273,7 +272,7 @@ def _get_widget_tools(skill_states: Dict[str, bool]) -> List[BaseTool]:
     return WIDGET_TOOLS
 
 
-def _get_code_execution_tools(skill_states: Dict[str, bool]) -> List[BaseTool]:
+def _get_code_execution_tools(skill_states: Dict[str, bool]) -> List[Any]:
     """
     Get code execution tools if code_interpreter is enabled.
 
@@ -290,7 +289,7 @@ def _get_code_execution_tools(skill_states: Dict[str, bool]) -> List[BaseTool]:
     return CODE_EXECUTION_TOOLS
 
 
-def _get_javascript_execution_tools(skill_states: Dict[str, bool]) -> List[BaseTool]:
+def _get_javascript_execution_tools(skill_states: Dict[str, bool]) -> List[Any]:
     """Get JavaScript execution tools if javascript_interpreter is enabled."""
     if not skill_states.get("javascript_interpreter"):
         return []
@@ -299,7 +298,7 @@ def _get_javascript_execution_tools(skill_states: Dict[str, bool]) -> List[BaseT
     return JAVASCRIPT_EXECUTION_TOOLS
 
 
-def _get_sql_execution_tools(skill_states: Dict[str, bool]) -> List[BaseTool]:
+def _get_sql_execution_tools(skill_states: Dict[str, bool]) -> List[Any]:
     """Get SQL execution tools if sql_interpreter is enabled."""
     if not skill_states.get("sql_interpreter"):
         return []
@@ -308,7 +307,7 @@ def _get_sql_execution_tools(skill_states: Dict[str, bool]) -> List[BaseTool]:
     return SQL_EXECUTION_TOOLS + PERSISTENT_DB_TOOLS
 
 
-def _get_shell_execution_tools(skill_states: Dict[str, bool]) -> List[BaseTool]:
+def _get_shell_execution_tools(skill_states: Dict[str, bool]) -> List[Any]:
     """Get shell execution tools if shell_interpreter is enabled."""
     if not skill_states.get("shell_interpreter"):
         return []
@@ -317,7 +316,7 @@ def _get_shell_execution_tools(skill_states: Dict[str, bool]) -> List[BaseTool]:
     return SHELL_EXECUTION_TOOLS
 
 
-def _get_contacts_tools(skill_states: Dict[str, bool]) -> List[BaseTool]:
+def _get_contacts_tools(skill_states: Dict[str, bool]) -> List[Any]:
     """Get contacts tools if contacts_lookup is enabled."""
     if not skill_states.get("contacts_lookup"):
         return []
@@ -349,7 +348,7 @@ def _get_apple_mcp_tools(skill_states: Dict[str, bool]) -> List[Any]:
     return get_apple_mcp_tools()
 
 
-def _get_orchestrator_tools(skill_states: Dict[str, bool]) -> List[BaseTool]:
+def _get_orchestrator_tools(skill_states: Dict[str, bool]) -> List[Any]:
     """Get orchestrator tools if orchestrator skill is enabled."""
     if not skill_states.get("orchestrator"):
         return []
@@ -358,7 +357,7 @@ def _get_orchestrator_tools(skill_states: Dict[str, bool]) -> List[BaseTool]:
     return ORCHESTRATOR_TOOLS
 
 
-def _get_notebooklm_tools(skill_states: Dict[str, bool]) -> List[BaseTool]:
+def _get_notebooklm_tools(skill_states: Dict[str, bool]) -> List[Any]:
     """Get NotebookLM tools if notebooklm skill is enabled."""
     if not skill_states.get("notebooklm"):
         return []
@@ -376,7 +375,7 @@ def _get_custom_mcp_tools() -> List[Any]:
         return []
 
 
-def _get_custom_mcp_self_service_tools() -> List[BaseTool]:
+def _get_custom_mcp_self_service_tools() -> List[Any]:
     """Get the LLM tools for managing custom MCP servers (always available)."""
     from services.custom_mcp_tools import CUSTOM_MCP_TOOLS
     return CUSTOM_MCP_TOOLS

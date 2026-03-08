@@ -3,22 +3,28 @@ MCP (Model Context Protocol) client for messaging integrations.
 
 Manages MCP server subprocesses for Apple Services.
 WhatsApp is now handled by the Baileys bridge (whatsapp_bridge_client.py).
-Uses langchain-mcp-adapters for seamless LangChain tool integration.
+Uses the mcp SDK directly for tool integration.
 """
 
 import os
+import json
 from typing import Optional, List, Any
+
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
+
+from services.mcp_tool_wrapper import MCPToolWrapper
 
 # MCP configuration — Apple Services (unified: Calendar, Reminders, Notes, Mail, Contacts, Maps, Messages)
 MCP_APPLE_ENABLED = os.getenv("MCP_APPLE_ENABLED", "false").lower() == "true"
 
 # Global client state — Apple Services (unified)
-_apple_mcp_client = None
 _apple_mcp_tools: List[Any] = []
 _apple_initialized = False
 _apple_last_error: Optional[str] = None
-_apple_session = None
-_apple_session_context = None
+_apple_session: Optional[ClientSession] = None
+_apple_stdio_context = None  # stdio_client context manager
+_apple_session_context = None  # ClientSession context manager
 
 
 # ============================================================================
@@ -73,8 +79,9 @@ async def initialize_apple_mcp() -> bool:
     Returns:
         True if initialization succeeded, False otherwise.
     """
-    global _apple_mcp_client, _apple_mcp_tools, _apple_initialized
-    global _apple_last_error, _apple_session, _apple_session_context
+    global _apple_mcp_tools, _apple_initialized
+    global _apple_last_error, _apple_session
+    global _apple_stdio_context, _apple_session_context
 
     if not MCP_APPLE_ENABLED:
         _apple_last_error = "Disabled via MCP_APPLE_ENABLED=false"
@@ -84,27 +91,37 @@ async def initialize_apple_mcp() -> bool:
         return True
 
     try:
-        from langchain_mcp_adapters.client import MultiServerMCPClient
-        from langchain_mcp_adapters.tools import load_mcp_tools
-
         # Use jxnl/apple-mcp fork with working calendar code (requires bun)
         bun_path = os.path.expanduser("~/.bun/bin/bun")
         apple_mcp_dir = os.path.expanduser("~/apple-mcp")
-        _apple_mcp_client = MultiServerMCPClient({
-            "apple": {
-                "command": bun_path,
-                "args": ["run", "index.ts"],
-                "transport": "stdio",
-                "cwd": apple_mcp_dir
-            }
-        })
 
-        # Open a persistent session
-        _apple_session_context = _apple_mcp_client.session("apple")
+        server_params = StdioServerParameters(
+            command=bun_path,
+            args=["run", "index.ts"],
+            cwd=apple_mcp_dir,
+        )
+
+        # Open stdio transport (stays alive for the session)
+        _apple_stdio_context = stdio_client(server_params)
+        read_stream, write_stream = await _apple_stdio_context.__aenter__()
+
+        # Create and initialize MCP session
+        _apple_session_context = ClientSession(read_stream, write_stream)
         _apple_session = await _apple_session_context.__aenter__()
+        await _apple_session.initialize()
 
-        # Load tools bound to persistent session
-        _apple_mcp_tools = await load_mcp_tools(_apple_session)
+        # List tools and wrap them
+        tools_result = await _apple_session.list_tools()
+        _apple_mcp_tools = [
+            MCPToolWrapper(
+                session=_apple_session,
+                name=t.name,
+                description=t.description or "",
+                input_schema=t.inputSchema if hasattr(t, 'inputSchema') else {},
+            )
+            for t in tools_result.tools
+        ]
+
         _apple_initialized = True
         _apple_last_error = None
 
@@ -115,24 +132,21 @@ async def initialize_apple_mcp() -> bool:
 
         return True
 
-    except ImportError:
-        _apple_last_error = "langchain-mcp-adapters not installed"
-        print("langchain-mcp-adapters not installed. Apple Services MCP disabled.")
-        return False
     except Exception as e:
         _apple_last_error = str(e)
         print(f"Failed to initialize Apple Services MCP client: {e}")
-        _apple_mcp_client = None
         _apple_session = None
+        _apple_stdio_context = None
         _apple_session_context = None
         return False
 
 
 async def shutdown_apple_mcp():
     """Shutdown the Apple Services MCP client and its persistent session."""
-    global _apple_mcp_client, _apple_mcp_tools, _apple_initialized
-    global _apple_session, _apple_session_context
+    global _apple_mcp_tools, _apple_initialized
+    global _apple_session, _apple_stdio_context, _apple_session_context
 
+    # Close session
     if _apple_session_context is not None:
         try:
             await _apple_session_context.__aexit__(None, None, None)
@@ -142,7 +156,15 @@ async def shutdown_apple_mcp():
             _apple_session = None
             _apple_session_context = None
 
-    _apple_mcp_client = None
+    # Close stdio transport
+    if _apple_stdio_context is not None:
+        try:
+            await _apple_stdio_context.__aexit__(None, None, None)
+        except Exception as e:
+            print(f"Error shutting down Apple Services MCP transport: {e}")
+        finally:
+            _apple_stdio_context = None
+
     _apple_mcp_tools = []
     _apple_initialized = False
 

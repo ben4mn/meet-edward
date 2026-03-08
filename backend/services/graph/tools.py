@@ -21,7 +21,7 @@ Search tools allow Edward to:
 """
 
 from typing import Any, Optional, List, Dict
-from langchain_core.tools import tool
+from services.graph.tool_decorator import tool
 from utils.message_signature import ensure_message_signature
 
 

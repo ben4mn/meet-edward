@@ -1,5 +1,5 @@
 """
-LangChain tools for WhatsApp Bridge integration.
+Tools for WhatsApp Bridge integration.
 
 These tools wrap the WhatsApp bridge REST API and are bound to the LLM
 when the whatsapp_mcp skill is enabled. They send/read as the user via
@@ -8,7 +8,7 @@ Baileys (not Twilio).
 
 import json
 
-from langchain_core.tools import tool
+from services.graph.tool_decorator import tool
 
 
 @tool
