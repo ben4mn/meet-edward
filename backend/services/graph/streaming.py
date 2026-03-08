@@ -632,16 +632,15 @@ async def stream_with_memory(
     system_prompt: str,
     model: str,
     temperature: float,
-    graph,
     attachments: Optional[List[dict]] = None,
 ) -> AsyncGenerator[str, None]:
-    """Stream a response while maintaining conversation memory via graph state.
+    """Stream a response while maintaining conversation memory.
 
     This is the legacy string-only generator. Use stream_with_memory_events for
     structured event streaming.
     """
     async for event in stream_with_memory_events(
-        message, conversation_id, system_prompt, model, temperature, graph,
+        message, conversation_id, system_prompt, model, temperature,
         attachments=attachments,
     ):
         # Only yield content events as strings (backwards compatibility)
@@ -655,23 +654,18 @@ async def stream_with_memory_events(
     system_prompt: str,
     model: str,
     temperature: float,
-    graph,
     attachments: Optional[List[dict]] = None,
 ) -> AsyncGenerator[Dict[str, Any], None]:
     """Stream a response with structured events while maintaining conversation memory."""
     from services.memory_service import retrieve_memories, extract_and_store_memories, Memory
     from services.graph.tools import set_current_conversation_id
+    from services.checkpoint_store import get_messages, save_messages
 
     # Set the conversation ID for code execution context
     set_current_conversation_id(conversation_id)
 
-    config = {"configurable": {"thread_id": conversation_id}}
-
-    # Get existing state for this conversation
-    existing = await graph.aget_state(config)
-
-    # Build message list from existing state or start fresh
-    messages = list(existing.values.get("messages", [])) if existing.values else []
+    # Load existing messages from checkpoint store
+    messages = await get_messages(conversation_id)
 
     # Use existing settings if available (allows mid-conversation setting changes)
     if existing.values:
@@ -992,36 +986,18 @@ async def stream_with_memory_events(
     from services.graph.tools import get_active_plan as _get_plan_for_save
     final_plan = _get_plan_for_save(conversation_id)
 
-    # Update graph state with the full conversation
-    await graph.aupdate_state(config, {
-        "messages": messages,
-        "conversation_id": conversation_id,
+    # Save conversation state to checkpoint store
+    await save_messages(conversation_id, messages, metadata={
         "system_prompt": system_prompt,
         "model": model,
         "temperature": temperature,
         "current_response": full_response,
-        "is_complete": True,
-        "retrieved_memories": [
-            {
-                "id": m.id,
-                "content": m.content,
-                "memory_type": m.memory_type,
-                "importance": m.importance,
-                "temporal_nature": m.temporal_nature,
-                "tier": getattr(m, 'tier', 'observation') or 'observation',
-                "reinforcement_count": getattr(m, 'reinforcement_count', 0) or 0,
-                "score": m.score
-            }
-            for m in retrieved_memories
-        ],
         "plan_steps": final_plan,
         "tool_calls": [
             {"name": tc["name"], "args": tc["args"]}
             for tc in tool_calls_made
         ] if tool_calls_made else [],
-        "current_node": "complete",
-        "node_history": ["preprocess", "retrieve_memory", "respond", "extract_memory"]
-    }, as_node="extract_memory")
+    })
 
     # ===== MEMORY EXTRACTION (with timeout to guarantee done event) =====
     try:
@@ -1068,7 +1044,6 @@ async def chat_with_memory(
     system_prompt: str,
     model: str,
     temperature: float,
-    graph,
     attachments: Optional[List[dict]] = None,
     skip_memory: bool = False,
     is_worker: bool = False,
@@ -1080,20 +1055,10 @@ async def chat_with_memory(
         is_worker: Use worker-filtered tools (no evolution/orchestrator tools)
     """
     from services.memory_service import retrieve_memories, extract_and_store_memories, Memory
+    from services.checkpoint_store import get_messages, save_messages
 
-    config = {"configurable": {"thread_id": conversation_id}}
-
-    # Get existing state for this conversation
-    existing = await graph.aget_state(config)
-
-    # Build message list from existing state or start fresh
-    messages = list(existing.values.get("messages", [])) if existing.values else []
-
-    # Use existing settings if available
-    if existing.values:
-        system_prompt = existing.values.get("system_prompt", system_prompt)
-        model = existing.values.get("model", model)
-        temperature = existing.values.get("temperature", temperature)
+    # Load existing messages from checkpoint store
+    messages = await get_messages(conversation_id)
 
     # Add the new user message (with attachments if present)
     messages.append(_build_human_message(message, attachments))
@@ -1328,36 +1293,18 @@ async def chat_with_memory(
     from services.graph.tools import get_active_plan as _get_plan_for_save_sync
     final_plan_sync = _get_plan_for_save_sync(conversation_id)
 
-    # Update graph state
-    await graph.aupdate_state(config, {
-        "messages": messages,
-        "conversation_id": conversation_id,
+    # Save conversation state to checkpoint store
+    await save_messages(conversation_id, messages, metadata={
         "system_prompt": system_prompt,
         "model": model,
         "temperature": temperature,
         "current_response": full_response,
-        "is_complete": True,
-        "retrieved_memories": [
-            {
-                "id": m.id,
-                "content": m.content,
-                "memory_type": m.memory_type,
-                "importance": m.importance,
-                "temporal_nature": m.temporal_nature,
-                "tier": getattr(m, 'tier', 'observation') or 'observation',
-                "reinforcement_count": getattr(m, 'reinforcement_count', 0) or 0,
-                "score": m.score
-            }
-            for m in retrieved_memories
-        ],
         "plan_steps": final_plan_sync,
         "tool_calls": [
             {"name": tc["name"], "args": tc["args"]}
             for tc in tool_calls_made
         ] if tool_calls_made else [],
-        "current_node": "complete",
-        "node_history": ["preprocess", "retrieve_memory", "respond", "extract_memory"]
-    }, as_node="extract_memory")
+    })
 
     # ===== MEMORY EXTRACTION =====
     try:

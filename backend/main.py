@@ -9,13 +9,13 @@ from contextlib import asynccontextmanager
 
 from routers import chat, settings, debug, memories, conversations, webhooks, skills, events, auth, push, documents, files, widget, databases, heartbeat, custom_mcp, consolidation, evolution, orchestrator
 from services.database import init_db, DATABASE_URL
-from services.graph import initialize_graph
+from services.graph import initialize_checkpoint_store
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     await init_db()
-    await initialize_graph(DATABASE_URL)
+    await initialize_checkpoint_store(DATABASE_URL)
 
     # Ensure file storage directory exists
     from services.file_storage_service import ensure_storage_dir
@@ -142,6 +142,12 @@ async def lifespan(app: FastAPI):
         await shutdown_apple_mcp()
     except Exception as e:
         print(f"MCP shutdown error: {e}")
+
+    try:
+        from services.graph import shutdown_legacy_graph
+        await shutdown_legacy_graph()
+    except Exception as e:
+        print(f"Legacy graph shutdown error: {e}")
 
 
 app = FastAPI(

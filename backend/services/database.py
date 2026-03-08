@@ -478,6 +478,16 @@ class OrchestratorConfigModel(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
+class ConversationMessagesModel(Base):
+    """Simple message checkpoint store replacing LangGraph."""
+    __tablename__ = "conversation_messages"
+
+    conversation_id = Column(String, primary_key=True)
+    messages = Column(Text, nullable=False, default="[]")  # JSONB via PostgreSQL
+    metadata_ = Column("metadata", Text, nullable=True)  # Settings snapshot
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
 async def init_db():
     """Initialize the database tables."""
     async with engine.begin() as conn:

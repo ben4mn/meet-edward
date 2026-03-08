@@ -13,9 +13,7 @@ import uuid
 from typing import List, Optional
 from datetime import datetime, timedelta
 
-from langchain_anthropic import ChatAnthropic
-from langchain_core.messages import HumanMessage, SystemMessage
-
+from services.llm_client import haiku_call
 from services.database import async_session, MemoryEnrichmentModel
 from services.memory_service import retrieve_memories, Memory
 
@@ -71,23 +69,16 @@ async def generate_reflection_queries(messages: list, model: str = "claude-haiku
     if not conversation_text.strip():
         return []
 
-    llm = ChatAnthropic(model=model, temperature=0, max_tokens=512)
-
     try:
-        response = await asyncio.wait_for(
-            llm.ainvoke([
-                SystemMessage(content=REFLECTION_QUERY_INSTRUCTIONS, additional_kwargs={"cache_control": {"type": "ephemeral"}}),
-                HumanMessage(content=f"Conversation (last 10 messages):\n{conversation_text}"),
-            ]),
+        response_text = await asyncio.wait_for(
+            haiku_call(
+                system=REFLECTION_QUERY_INSTRUCTIONS,
+                message=f"Conversation (last 10 messages):\n{conversation_text}",
+                max_tokens=512,
+                model=model,
+            ),
             timeout=5.0,
         )
-
-        response_text = response.content
-        if isinstance(response_text, list):
-            response_text = " ".join(
-                block.get("text", "") if isinstance(block, dict) else str(block)
-                for block in response_text
-            )
         response_text = response_text.strip()
 
         # Extract JSON array

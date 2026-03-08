@@ -17,9 +17,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from sqlalchemy import select, text, func, update
-from langchain_anthropic import ChatAnthropic
-from langchain_core.messages import HumanMessage, SystemMessage
-
+from services.llm_client import haiku_call
 from services.database import async_session, MemoryModel
 
 # Lazy load the embedding model to avoid loading at import time
@@ -319,14 +317,12 @@ MERGE_INSTRUCTION = "Merge these two related memories into one clear, concise me
 
 async def _llm_merge_content(content_a: str, content_b: str, model: str = "claude-haiku-4-5-20251001") -> str:
     """Use Haiku to merge two memory contents into one clean version."""
-    llm = ChatAnthropic(model=model, temperature=0, max_tokens=256)
-    response = await llm.ainvoke([
-        SystemMessage(content=MERGE_INSTRUCTION, additional_kwargs={"cache_control": {"type": "ephemeral"}}),
-        HumanMessage(content=f"Memory A: {content_a}\nMemory B: {content_b}"),
-    ])
-    text = response.content
-    if isinstance(text, list):
-        text = " ".join(block.get("text", "") if isinstance(block, dict) else str(block) for block in text)
+    text = await haiku_call(
+        system=MERGE_INSTRUCTION,
+        message=f"Memory A: {content_a}\nMemory B: {content_b}",
+        max_tokens=256,
+        model=model,
+    )
     return text.strip()
 
 
@@ -522,28 +518,19 @@ async def extract_and_store_memories(
     print(f"Memory extraction: existing memories text: {existing_text[:100]}")
 
     # Call LLM to extract memories
-    llm = ChatAnthropic(model=model, temperature=0, max_tokens=2048)
-
     dynamic_content = f"Conversation:\n{conversation_text}\n\nExisting memories (don't duplicate these):\n{existing_text}"
 
     print(f"Memory extraction: prompt ready ({len(dynamic_content)} chars)")
 
     try:
         print(f"Memory extraction: calling LLM with {len(messages)} messages")
-        response = await llm.ainvoke([
-            SystemMessage(content=MEMORY_EXTRACTION_INSTRUCTIONS, additional_kwargs={"cache_control": {"type": "ephemeral"}}),
-            HumanMessage(content=dynamic_content),
-        ])
+        response_text = await haiku_call(
+            system=MEMORY_EXTRACTION_INSTRUCTIONS,
+            message=dynamic_content,
+            max_tokens=2048,
+            model=model,
+        )
         print(f"Memory extraction: got LLM response")
-
-        # Handle both string and list content (Claude sometimes returns list of content blocks)
-        if isinstance(response.content, list):
-            response_text = " ".join(
-                block.get("text", "") if isinstance(block, dict) else str(block)
-                for block in response.content
-            )
-        else:
-            response_text = response.content
 
         response_text = response_text.strip()
         print(f"Memory extraction raw response: {response_text[:500]}")
@@ -1104,8 +1091,6 @@ async def resolve_memory_conflict(
     Returns:
         ConflictResolution with action and optional merged content
     """
-    llm = ChatAnthropic(model=model, temperature=0, max_tokens=512)
-
     dynamic_data = f"""EXISTING MEMORY:
 - Content: {existing.content}
 - Type: {existing.memory_type}
@@ -1119,17 +1104,12 @@ NEW MEMORY:
 Similarity score: {similarity:.2f}"""
 
     try:
-        response = await llm.ainvoke([
-            SystemMessage(content=CONFLICT_RESOLUTION_INSTRUCTIONS, additional_kwargs={"cache_control": {"type": "ephemeral"}}),
-            HumanMessage(content=dynamic_data),
-        ])
-
-        response_text = response.content
-        if isinstance(response_text, list):
-            response_text = " ".join(
-                block.get("text", "") if isinstance(block, dict) else str(block)
-                for block in response_text
-            )
+        response_text = await haiku_call(
+            system=CONFLICT_RESOLUTION_INSTRUCTIONS,
+            message=dynamic_data,
+            max_tokens=512,
+            model=model,
+        )
         response_text = response_text.strip()
 
         # Extract JSON
@@ -1185,7 +1165,6 @@ async def backfill_temporal_nature(
     Returns:
         Summary dict with counts of each classification.
     """
-    llm = ChatAnthropic(model=model, temperature=0, max_tokens=2048)
     summary = {"total": 0, "timeless": 0, "temporary": 0, "evolving": 0, "errors": 0}
 
     async with async_session() as session:
@@ -1212,16 +1191,12 @@ async def backfill_temporal_nature(
             memories_json = json.dumps(memories_for_prompt, indent=2)
 
             try:
-                response = await llm.ainvoke([
-                    SystemMessage(content=BACKFILL_INSTRUCTIONS, additional_kwargs={"cache_control": {"type": "ephemeral"}}),
-                    HumanMessage(content=f"Memories:\n{memories_json}"),
-                ])
-                response_text = response.content
-                if isinstance(response_text, list):
-                    response_text = " ".join(
-                        block.get("text", "") if isinstance(block, dict) else str(block)
-                        for block in response_text
-                    )
+                response_text = await haiku_call(
+                    system=BACKFILL_INSTRUCTIONS,
+                    message=f"Memories:\n{memories_json}",
+                    max_tokens=2048,
+                    model=model,
+                )
                 response_text = response_text.strip()
 
                 # Extract JSON
@@ -1432,23 +1407,16 @@ async def _process_merge_groups(
     absorbed: set,
 ) -> None:
     """Process a batch of merge groups via Haiku."""
-    llm = ChatAnthropic(model=model, temperature=0, max_tokens=4096)
-
     groups_json = json.dumps(groups, indent=2)
 
     try:
-        response = await llm.ainvoke([
-            SystemMessage(content=DEDUP_CLASSIFY_INSTRUCTIONS, additional_kwargs={"cache_control": {"type": "ephemeral"}}),
-            HumanMessage(content=f"Memory groups:\n{groups_json}"),
-        ])
+        response_text = await haiku_call(
+            system=DEDUP_CLASSIFY_INSTRUCTIONS,
+            message=f"Memory groups:\n{groups_json}",
+            max_tokens=4096,
+            model=model,
+        )
         summary["haiku_calls"] += 1
-
-        response_text = response.content
-        if isinstance(response_text, list):
-            response_text = " ".join(
-                block.get("text", "") if isinstance(block, dict) else str(block)
-                for block in response_text
-            )
         response_text = response_text.strip()
 
         # Extract JSON

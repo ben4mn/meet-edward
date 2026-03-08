@@ -18,7 +18,7 @@ import uuid
 from services.twilio_service import (
     validate_webhook_signature, send_sms, send_whatsapp, is_configured
 )
-from services.graph import get_graph, chat_with_memory
+from services.graph import chat_with_memory
 from services.settings_service import get_settings
 from services.conversation_service import create_conversation
 
@@ -196,7 +196,6 @@ async def process_inbound_and_respond(
 
     try:
         settings = await get_settings()
-        graph = await get_graph()
 
         channel_name = "WhatsApp" if channel == "whatsapp" else "SMS"
         msg_context = (
@@ -212,7 +211,6 @@ async def process_inbound_and_respond(
             system_prompt=enhanced_prompt,
             model=settings.model,
             temperature=settings.temperature,
-            graph=graph
         )
 
         # Truncate if too long

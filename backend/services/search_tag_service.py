@@ -3,9 +3,7 @@
 import asyncio
 from typing import List, Dict
 
-from langchain_anthropic import ChatAnthropic
-from langchain_core.messages import SystemMessage, HumanMessage
-
+from services.llm_client import haiku_call
 from services.conversation_service import update_search_tags
 
 
@@ -29,12 +27,6 @@ async def generate_search_tags(conversation_id: str, messages: List[Dict[str, st
     if not conversation_text.strip():
         return
 
-    llm = ChatAnthropic(
-        model="claude-haiku-4-5-20251001",
-        temperature=0,
-        max_tokens=150,
-    )
-
     system = (
         "Generate 5-10 comma-separated search keywords for this conversation. "
         "Include: topics discussed, entities mentioned (people, places, products), "
@@ -42,12 +34,8 @@ async def generate_search_tags(conversation_id: str, messages: List[Dict[str, st
         "Output ONLY the comma-separated keywords, nothing else."
     )
 
-    response = await llm.ainvoke([
-        SystemMessage(content=system, additional_kwargs={"cache_control": {"type": "ephemeral"}}),
-        HumanMessage(content=conversation_text),
-    ])
-
-    tags = response.content.strip() if isinstance(response.content, str) else str(response.content).strip()
+    tags = await haiku_call(system=system, message=conversation_text, max_tokens=150)
+    tags = tags.strip()
 
     if tags:
         await update_search_tags(conversation_id, tags)

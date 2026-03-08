@@ -14,8 +14,6 @@ from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
-from langchain_anthropic import ChatAnthropic
-from langchain_core.messages import HumanMessage, SystemMessage
 from sqlalchemy import select, update, func
 
 from services.database import (
@@ -450,33 +448,14 @@ async def _haiku_classify(
 
     dynamic_data = f"{contact_context or 'No contact context available.'}\n\nEvents to classify:\n{events_digest}"
 
-    llm = ChatAnthropic(
-        model="claude-haiku-4-5-20251001",
-        temperature=0,
-        max_tokens=1024,
-    )
+    from services.llm_client import haiku_call_with_usage
 
     try:
-        response = await llm.ainvoke([
-            SystemMessage(content=TRIAGE_INSTRUCTIONS, additional_kwargs={"cache_control": {"type": "ephemeral"}}),
-            HumanMessage(content=dynamic_data),
-        ])
-
-        # Extract token usage
-        input_tokens = 0
-        output_tokens = 0
-        if hasattr(response, "response_metadata"):
-            usage = response.response_metadata.get("usage", {})
-            input_tokens = usage.get("input_tokens", 0)
-            output_tokens = usage.get("output_tokens", 0)
-
-        # Parse response
-        response_text = response.content
-        if isinstance(response_text, list):
-            response_text = " ".join(
-                block.get("text", "") if isinstance(block, dict) else str(block)
-                for block in response_text
-            )
+        response_text, input_tokens, output_tokens = await haiku_call_with_usage(
+            system=TRIAGE_INSTRUCTIONS,
+            message=dynamic_data,
+            max_tokens=1024,
+        )
         response_text = response_text.strip()
 
         # Extract JSON
@@ -649,13 +628,12 @@ async def _execute_classification(
 
         # Run chat_with_memory — failure here should NOT block push notification
         try:
-            from services.graph import get_graph, chat_with_memory
+            from services.graph import chat_with_memory
             from services.graph.tools import set_current_conversation_id
             from services.settings_service import get_settings
             from services.imessage_service import _recent_edward_sends
 
             settings = await get_settings()
-            graph = await get_graph()
 
             # Build trigger with optional thread context
             thread_block = f"\n{thread_context}\n" if thread_context else ""
@@ -716,7 +694,6 @@ async def _execute_classification(
                 system_prompt=HEARTBEAT_MIND_PROMPT + settings.system_prompt,
                 model=settings.model,
                 temperature=settings.temperature,
-                graph=graph,
             )
 
             # Register/extend listening window if Edward sent an iMessage

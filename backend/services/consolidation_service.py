@@ -82,8 +82,7 @@ async def _consolidation_loop() -> None:
 
 async def _run_consolidation_cycle() -> None:
     """Run a single consolidation cycle: cluster, connect, flag."""
-    from langchain_anthropic import ChatAnthropic
-    from langchain_core.messages import SystemMessage, HumanMessage
+    from services.llm_client import haiku_call
 
     start_time = time.monotonic()
     haiku_calls = 0
@@ -129,8 +128,6 @@ async def _run_consolidation_cycle() -> None:
     print(f"Consolidation: reviewing {len(memories)} memories")
 
     # 4. Send to Haiku for entity grouping
-    llm = ChatAnthropic(model="claude-haiku-4-5-20251001", temperature=0, max_tokens=4096)
-
     memory_list = []
     for m in memories:
         memory_list.append({
@@ -154,12 +151,12 @@ Return ONLY valid JSON with this structure:
 }"""
 
     try:
-        cluster_response = await llm.ainvoke([
-            SystemMessage(content=cluster_instructions, additional_kwargs={"cache_control": {"type": "ephemeral"}}),
-            HumanMessage(content=f"Memories:\n{json.dumps(memory_list, indent=2)}"),
-        ])
+        cluster_text = await haiku_call(
+            system=cluster_instructions,
+            message=f"Memories:\n{json.dumps(memory_list, indent=2)}",
+            max_tokens=4096,
+        )
         haiku_calls += 1
-        cluster_text = cluster_response.content
         # Extract JSON from response (handle markdown code blocks)
         if "```" in cluster_text:
             cluster_text = cluster_text.split("```")[1]
@@ -210,12 +207,12 @@ Return ONLY valid JSON:
 If no contradictions found, return {"contradictions": []}"""
 
         try:
-            contradiction_response = await llm.ainvoke([
-                SystemMessage(content=contradiction_instructions, additional_kwargs={"cache_control": {"type": "ephemeral"}}),
-                HumanMessage(content=f"Memories:\n{json.dumps(cluster_memories, indent=2)}"),
-            ])
+            contradiction_text = await haiku_call(
+                system=contradiction_instructions,
+                message=f"Memories:\n{json.dumps(cluster_memories, indent=2)}",
+                max_tokens=4096,
+            )
             haiku_calls += 1
-            contradiction_text = contradiction_response.content
             if "```" in contradiction_text:
                 contradiction_text = contradiction_text.split("```")[1]
                 if contradiction_text.startswith("json"):

@@ -293,13 +293,12 @@ async def _run_worker_chat(
     context_data: Optional[str],
 ) -> str:
     """Execute the worker's chat_with_memory call."""
-    from services.graph import get_graph, chat_with_memory
+    from services.graph import chat_with_memory
     from services.graph.tools import set_current_conversation_id
     from services.settings_service import get_settings
     from services.conversation_service import create_conversation
 
     settings = await get_settings()
-    graph = await get_graph()
 
     # Create worker conversation
     conversation_id = str(uuid.uuid4())
@@ -325,7 +324,6 @@ async def _run_worker_chat(
         system_prompt=system_prompt,
         model=model,
         temperature=settings.temperature,
-        graph=graph,
         skip_memory=skip_memory,
         is_worker=True,
     )
@@ -473,12 +471,11 @@ async def send_message_to_worker(task_id: str, message: str) -> dict:
     if not task.get("worker_conversation_id"):
         return {"error": "Worker has no conversation ID."}
 
-    from services.graph import get_graph, chat_with_memory
+    from services.graph import chat_with_memory
     from services.graph.tools import set_current_conversation_id
     from services.settings_service import get_settings
 
     settings = await get_settings()
-    graph = await get_graph()
 
     conversation_id = task["worker_conversation_id"]
     set_current_conversation_id(conversation_id)
@@ -489,7 +486,6 @@ async def send_message_to_worker(task_id: str, message: str) -> dict:
         system_prompt=settings.system_prompt,
         model=task.get("model", settings.model),
         temperature=settings.temperature,
-        graph=graph,
         skip_memory=True,
         is_worker=True,
     )
