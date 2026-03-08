@@ -8,10 +8,9 @@ python-dotenv>=1.0.1
 pydantic>=2.10.0
 pydantic-settings>=2.6.1
 sse-starlette>=2.0.0
-langgraph>=0.2.60
-langgraph-checkpoint-postgres>=2.0.11
-langchain-core>=0.3.36,<0.4.0
-langchain-anthropic>=0.3.5
+# LangGraph/LangChain removed in Plan 009 — direct anthropic SDK
+# Legacy LangGraph deps kept as optional for reading old conversations
+# pip install langgraph langgraph-checkpoint-postgres langchain-core langchain-anthropic
 langsmith>=0.1.0
 pgvector>=0.2.0
 sentence-transformers>=2.2.0
@@ -21,7 +20,7 @@ phonenumbers>=8.13.0
 python-multipart>=0.0.6
 # MCP integration (mcp 1.26+ fixes pydantic schema issue)
 mcp>=1.26.0
-langchain-mcp-adapters>=0.1.14,<0.2.0
+# langchain-mcp-adapters removed in Plan 009 — direct mcp SDK
 # Web search
 httpx>=0.25.0
 trafilatura>=1.6.0

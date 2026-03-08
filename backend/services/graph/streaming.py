@@ -1,14 +1,16 @@
 import asyncio
+import copy
 import hashlib
 import json as _json
 import re
 import sys
 from datetime import datetime
 from typing import AsyncGenerator, List, Any, Dict, Optional
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
-from langchain_anthropic import ChatAnthropic
 
-from services.tool_registry import get_available_tools, get_tool_descriptions
+import anthropic
+
+from services.tool_registry import get_available_tools, get_tool_descriptions, get_tools_by_categories, get_routing_categories_prompt
+from services.graph.tool_schema import tools_to_anthropic_schemas
 
 # Context budget constants
 MAX_NORMAL_MEMORIES = 5
@@ -22,21 +24,23 @@ _EFFORT_MODELS = {"claude-sonnet-4-6", "claude-opus-4-6"}
 # Check if the installed Anthropic SDK accepts the effort parameter
 _EFFORT_SUPPORTED = False
 try:
-    import anthropic as _anthropic
     import inspect as _inspect
     _EFFORT_SUPPORTED = "effort" in _inspect.signature(
-        _anthropic.resources.messages.Messages.create
+        anthropic.resources.messages.Messages.create
     ).parameters
 except Exception:
     pass
 
+# Singleton Anthropic client (shared with llm_client.py via same env key)
+_client: Optional[anthropic.AsyncAnthropic] = None
 
-def _build_llm(model: str, temperature: float, max_tokens: int = 16384) -> ChatAnthropic:
-    """Build a ChatAnthropic instance, adding effort parameter for supported 4.6 models."""
-    kwargs = {"model": model, "temperature": temperature, "max_tokens": max_tokens}
-    if _EFFORT_SUPPORTED and model in _EFFORT_MODELS:
-        kwargs["model_kwargs"] = {"effort": "high"}
-    return ChatAnthropic(**kwargs)
+
+def _get_client() -> anthropic.AsyncAnthropic:
+    """Get or create the singleton Anthropic client."""
+    global _client
+    if _client is None:
+        _client = anthropic.AsyncAnthropic()
+    return _client
 
 
 # Assumption awareness instructions - helps the agent recognize when it's making
@@ -528,10 +532,10 @@ def build_memory_context(
     return "\n".join(context_parts)
 
 
-def _build_human_message(message: str, attachments: Optional[List[dict]] = None) -> HumanMessage:
-    """Build a HumanMessage, optionally with multi-block content for attachments."""
+def _build_human_message(message: str, attachments: Optional[List[dict]] = None) -> dict:
+    """Build a user message dict, optionally with multi-block content for attachments."""
     if not attachments:
-        return HumanMessage(content=message)
+        return {"role": "user", "content": message}
 
     content_blocks = []
 
@@ -540,8 +544,6 @@ def _build_human_message(message: str, attachments: Optional[List[dict]] = None)
         content_blocks.append({"type": "text", "text": message})
 
     # Add attachment blocks
-    attachment_metadata = []
-
     for att in attachments:
         mime_type = att.get("mime_type", "")
         data = att.get("data", "")  # base64 encoded
@@ -564,13 +566,6 @@ def _build_human_message(message: str, attachments: Optional[List[dict]] = None)
                 }
             }
             content_blocks.append(block)
-            # Track metadata separately (not sent to API)
-            attachment_metadata.append({
-                "block_index": len(content_blocks) - 1,
-                "file_id": att.get("file_id"),
-                "filename": att.get("filename"),
-                "mime_type": mime_type,
-            })
         elif mime_type == "application/pdf":
             # Add text block so LLM sees the filename and file_id
             filename = att.get("filename", "document.pdf")
@@ -589,12 +584,6 @@ def _build_human_message(message: str, attachments: Optional[List[dict]] = None)
                 }
             }
             content_blocks.append(block)
-            attachment_metadata.append({
-                "block_index": len(content_blocks) - 1,
-                "file_id": att.get("file_id"),
-                "filename": att.get("filename"),
-                "mime_type": mime_type,
-            })
         else:
             # For text-based files, include as text content
             try:
@@ -620,10 +609,209 @@ def _build_human_message(message: str, attachments: Optional[List[dict]] = None)
     if not content_blocks:
         content_blocks.append({"type": "text", "text": "[File uploaded]"})
 
-    return HumanMessage(
-        content=content_blocks,
-        additional_kwargs={"attachments": attachment_metadata} if attachment_metadata else {},
+    return {"role": "user", "content": content_blocks}
+
+
+def _add_cache_breakpoints(messages: list) -> list:
+    """Add cache_control breakpoints to message list for Anthropic prompt caching.
+
+    Creates a deep copy with cache_control on the second-to-last user message's
+    last content block. Does NOT mutate the stored messages.
+    """
+    if len(messages) < 2:
+        return messages
+
+    # Find the second-to-last message (cache breakpoint)
+    cached_messages = copy.deepcopy(messages)
+    target = cached_messages[-2]
+    content = target.get("content")
+
+    if isinstance(content, str):
+        # Convert to block format to add cache_control
+        target["content"] = [
+            {"type": "text", "text": content, "cache_control": {"type": "ephemeral"}}
+        ]
+    elif isinstance(content, list) and content:
+        # Add cache_control to the last block
+        content[-1] = {**content[-1], "cache_control": {"type": "ephemeral"}}
+
+    return cached_messages
+
+
+def _extract_text_from_response(response) -> str:
+    """Extract text content from an Anthropic API response."""
+    parts = []
+    for block in response.content:
+        if block.type == "text":
+            parts.append(block.text)
+    return "".join(parts)
+
+
+def _extract_tool_calls(response) -> list[dict]:
+    """Extract tool calls from an Anthropic API response.
+
+    Returns list of dicts with keys: id, name, args
+    """
+    tool_calls = []
+    for block in response.content:
+        if block.type == "tool_use":
+            tool_calls.append({
+                "id": block.id,
+                "name": block.name,
+                "args": block.input,
+            })
+    return tool_calls
+
+
+def _response_to_assistant_message(response) -> dict:
+    """Convert an Anthropic API response to an assistant message dict."""
+    content_blocks = []
+    for block in response.content:
+        if block.type == "text":
+            content_blocks.append({"type": "text", "text": block.text})
+        elif block.type == "tool_use":
+            content_blocks.append({
+                "type": "tool_use",
+                "id": block.id,
+                "name": block.name,
+                "input": block.input,
+            })
+    return {"role": "assistant", "content": content_blocks}
+
+
+def _make_tool_result_message(tool_call_id: str, content: str) -> dict:
+    """Create a tool_result message in Anthropic's format."""
+    return {
+        "role": "user",
+        "content": [
+            {
+                "type": "tool_result",
+                "tool_use_id": tool_call_id,
+                "content": content,
+            }
+        ],
+    }
+
+
+def _msg_role(m) -> str:
+    """Get the role from a message dict."""
+    return m.get("role", "")
+
+
+def _msg_content_text(m) -> str:
+    """Extract text content from a message dict, handling both str and list content."""
+    content = m.get("content", "")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for block in content:
+            if isinstance(block, dict):
+                if block.get("type") == "text":
+                    parts.append(block.get("text", ""))
+            else:
+                parts.append(str(block))
+        return "".join(parts)
+    return str(content)
+
+
+def _build_api_kwargs(
+    model: str,
+    static_system: str,
+    dynamic_context: str,
+    messages: list,
+    tool_schemas: list,
+    temperature: float,
+    max_tokens: int = 16384,
+) -> dict:
+    """Build kwargs dict for client.messages.create()."""
+    # System blocks: static (cached) + dynamic
+    system_blocks = [
+        {"type": "text", "text": static_system, "cache_control": {"type": "ephemeral"}},
+        {"type": "text", "text": dynamic_context},
+    ]
+
+    # Add cache breakpoints to messages (deep copy)
+    cached_messages = _add_cache_breakpoints(messages)
+
+    kwargs = {
+        "model": model,
+        "system": system_blocks,
+        "messages": cached_messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }
+
+    if tool_schemas:
+        kwargs["tools"] = tool_schemas
+
+    # Effort parameter for Claude 4.6+ models
+    if _EFFORT_SUPPORTED and model in _EFFORT_MODELS:
+        kwargs["effort"] = "high"
+
+    return kwargs
+
+
+# Self-routing prompt template
+_ROUTING_SYSTEM = "You classify user messages to select which tool categories are needed. Respond with ONLY a JSON array of category names."
+
+_ROUTING_PROMPT_TEMPLATE = """Which tool categories are needed for this message? Pick from:
+{categories}
+
+Rules:
+- Return ONLY a JSON array of category name strings, e.g. ["web_search", "messaging"]
+- If the message is casual conversation (greeting, chitchat, simple Q&A), return []
+- If unsure, include the category — better to over-include than miss
+- Always-on categories (memory, documents, file_storage, planning, custom_mcp) are included automatically — do NOT list them
+
+Message: {message}"""
+
+
+async def _route_tools(message: str, recent_messages: list = None) -> set:
+    """Use Haiku to classify which tool categories are needed.
+
+    Returns a set of category names. Falls back to {"all"} on error.
+    Cost: ~$0.0002/call, ~200ms latency.
+    """
+    from services.llm_client import haiku_call
+
+    categories_text = get_routing_categories_prompt()
+    prompt = _ROUTING_PROMPT_TEMPLATE.format(
+        categories=categories_text,
+        message=message[:500],  # Truncate long messages
     )
+
+    try:
+        response = await asyncio.wait_for(
+            haiku_call(
+                system=_ROUTING_SYSTEM,
+                message=prompt,
+                max_tokens=150,
+                temperature=0,
+            ),
+            timeout=3.0,
+        )
+        response = response.strip()
+
+        # Extract JSON array
+        json_match = re.search(r'\[[\s\S]*?\]', response)
+        if json_match:
+            categories = _json.loads(json_match.group())
+            if isinstance(categories, list):
+                result = {c for c in categories if isinstance(c, str) and c.strip()}
+                print(f"[ROUTING] Message: {message[:60]}... → categories: {result or '{}'} (chat-only)")
+                return result
+
+        # Empty response = chat-only (no special tools needed)
+        print(f"[ROUTING] Message: {message[:60]}... → categories: {{}} (chat-only)")
+        return set()
+
+    except asyncio.TimeoutError:
+        print("[ROUTING] Timed out (3s), falling back to all tools")
+        return {"all"}
+    except Exception as e:
+        print(f"[ROUTING] Failed: {e}, falling back to all tools")
+        return {"all"}
 
 
 async def stream_with_memory(
@@ -667,12 +855,6 @@ async def stream_with_memory_events(
     # Load existing messages from checkpoint store
     messages = await get_messages(conversation_id)
 
-    # Use existing settings if available (allows mid-conversation setting changes)
-    if existing.values:
-        system_prompt = existing.values.get("system_prompt", system_prompt)
-        model = existing.values.get("model", model)
-        temperature = existing.values.get("temperature", temperature)
-
     # Add the new user message (with attachments if present)
     messages.append(_build_human_message(message, attachments))
 
@@ -684,16 +866,17 @@ async def stream_with_memory_events(
         message="Searching memory..."
     )
 
-    turn_count = sum(1 for m in messages if isinstance(m, HumanMessage))
+    turn_count = sum(1 for m in messages if _msg_role(m) == "user")
     retrieved_memories: List[Memory] = []
     try:
         from services.deep_retrieval_service import should_deep_retrieve, deep_retrieve_memories
         if await should_deep_retrieve(message, conversation_id, turn_count):
             # Format recent messages for Haiku query generation
             recent_msgs = [
-                {"role": "human" if isinstance(m, HumanMessage) else "assistant", "content": m.content}
+                {"role": "human" if _msg_role(m) == "user" else "assistant",
+                 "content": _msg_content_text(m)}
                 for m in messages[-5:]
-                if isinstance(m, (HumanMessage, AIMessage))
+                if _msg_role(m) in ("user", "assistant")
             ]
             try:
                 retrieved_memories = await asyncio.wait_for(
@@ -747,9 +930,10 @@ async def stream_with_memory_events(
     except Exception as e:
         print(f"Heartbeat briefing failed: {e}")
 
-    # ===== DYNAMIC TOOL BINDING =====
-    # Get tools based on enabled skills
-    tools = await get_available_tools()
+    # ===== SELF-ROUTING TOOL SELECTION =====
+    # Haiku classifies the message to select relevant tool categories
+    selected_categories = await _route_tools(message)
+    tools = await get_tools_by_categories(selected_categories)
 
     # Build enhanced system prompt with memories, tool descriptions, and current time
     memory_context = build_memory_context(
@@ -767,10 +951,10 @@ async def stream_with_memory_events(
     )
     dynamic_context = memory_context + briefing_context + time_context
 
-    # Create LLM with dynamic tool binding
-    llm = _build_llm(model, temperature)
-    llm_with_tools = llm.bind_tools(tools) if tools else llm
+    # Build tool schemas for Anthropic API
+    tool_schemas = tools_to_anthropic_schemas(tools) if tools else []
 
+    client = _get_client()
     full_response = ""
     tool_calls_made = []
     needs_streaming = True
@@ -779,13 +963,6 @@ async def stream_with_memory_events(
     _failure_tracker: Dict[str, int] = {}
     # Track consecutive iterations where ALL tool calls fail
     consecutive_error_iterations = 0
-
-    # Cache conversation history prefix (second-to-last message is breakpoint)
-    if len(messages) > 1:
-        prev_msg = messages[-2]
-        if not prev_msg.additional_kwargs:
-            prev_msg.additional_kwargs = {}
-        prev_msg.additional_kwargs["cache_control"] = {"type": "ephemeral"}
 
     # Tool call loop - default 30 rounds, scales up to 100 when a plan is active
     max_tool_iterations = 30
@@ -798,20 +975,23 @@ async def stream_with_memory_events(
         if iteration > 1:
             yield create_event(EventType.THINKING, conversation_id, content="Thinking...")
 
-        # Get response (may include tool calls)
-        full_messages = [
-            SystemMessage(content=static_system, additional_kwargs={"cache_control": {"type": "ephemeral"}}),
-            SystemMessage(content=dynamic_context),
-        ] + messages
-        response = await llm_with_tools.ainvoke(full_messages)
+        # Build API kwargs and call Anthropic
+        api_kwargs = _build_api_kwargs(
+            model, static_system, dynamic_context, messages,
+            tool_schemas, temperature,
+        )
+        response = await client.messages.create(**api_kwargs)
+
+        # Extract tool calls from response
+        response_tool_calls = _extract_tool_calls(response)
 
         # Check if there are tool calls
-        if hasattr(response, 'tool_calls') and response.tool_calls:
-            # Add the assistant message with tool calls
-            messages.append(response)
+        if response_tool_calls:
+            # Add the assistant message (with tool_use blocks)
+            messages.append(_response_to_assistant_message(response))
 
             # Execute each tool call with event streaming
-            for tool_call in response.tool_calls:
+            for tool_call in response_tool_calls:
                 tool_calls_made.append(tool_call)
 
                 # Circuit breaker: block repeated identical failures
@@ -822,7 +1002,7 @@ async def stream_with_memory_events(
                     # Emit events so the UI shows the blocked call instead of going silent
                     yield create_event(EventType.TOOL_START, conversation_id, tool_name=tool_call['name'])
                     yield create_event(EventType.TOOL_END, conversation_id, tool_name=tool_call['name'], result=tool_result)
-                    messages.append(ToolMessage(content=tool_result, tool_call_id=tool_call['id']))
+                    messages.append(_make_tool_result_message(tool_call['id'], tool_result))
                     continue
 
                 # Emit progress event for tool execution
@@ -856,18 +1036,16 @@ async def stream_with_memory_events(
                 print(f"Tool {tool_call['name']} result: {str(tool_result)[:200]}..." if len(str(tool_result)) > 200 else f"Tool {tool_call['name']} result: {tool_result}")
 
                 # Add tool result as a message
-                messages.append(ToolMessage(
-                    content=str(tool_result),
-                    tool_call_id=tool_call['id']
-                ))
+                messages.append(_make_tool_result_message(tool_call['id'], str(tool_result)))
 
             # Track consecutive all-failed iterations
+            # Check the last N tool_result messages (where N = number of tool calls this iteration)
+            recent_results = messages[-len(response_tool_calls):]
             iteration_had_success = any(
-                not str(tc_result).startswith("Tool error:") and not str(tc_result).startswith("BLOCKED:")
-                for tc_result in [
-                    m.content for m in messages[-len(response.tool_calls):]
-                    if isinstance(m, ToolMessage)
-                ]
+                not _get_tool_result_text(m).startswith("Tool error:")
+                and not _get_tool_result_text(m).startswith("BLOCKED:")
+                for m in recent_results
+                if _msg_role(m) == "user" and _is_tool_result_message(m)
             )
             if iteration_had_success:
                 consecutive_error_iterations = 0
@@ -899,21 +1077,16 @@ async def stream_with_memory_events(
 
             if plan_st and plan_st["incomplete_titles"] and iteration < max_tool_iterations:
                 # LLM stopped making tool calls but plan isn't done — nudge it
-                response_content = response.content
-                if isinstance(response_content, list):
-                    response_content = "".join(
-                        block.get("text", "") if isinstance(block, dict) else str(block)
-                        for block in response_content
-                    )
-                if response_content:
-                    messages.append(AIMessage(content=response_content))
+                response_text = _extract_text_from_response(response)
+                if response_text:
+                    messages.append({"role": "assistant", "content": response_text})
 
                 remaining = "\n".join(f"- {t}" for t in plan_st["incomplete_titles"])
                 nudge = (
                     f"You still have {len(plan_st['incomplete_titles'])} incomplete plan step(s):\n{remaining}\n\n"
                     "Continue working on the next step. Do NOT call complete_plan until all steps are done."
                 )
-                messages.append(HumanMessage(content=nudge))
+                messages.append({"role": "user", "content": nudge})
                 print(f"[PLAN NUDGE] {len(plan_st['incomplete_titles'])} steps remaining, nudging LLM to continue")
                 continue
 
@@ -923,14 +1096,9 @@ async def stream_with_memory_events(
                 status="started",
                 message="Generating response..."
             )
-            response_content = response.content
-            if isinstance(response_content, list):
-                response_content = "".join(
-                    block.get("text", "") if isinstance(block, dict) else str(block)
-                    for block in response_content
-                )
-            if response_content:
-                full_response = response_content
+            response_text = _extract_text_from_response(response)
+            if response_text:
+                full_response = response_text
                 yield create_event(EventType.CONTENT, conversation_id, content=full_response)
                 needs_streaming = False
             yield create_event(EventType.PROGRESS, conversation_id,
@@ -944,25 +1112,14 @@ async def stream_with_memory_events(
     if needs_streaming:
         print(f"[WARNING] Tool loop exited after {iteration}/{max_tool_iterations} iterations without final response, streaming new response")
         fallback_static = static_system + "\n\nYou have used all available tool iterations. Summarize what you accomplished and respond to the user. Do not attempt any more tool calls."
-        full_messages = [
-            SystemMessage(content=fallback_static, additional_kwargs={"cache_control": {"type": "ephemeral"}}),
-            SystemMessage(content=dynamic_context),
-        ] + messages
-        llm_no_tools = _build_llm(model, temperature)
-        async for chunk in llm_no_tools.astream(full_messages):
-            if chunk.content:
-                if isinstance(chunk.content, str):
-                    content = chunk.content
-                elif isinstance(chunk.content, list):
-                    content = "".join(
-                        block.get("text", "") if isinstance(block, dict) else str(block)
-                        for block in chunk.content
-                    )
-                else:
-                    content = ""
-                if content:
-                    full_response += content
-                    yield create_event(EventType.CONTENT, conversation_id, content=content)
+        fallback_kwargs = _build_api_kwargs(
+            model, fallback_static, dynamic_context, messages,
+            [], temperature,  # No tools for fallback
+        )
+        async with client.messages.stream(**fallback_kwargs) as stream:
+            async for text in stream.text_stream:
+                full_response += text
+                yield create_event(EventType.CONTENT, conversation_id, content=text)
 
     # Safety net: if no content was ever produced, send a plan-aware fallback
     if not full_response.strip():
@@ -980,7 +1137,7 @@ async def stream_with_memory_events(
         yield create_event(EventType.CONTENT, conversation_id, content=full_response)
 
     # Add assistant response to messages
-    messages.append(AIMessage(content=full_response))
+    messages.append({"role": "assistant", "content": full_response})
 
     # Get final plan state for checkpoint persistence
     from services.graph.tools import get_active_plan as _get_plan_for_save
@@ -1002,9 +1159,10 @@ async def stream_with_memory_events(
     # ===== MEMORY EXTRACTION (with timeout to guarantee done event) =====
     try:
         messages_for_extraction = [
-            {"role": "human" if isinstance(m, HumanMessage) else "assistant", "content": m.content}
+            {"role": "human" if _msg_role(m) == "user" else "assistant",
+             "content": _msg_content_text(m)}
             for m in messages[-10:]
-            if isinstance(m, (HumanMessage, AIMessage))
+            if _msg_role(m) in ("user", "assistant")
         ]
         await asyncio.wait_for(
             extract_and_store_memories(
@@ -1064,7 +1222,7 @@ async def chat_with_memory(
     messages.append(_build_human_message(message, attachments))
 
     # ===== MEMORY RETRIEVAL (with deep retrieval gate) =====
-    turn_count = sum(1 for m in messages if isinstance(m, HumanMessage))
+    turn_count = sum(1 for m in messages if _msg_role(m) == "user")
     retrieved_memories: List[Memory] = []
     enriched_memories = []
     relevant_documents = []
@@ -1074,9 +1232,10 @@ async def chat_with_memory(
             from services.deep_retrieval_service import should_deep_retrieve, deep_retrieve_memories
             if await should_deep_retrieve(message, conversation_id, turn_count):
                 recent_msgs = [
-                    {"role": "human" if isinstance(m, HumanMessage) else "assistant", "content": m.content}
+                    {"role": "human" if _msg_role(m) == "user" else "assistant",
+                     "content": _msg_content_text(m)}
                     for m in messages[-5:]
-                    if isinstance(m, (HumanMessage, AIMessage))
+                    if _msg_role(m) in ("user", "assistant")
                 ]
                 try:
                     retrieved_memories = await asyncio.wait_for(
@@ -1128,13 +1287,14 @@ async def chat_with_memory(
         except Exception as e:
             print(f"Orchestrator briefing failed: {e}")
 
-    # ===== DYNAMIC TOOL BINDING =====
-    # Get tools based on enabled skills (workers get filtered set)
+    # ===== SELF-ROUTING TOOL SELECTION =====
+    # Workers get filtered set (no evolution/orchestrator), otherwise route
     if is_worker:
         from services.tool_registry import get_worker_tools
         tools = await get_worker_tools()
     else:
-        tools = await get_available_tools()
+        selected_categories = await _route_tools(message)
+        tools = await get_tools_by_categories(selected_categories)
 
     # Build enhanced system prompt with memories, tool descriptions, and current time
     memory_context = build_memory_context(
@@ -1152,10 +1312,10 @@ async def chat_with_memory(
     )
     dynamic_context = memory_context + briefing_context_sync + orchestrator_context + time_context
 
-    # Create LLM with dynamic tool binding
-    llm = _build_llm(model, temperature)
-    llm_with_tools = llm.bind_tools(tools) if tools else llm
+    # Build tool schemas for Anthropic API
+    tool_schemas = tools_to_anthropic_schemas(tools) if tools else []
 
+    client = _get_client()
     full_response = ""
     tool_calls_made = []
 
@@ -1164,13 +1324,6 @@ async def chat_with_memory(
     # Track consecutive iterations where ALL tool calls fail
     consecutive_error_iterations = 0
 
-    # Cache conversation history prefix (second-to-last message is breakpoint)
-    if len(messages) > 1:
-        prev_msg = messages[-2]
-        if not prev_msg.additional_kwargs:
-            prev_msg.additional_kwargs = {}
-        prev_msg.additional_kwargs["cache_control"] = {"type": "ephemeral"}
-
     # Tool call loop - default 30 rounds, scales up to 100 when a plan is active
     max_tool_iterations = 30
     iteration = 0
@@ -1178,20 +1331,23 @@ async def chat_with_memory(
     while iteration < max_tool_iterations:
         iteration += 1
 
-        # Get response (may include tool calls)
-        full_messages = [
-            SystemMessage(content=static_system, additional_kwargs={"cache_control": {"type": "ephemeral"}}),
-            SystemMessage(content=dynamic_context),
-        ] + messages
-        response = await llm_with_tools.ainvoke(full_messages)
+        # Build API kwargs and call Anthropic
+        api_kwargs = _build_api_kwargs(
+            model, static_system, dynamic_context, messages,
+            tool_schemas, temperature,
+        )
+        response = await client.messages.create(**api_kwargs)
+
+        # Extract tool calls from response
+        response_tool_calls = _extract_tool_calls(response)
 
         # Check if there are tool calls
-        if hasattr(response, 'tool_calls') and response.tool_calls:
-            # Add the assistant message with tool calls
-            messages.append(response)
+        if response_tool_calls:
+            # Add the assistant message (with tool_use blocks)
+            messages.append(_response_to_assistant_message(response))
 
             # Execute each tool call
-            for tool_call in response.tool_calls:
+            for tool_call in response_tool_calls:
                 tool_calls_made.append(tool_call)
 
                 # Circuit breaker: block repeated identical failures
@@ -1199,7 +1355,7 @@ async def chat_with_memory(
                 if _failure_tracker.get(failure_key, 0) >= 1:
                     tool_result = f"BLOCKED: {tool_call['name']} already failed with these arguments. Fix the arguments or use a different approach."
                     print(f"[CIRCUIT BREAKER] Blocked repeated failure: {tool_call['name']}")
-                    messages.append(ToolMessage(content=tool_result, tool_call_id=tool_call['id']))
+                    messages.append(_make_tool_result_message(tool_call['id'], tool_result))
                     continue
 
                 tool_result = await execute_tool_call(tool_call, tools)
@@ -1211,16 +1367,15 @@ async def chat_with_memory(
                 print(f"Tool {tool_call['name']} result: {tool_result[:200]}..." if len(str(tool_result)) > 200 else f"Tool {tool_call['name']} result: {tool_result}")
 
                 # Add tool result as a message
-                messages.append(ToolMessage(
-                    content=str(tool_result),
-                    tool_call_id=tool_call['id']
-                ))
+                messages.append(_make_tool_result_message(tool_call['id'], str(tool_result)))
 
             # Track consecutive all-failed iterations
+            recent_results = messages[-len(response_tool_calls):]
             iteration_had_success = any(
-                not str(m.content).startswith("Tool error:") and not str(m.content).startswith("BLOCKED:")
-                for m in messages[-len(response.tool_calls):]
-                if isinstance(m, ToolMessage)
+                not _get_tool_result_text(m).startswith("Tool error:")
+                and not _get_tool_result_text(m).startswith("BLOCKED:")
+                for m in recent_results
+                if _msg_role(m) == "user" and _is_tool_result_message(m)
             )
             if iteration_had_success:
                 consecutive_error_iterations = 0
@@ -1252,42 +1407,36 @@ async def chat_with_memory(
 
             if plan_st and plan_st["incomplete_titles"] and iteration < max_tool_iterations:
                 # LLM stopped making tool calls but plan isn't done — nudge it
-                response_content = response.content
-                if isinstance(response_content, list):
-                    response_content = "".join(
-                        block.get("text", "") if isinstance(block, dict) else str(block)
-                        for block in response_content
-                    )
-                if response_content:
-                    messages.append(AIMessage(content=response_content))
+                response_text = _extract_text_from_response(response)
+                if response_text:
+                    messages.append({"role": "assistant", "content": response_text})
 
                 remaining = "\n".join(f"- {t}" for t in plan_st["incomplete_titles"])
                 nudge = (
                     f"You still have {len(plan_st['incomplete_titles'])} incomplete plan step(s):\n{remaining}\n\n"
                     "Continue working on the next step. Do NOT call complete_plan until all steps are done."
                 )
-                messages.append(HumanMessage(content=nudge))
+                messages.append({"role": "user", "content": nudge})
                 print(f"[PLAN NUDGE] {len(plan_st['incomplete_titles'])} steps remaining, nudging LLM to continue")
                 continue
 
             # No plan or plan is complete — use this response
-            full_response = response.content
+            full_response = _extract_text_from_response(response)
             break
 
     # If we exhausted iterations, get final response without tools
     if not full_response:
         print(f"[WARNING] Tool loop exited after {iteration} iterations without final response, invoking fallback")
         fallback_static = static_system + "\n\nYou have used all available tool iterations. Summarize what you accomplished and respond to the user. Do not attempt any more tool calls."
-        full_messages = [
-            SystemMessage(content=fallback_static, additional_kwargs={"cache_control": {"type": "ephemeral"}}),
-            SystemMessage(content=dynamic_context),
-        ] + messages
-        llm_no_tools = _build_llm(model, temperature)
-        final_response = await llm_no_tools.ainvoke(full_messages)
-        full_response = final_response.content
+        fallback_kwargs = _build_api_kwargs(
+            model, fallback_static, dynamic_context, messages,
+            [], temperature,  # No tools for fallback
+        )
+        final_response = await client.messages.create(**fallback_kwargs)
+        full_response = _extract_text_from_response(final_response)
 
     # Add assistant response to messages
-    messages.append(AIMessage(content=full_response))
+    messages.append({"role": "assistant", "content": full_response})
 
     # Get final plan state for checkpoint persistence
     from services.graph.tools import get_active_plan as _get_plan_for_save_sync
@@ -1309,9 +1458,10 @@ async def chat_with_memory(
     # ===== MEMORY EXTRACTION =====
     try:
         messages_for_extraction = [
-            {"role": "human" if isinstance(m, HumanMessage) else "assistant", "content": m.content}
+            {"role": "human" if _msg_role(m) == "user" else "assistant",
+             "content": _msg_content_text(m)}
             for m in messages[-10:]
-            if isinstance(m, (HumanMessage, AIMessage))
+            if _msg_role(m) in ("user", "assistant")
         ]
         await extract_and_store_memories(
             messages=messages_for_extraction,
@@ -1337,3 +1487,31 @@ async def chat_with_memory(
         print(f"Memory extraction failed: {e}")
 
     return full_response
+
+
+def _is_tool_result_message(m: dict) -> bool:
+    """Check if a message dict is a tool_result message."""
+    content = m.get("content")
+    if isinstance(content, list):
+        return any(
+            isinstance(block, dict) and block.get("type") == "tool_result"
+            for block in content
+        )
+    return False
+
+
+def _get_tool_result_text(m: dict) -> str:
+    """Extract the text content from a tool_result message."""
+    content = m.get("content")
+    if isinstance(content, list):
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "tool_result":
+                result_content = block.get("content", "")
+                if isinstance(result_content, str):
+                    return result_content
+                if isinstance(result_content, list):
+                    return "".join(
+                        b.get("text", "") for b in result_content
+                        if isinstance(b, dict) and b.get("type") == "text"
+                    )
+    return ""
