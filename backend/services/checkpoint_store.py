@@ -41,7 +41,7 @@ async def save_messages(
             record.messages = messages_json
             if metadata_json:
                 record.metadata_ = metadata_json
-            record.updated_at = datetime.now(timezone.utc)
+            record.updated_at = datetime.utcnow()
         else:
             record = ConversationMessagesModel(
                 conversation_id=conversation_id,
