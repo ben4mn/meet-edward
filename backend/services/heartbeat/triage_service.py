@@ -661,9 +661,10 @@ async def _execute_classification(
             thread_block = f"\n{thread_context}\n" if thread_context else ""
             sender_phone = event.sender or ""
 
-            # Sender line: use "Ben (your user)" for is_from_user
+            # Sender line: use actual contact name for is_from_user
             if event.is_from_user:
-                sender_line = "From: Ben (your user)"
+                display = event.contact_name or sender_display
+                sender_line = f"From: {display} (your user)"
             else:
                 sender_line = f"From: {sender_display}"
                 if sender_phone and sender_phone != sender_display:
@@ -730,6 +731,21 @@ async def _execute_classification(
                 )
                 print(
                     f"[Heartbeat] Listening window registered for "
+                    f"{event.chat_identifier} (conv {conversation_id[:8]}...)"
+                )
+            # For WhatsApp: always register listening window after acting on a mention
+            # (bridge sends are not tracked via _recent_edward_sends — that's iMessage only)
+            elif event.source == "whatsapp" and event.chat_identifier:
+                _active_listeners[event.chat_identifier] = ListeningWindow(
+                    conversation_id=conversation_id,
+                    chat_identifier=event.chat_identifier,
+                    expires_at=datetime.now(timezone.utc) + LISTENING_WINDOW_DURATION,
+                    system_prompt=settings.system_prompt,
+                    model=settings.model,
+                    temperature=settings.temperature,
+                )
+                print(
+                    f"[Heartbeat] WhatsApp listening window registered for "
                     f"{event.chat_identifier} (conv {conversation_id[:8]}...)"
                 )
         except Exception as e:

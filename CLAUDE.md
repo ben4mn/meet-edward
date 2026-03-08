@@ -23,6 +23,8 @@ Active implementation plans for the `cl-feature` branch live in `IMPLEMENTATION_
 | [004_PROMPT_CACHING.md](IMPLEMENTATION_PLANS/004_PROMPT_CACHING.md) | Anthropic prompt caching (all LLM call sites) | **Complete** |
 | [005_EXECUTION_FIX.md](IMPLEMENTATION_PLANS/005_EXECUTION_FIX.md) | Windows execution env fix (subprocess + orchestrator + effort) | **Complete** |
 | [007_NOTEBOOKLM_REVAMP.md](IMPLEMENTATION_PLANS/007_NOTEBOOKLM_REVAMP.md) | Replace notebooklm-py with notebooklm-mcp-cli, expand to 28 tools | **Complete** |
+| [008_PROMPT_OPTIMIZATION_AND_MEMORY_SEEDING.md](IMPLEMENTATION_PLANS/008_PROMPT_OPTIMIZATION_AND_MEMORY_SEEDING.md) | System prompt trim + instruction memory seeding | **Complete** |
+| [009_DUAL_PROVIDER_LLM.md](IMPLEMENTATION_PLANS/009_DUAL_PROVIDER_LLM.md) | Direct-SDK dual-provider (remove LangChain/LangGraph, add OpenAI Responses API, self-routing tools, Codex OAuth for subscription credits) | Planned |
 | [DEFERRED_TELEGRAM_INTEGRATION.md](IMPLEMENTATION_PLANS/DEFERRED_TELEGRAM_INTEGRATION.md) | Telegram bot with long-polling | Deferred |
 
 **IMPORTANT**: Read the relevant plan BEFORE making changes. Each plan has STOP warnings, strict rules, and verification checklists.

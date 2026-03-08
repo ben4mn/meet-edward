@@ -24,14 +24,16 @@ async def whatsapp_send_message(chat_id: str, message: str) -> str:
                  in heartbeat event context.
         message: The text message to send.
     """
-    from services.whatsapp_bridge_client import send_message, is_available
+    from services.whatsapp_bridge_client import send_message, is_available, resolve_lid
 
     if not is_available():
         return "WhatsApp bridge is not connected."
     try:
-        result = await send_message(chat_id, message)
+        # Resolve @lid to @s.whatsapp.net if possible
+        resolved_id = await resolve_lid(chat_id)
+        result = await send_message(resolved_id, message)
         msg_id = result.get("message_id", "")
-        return f"Message sent to {chat_id} (id: {msg_id})"
+        return f"Message sent to {resolved_id} (id: {msg_id})"
     except Exception as e:
         return f"Failed to send WhatsApp message: {e}"
 

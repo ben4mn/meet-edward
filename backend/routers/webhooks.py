@@ -406,6 +406,18 @@ async def whatsapp_bridge_webhook(request: Request):
     if not chat_id or not text:
         raise HTTPException(status_code=400, detail="chat_id and text required")
 
+    # Safety net: resolve @lid JIDs if bridge didn't already
+    if chat_id.endswith("@lid"):
+        try:
+            from services.whatsapp_bridge_client import resolve_lid, is_available
+            if is_available():
+                resolved = await resolve_lid(chat_id)
+                if resolved != chat_id:
+                    print(f"[Webhook] Resolved LID {chat_id} → {resolved}")
+                    chat_id = resolved
+        except Exception as e:
+            print(f"[Webhook] LID resolution failed: {e}")
+
     source_id = f"whatsapp:{message_id}" if message_id else f"whatsapp:{chat_id}_{hash(text)}"
 
     # Dedup and store

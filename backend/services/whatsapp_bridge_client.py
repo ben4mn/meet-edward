@@ -311,3 +311,23 @@ async def get_recent_chats(limit: int = 30) -> list:
     resp = await _client.get("/chats", params={"limit": limit})
     resp.raise_for_status()
     return resp.json()
+
+
+async def resolve_lid(lid_jid: str) -> str:
+    """Resolve an @lid JID to @s.whatsapp.net via the bridge.
+
+    Returns the original JID if not an @lid or no mapping exists.
+    """
+    if not lid_jid or not lid_jid.endswith("@lid"):
+        return lid_jid
+
+    try:
+        resp = await _client.get(f"/resolve-lid/{lid_jid}")
+        if resp.status_code == 200:
+            data = resp.json()
+            if data.get("was_resolved"):
+                return data["resolved"]
+    except Exception as e:
+        print(f"[WhatsApp Bridge] LID resolution failed for {lid_jid}: {e}")
+
+    return lid_jid

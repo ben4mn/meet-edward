@@ -422,8 +422,8 @@ def lookup_contact(query: str) -> str:
     Look up a contact in Contacts.app by name.
 
     Use this before sending messages to resolve nicknames, partial names,
-    or informal names to phone numbers. Example: lookup_contact("marissa buddy babe")
-    finds "Marissa (Buddy Babe) Lentz" with her phone number.
+    or informal names to phone numbers. Example: lookup_contact("john doe")
+    finds "John A. Doe" with their phone number.
 
     Args:
         query: Name or partial name to search for (case-insensitive)
@@ -468,7 +468,7 @@ def lookup_phone(phone_number: str) -> str:
     to find who it belongs to. Returns the contact name, phone numbers, and emails.
 
     Args:
-        phone_number: Phone number to search for (any format, e.g. +14065999611)
+        phone_number: Phone number to search for (any format, e.g. +15551234567)
 
     Returns:
         Matching contact info or 'no match' message
@@ -787,7 +787,7 @@ async def create_persistent_db(name: str, description: Optional[str] = None) -> 
 
     Args:
         name: A short, descriptive name (lowercase, alphanumeric + underscores).
-            Examples: "lana_medication", "workout_log", "project_tasks"
+            Examples: "workout_log", "expense_tracker", "project_tasks"
         description: Optional description of what this database tracks
 
     Returns:
@@ -1312,24 +1312,11 @@ def get_memory_tools_description() -> str:
     return """
 ## Memory Management
 
-You have access to tools for managing your long-term memory:
+Tools for managing your long-term memory: **remember_update**, **remember_forget**, **remember_search**.
 
-1. **remember_update(memory_id, new_content)**: Update an existing memory with new information.
-   Use when the user corrects or updates previously stored information.
+When relevant memories appear in your context, use their IDs to update or delete them.
 
-2. **remember_forget(memory_id)**: Delete a specific memory.
-   Use when the user explicitly asks you to forget something.
-
-3. **remember_search(query, memory_type?)**: Search through memories.
-   Use to find stored information about a topic.
-
-When relevant memories are provided in your context, you'll see their IDs.
-Use these IDs to update or delete specific memories when appropriate.
-
-Example scenarios:
-- User says "Actually, I moved to Seattle" -> Use remember_update to change their location
-- User says "Forget that I like coffee" -> Use remember_forget to delete that preference
-- User asks "What do you remember about my job?" -> Use remember_search to find work-related memories
+Memories are short snippets. For full text, use documents. For multi-source research, use notebooks.
 """
 
 
@@ -1338,24 +1325,10 @@ def get_contacts_tools_description() -> str:
     return """
 ## Contacts Lookup
 
-You have access to tools for looking up contacts:
+- **lookup_contact**: Search Contacts.app by name. Always look up contacts before messaging if you only have a nickname or partial name.
+- **lookup_phone**: Reverse lookup by phone number. Use when you see a number in heartbeat events or messages.
 
-1. **lookup_contact(query)**: Search Contacts.app by name.
-   - Use before sending messages to resolve nicknames or partial names
-   - Returns matching contacts with phone numbers and emails
-   - Case-insensitive search
-   - Example: lookup_contact("marissa buddy") finds "Marissa (Buddy Babe) Lentz"
-
-2. **lookup_phone(phone_number)**: Reverse lookup a contact by phone number.
-   - Use when you have a phone number and need to identify the person
-   - Accepts any format (e.g. +14065999611, (406) 599-9611)
-   - Returns the contact name, phone numbers, and emails
-
-Best practices:
-- Always look up contacts before messaging if you only have a nickname or partial name
-- Use lookup_phone when you see a phone number in heartbeat events or messages
-- Use the phone number from the lookup result, not the contact name, for sending messages
-- If multiple matches, ask the user which contact they meant
+Use the phone number from lookup results (not contact name) when sending messages. If multiple matches, ask the user which one.
 """
 
 
@@ -1364,40 +1337,12 @@ def get_messaging_tools_description() -> str:
     return """
 ## Messaging
 
-You have access to tools for sending messages:
+- **send_message**: Preferred for most messages. Auto-routes: SMS by default, WhatsApp if contact last used it, iMessage if requested.
+- **send_sms / send_whatsapp**: Direct send from Edward's number.
+- **send_imessage**: Send as the user. Only when user explicitly says "send as me."
+- **get_recent_messages**: Check user's recent iMessage history.
 
-1. **send_message(recipient, message, channel?)**: The preferred way to send messages.
-   - Default: Sends SMS from your phone number (as Edward), or WhatsApp if the contact last used WhatsApp
-   - Set channel='whatsapp' to force WhatsApp
-   - Set channel='imessage' to send as the user
-   - Use this for most messaging tasks
-
-2. **send_sms(phone_number, message)**: Send SMS from Edward's phone number.
-   - Recipient sees message from Edward
-   - Good for autonomous communications
-
-3. **send_whatsapp(phone_number, message)**: Send WhatsApp from Edward's number.
-   - Recipient sees message from Edward on WhatsApp
-   - Use when WhatsApp is preferred or contact last used WhatsApp
-
-4. **send_imessage(contact, message)**: Send iMessage as the user.
-   - Only use when user explicitly requests to send as themselves
-   - Good for personal contacts
-
-5. **get_recent_messages(contact?, hours?)**: Check recent iMessage conversations.
-   - View the user's message history
-   - Filter by contact or time range
-
-Channel selection guidelines:
-- Default to Twilio (your number) for most messages
-- send_message auto-detects: if a contact last messaged via WhatsApp, replies go via WhatsApp
-- Use WhatsApp when:
-  * Contact previously messaged via WhatsApp
-  * User explicitly requests WhatsApp
-- Use iMessage when:
-  * User explicitly says "send as me" or "from my number"
-  * Messaging known personal contacts (family, close friends)
-  * User has established preference for iMessage with that contact
+Default to send_message (auto-detects best channel). Use iMessage only when user explicitly requests sending as themselves.
 """
 
 
@@ -1406,24 +1351,10 @@ def get_search_tools_description() -> str:
     return """
 ## Web Search
 
-You have access to tools for searching the web:
+- **web_search**: Search via Brave Search. Returns titles, URLs, snippets.
+- **fetch_page_content**: Get full text from a URL found via search.
 
-1. **web_search(query, count?)**: Search the web using Brave Search.
-   - Returns titles, URLs, and snippets for matching results
-   - Use count to get more results (default 5, max 20)
-   - Great for current events, facts, documentation, etc.
-
-2. **fetch_page_content(url)**: Get the full content of a web page.
-   - Use after searching to read promising results in detail
-   - Returns clean article text (max ~4000 chars)
-   - Good for reading articles, documentation, blog posts
-
-Workflow tips:
-- Search first to find relevant pages
-- Review snippets to identify promising URLs
-- Fetch specific pages for detailed information
-- You can search multiple queries in parallel
-- You can do follow-up searches based on initial results
+After finding reusable results, consider saving as a document or adding to a notebook.
 """
 
 
@@ -1432,28 +1363,10 @@ def get_code_execution_tools_description() -> str:
     return """
 ## Code Execution
 
-You have access to tools for executing Python code:
+- **execute_code**: Execute Python in sandbox. 30s timeout.
+- **list_sandbox_files / read_sandbox_file**: Browse sandbox outputs.
 
-1. **execute_code(code)**: Execute Python code in a sandboxed environment.
-   - Available packages: numpy, pandas, matplotlib, requests, pillow, and standard library
-   - Output and errors are captured and returned
-   - Files can be saved using plt.savefig() for plots or save_file() for other files
-   - Execution has a 30 second timeout
-   - Use this for calculations, data analysis, visualizations, and testing logic
-
-2. **list_sandbox_files()**: List files in the sandbox directory.
-   - Shows files created by previous code executions in this conversation
-   - Useful for checking what outputs have been generated
-
-3. **read_sandbox_file(filename)**: Read a file from the sandbox.
-   - View contents of files created during code execution
-
-Best practices:
-- Write clear, well-commented code
-- Handle potential errors gracefully
-- For visualizations, always save to a file (e.g., plt.savefig('plot.png'))
-- Break complex tasks into smaller steps
-- Show your reasoning before executing code
+Save plots with plt.savefig(). Use save_to_storage to persist important outputs.
 """
 
 
@@ -1462,17 +1375,8 @@ def get_javascript_execution_tools_description() -> str:
     return """
 ## JavaScript Execution
 
-You have access to tools for executing JavaScript code:
-
-1. **execute_javascript(code)**: Execute JavaScript code using Node.js.
-   - Standard Node.js built-in modules available (fs, path, crypto, etc.)
-   - Network and child_process modules are blocked for security
-   - Use console.log() for output
-   - Use saveFile(filename, content) to save files
-   - 30 second timeout
-
-2. **list_sandbox_files()**: List files in the sandbox directory.
-3. **read_sandbox_file(filename)**: Read a file from the sandbox.
+- **execute_javascript**: Execute JS via Node.js. Network/child_process blocked. 30s timeout.
+- **list_sandbox_files / read_sandbox_file**: Browse sandbox outputs.
 """
 
 
@@ -1481,74 +1385,15 @@ def get_sql_execution_tools_description() -> str:
     return """
 ## SQL Database
 
-You have access to tools for executing SQL queries:
+### Temporary (per-conversation SQLite)
+- **execute_sql**: Full SQLite syntax. Data lost when conversation ends. Good for one-time analysis.
 
-### Temporary Databases (per-conversation)
+### Persistent (named PostgreSQL schemas)
+- **create_persistent_db / query_persistent_db / list_persistent_dbs / delete_persistent_db**
+- Data persists across ALL conversations. Use for long-term tracking (meds, habits, expenses).
+- Always check list_persistent_dbs before creating to avoid duplicates.
 
-1. **execute_sql(query)**: Execute SQL against a per-conversation SQLite database.
-   - Full SQLite SQL syntax supported
-   - Database persists across turns in the conversation but is lost when conversation ends
-   - Results formatted as aligned tables (max 500 rows)
-   - 50MB max database size
-   - Good for: one-time analysis, teaching SQL, quick data transformations
-
-### Persistent Databases (named, survives across conversations)
-
-2. **create_persistent_db(name, description?)**: Create a named persistent database.
-   - Data survives across ALL conversations indefinitely
-   - Use lowercase alphanumeric names with underscores (e.g., "lana_medication")
-   - Good for: long-term tracking (meds, habits, expenses), multi-session projects
-
-3. **query_persistent_db(db_name, query)**: Execute SQL against a persistent database.
-   - Full PostgreSQL SQL syntax supported
-   - CREATE TABLE, INSERT, SELECT, UPDATE, DELETE all supported
-   - Max 500 rows returned, 30 second timeout
-
-4. **list_persistent_dbs()**: List all persistent databases.
-   - Always check this BEFORE creating a new database to avoid duplicates
-
-5. **delete_persistent_db(db_name)**: Delete a database permanently.
-   - ALWAYS confirm with the user before deleting
-   - Use when tracking goal is complete or user requests cleanup
-
-### Choosing Between Temporary vs Persistent
-
-Use **temporary** (execute_sql) when:
-- Doing one-time data analysis
-- Teaching or demonstrating SQL concepts
-- Quick calculations or transformations
-- Data doesn't need to survive past this conversation
-
-Use **persistent** (create_persistent_db + query_persistent_db) when:
-- Tracking something over days/weeks/months (medication, habits, workouts)
-- User explicitly asks for long-term storage
-- Data should be accessible in future conversations
-- Building a project that spans multiple sessions
-
-### Setting Up Tracking for Success
-
-When creating a persistent database for tracking, ALWAYS:
-
-1. **Store a memory** about the database: "Track [X] in [db_name] database, [table] table"
-
-2. **Update scheduled events** to include explicit logging instructions:
-   - Database name: `query_persistent_db('db_name', ...)`
-   - Table name and columns: `INSERT INTO table (col1, col2) VALUES (...)`
-   - What values to log based on user response
-
-3. **Be explicit in event descriptions** about the full workflow:
-   - What to ask the user
-   - How to interpret their response (YES/NO/number)
-   - Exactly what to INSERT and where
-
-Example setup for medication tracking:
-- Create database: `create_persistent_db('pet_meds', 'Daily medication tracking')`
-- Create table: `query_persistent_db('pet_meds', 'CREATE TABLE log (id SERIAL, date DATE, given BOOLEAN, notes TEXT)')`
-- Schedule event with description: "Ask 'Did you give morning meds?' Log response to pet_meds database:
-  `INSERT INTO log (date, given, notes) VALUES (CURRENT_DATE, [true if YES else false], 'morning dose')`"
-
-2. **list_sandbox_files()**: List files in the sandbox directory.
-3. **read_sandbox_file(filename)**: Read a file from the sandbox.
+**Key distinction**: Use temporary for throwaway analysis, persistent for anything the user will want later. When creating persistent databases, store a memory about the database name and table structure so your future self can find it.
 """
 
 
@@ -1557,21 +1402,8 @@ def get_shell_execution_tools_description() -> str:
     return """
 ## Shell/Bash
 
-You have access to tools for executing shell commands:
-
-1. **execute_shell(command)**: Execute a Bash command on macOS.
-   - Full Unix toolset: ls, cat, grep, awk, sed, sort, curl, wget, python3, node, etc.
-   - Package managers: pip, npm, brew
-   - Networking: curl, wget, ssh, scp, rsync, nc, nmap
-   - Containers: docker, kubectl
-   - System: chmod, chown, kill, launchctl, crontab
-   - Command substitution ($(), backticks) is allowed
-   - Only catastrophic commands blocked (sudo, shutdown, dd, mkfs, fdisk, chroot)
-   - 120 second timeout
-   - API keys are NOT available in the shell environment
-
-2. **list_sandbox_files()**: List files in the sandbox directory.
-3. **read_sandbox_file(filename)**: Read a file from the sandbox.
+- **execute_shell**: Execute shell commands. Destructive commands blocked. API keys NOT available in shell env. 120s timeout.
+- **list_sandbox_files / read_sandbox_file**: Browse sandbox outputs.
 """
 
 
@@ -1580,41 +1412,14 @@ def get_plan_tools_description() -> str:
     return """
 ## Task Planning
 
-**You MUST create a plan whenever a request will require 3+ tool calls or involves multiple distinct steps. This is mandatory, not optional.** Err on the side of creating a plan — users appreciate seeing structured progress, and you get extra tool iterations to complete planned work.
+**Create a plan whenever a request involves 3+ tool calls or multiple steps.** Plans give users visibility into your progress and unlock extra tool iterations.
 
-**When to plan:**
-- Research tasks (searching, reading, summarizing)
-- Multi-step workflows (find something → save it → schedule a reminder)
-- Requests involving multiple tools (web search + document save + message send)
-- Requests with multiple parts ("do X, Y, and Z")
-- Build/create tasks (websites, documents, analyses)
-- Any task where you might need more than a couple of tool calls
+- **create_plan(steps)**: Define ordered steps (first auto-starts)
+- **update_plan_step(step_id, status, result?)**: Mark steps completed/error with optional result note
+- **edit_plan(add_steps?, remove_step_ids?)**: Add/remove steps mid-execution
+- **complete_plan(summary?)**: Finalize when done
 
-**When NOT to plan:**
-- Simple single-turn questions or lookups
-- One-tool-call tasks (e.g. "what time is it", "remember that I like tea")
-
-**Completion discipline:** Always call `complete_plan` when done — never leave a plan hanging. If a step fails, mark it as "error" with a result note and continue with the remaining steps.
-
-1. **create_plan(steps)**: Create a visible task plan with ordered steps.
-   - First step is automatically set to in_progress
-
-2. **update_plan_step(step_id, status, result?)**: Update a step's status.
-   - Mark steps as "completed", "error", or "in_progress"
-   - Optionally attach a brief result summary
-   - Next pending step auto-advances to in_progress on completion
-
-3. **edit_plan(add_steps?, remove_step_ids?)**: Modify the plan mid-execution.
-   - Add new steps or remove unnecessary ones
-   - Useful when scope changes during execution
-
-4. **complete_plan(summary?)**: Mark the entire plan as finished.
-   - Call when all work is done
-   - Optional summary of what was accomplished
-
-**Example:** "Build a website showing my DB data and host it"
-→ FIRST call create_plan(["Query database for data", "Build HTML page with results", "Host on html.zyroi.com", "Share link with user"])
-→ Then execute each step, updating the plan as you go.
+**Completion discipline**: Always call complete_plan when done -- never leave a plan hanging. If a step fails, mark it "error" with a note and continue with remaining steps.
 """
 
 
@@ -1844,45 +1649,17 @@ def get_scheduled_event_tools_description() -> str:
     return """
 ## Scheduled Events
 
-You can schedule future actions, reminders, and recurring tasks:
+Schedule future actions, reminders, and recurring tasks that fire automatically.
 
-1. **schedule_event(description, scheduled_at, recurrence_pattern?, delivery_channel?)**:
-   Schedule an action for a future time.
-   - `description`: What you should do when it fires (be specific!)
-   - `scheduled_at`: ISO 8601 datetime
-   - `recurrence_pattern`: Cron string for recurring (e.g. "0 9 * * *" = daily 9 AM)
-   - `delivery_channel`: "sms", "imessage", or "chat" (in-app only). Leave null to auto-infer.
+- **schedule_event**: Set a future action. Use user's LOCAL time (not UTC). Cron syntax for recurring.
+- **list_scheduled_events / cancel_scheduled_event**: Manage existing events.
 
-2. **list_scheduled_events(status?)**: Show upcoming events.
-   - Filter by status: "pending", "completed", "cancelled", "failed"
+**CRITICAL**: Events run in an EPHEMERAL conversation with NO memory of the original context. The description must contain EVERYTHING needed: exact message text, database names, table and column names, phone numbers, calculations.
 
-3. **cancel_scheduled_event(event_id)**: Cancel an event by ID.
+Bad: "Check on the dog's meds and track the response."
+Good: "Send push notification 'Did you give the morning meds?' If YES, log to pet_tracker DB, medication_log table: INSERT INTO medication_log (date, given) VALUES (CURRENT_DATE, true)."
 
-**CRITICAL - Writing Self-Contained Event Descriptions:**
-
-Your future self executes events in an EPHEMERAL conversation with NO memory of the original context.
-The description must contain EVERYTHING needed to complete the task:
-
-✅ GOOD: "Send push notification asking 'Did you give Lana her morning meds?' When user replies YES,
-   log to lana_tplo_recovery database, medication_log table: INSERT with medication_id=1,
-   administered_at=current timestamp, dose_given='1/2 tablet', time_of_day='morning'."
-
-❌ BAD: "Ask about Lana's meds and track the response."
-
-**Include in EVERY event description:**
-- The exact notification/message text to send
-- The exact database name and table to log responses to
-- The exact column names and values to INSERT
-- Any calculations (e.g., "Day X = (today - 2026-02-04) + 1")
-- Phone numbers, not just contact names
-
-**Multi-action events:** If an event needs to: 1) send push notification, 2) wait for reply,
-3) log to database — write ALL THREE actions explicitly in the description.
-
-Tips:
-- Use the user's LOCAL time for scheduled_at — do NOT convert to UTC
-- For recurring events, use standard cron syntax (minute hour day month weekday)
-- Events execute in an ephemeral conversation — they do NOT appear in the original chat
+Events do NOT appear in the original chat. Use local time, standard cron syntax for recurring.
 """
 
 
@@ -1966,19 +1743,7 @@ def get_push_notification_tools_description() -> str:
     return """
 ## Push Notifications
 
-You can send push notifications to the user's devices:
-
-1. **send_push_notification(title, body, url?)**: Send a push notification.
-   - `title`: Short notification title (under 50 chars)
-   - `body`: Notification body (under 100 chars)
-   - `url`: Optional URL to open on click
-
-Tips:
-- Use sparingly — only for important alerts that need immediate attention
-- Keep messages short and actionable
-- Good for: urgent reminders, status updates, important alerts
-- Works even when the user isn't actively using the app
-- Requires user to have enabled notifications in the PWA
+- **send_push_notification**: Send push notification to user's devices. Use sparingly -- only for important alerts that need immediate attention. Works even when user isn't in the app.
 """
 
 
@@ -2200,36 +1965,13 @@ def get_document_tools_description() -> str:
     return """
 ## Document Store
 
-You have a persistent document store for saving and retrieving full documents.
-Unlike memories (short semantic snippets), documents store complete text — recipes,
-meeting notes, reference guides, instructions, pet records, etc.
+Persistent storage for full documents -- recipes, notes, guides, reference material.
 
-1. **save_document(title, content, tags?)**: Save a new document.
-   - Content supports markdown formatting
-   - Tags are comma-separated for categorization (e.g. "recipe,italian,dinner")
+- **save_document / read_document / edit_document / search_documents / list_documents / delete_document**
 
-2. **read_document(document_id)**: Read full document content.
-   - Use when you see a relevant document title in your context
-   - Returns the complete document with title and tags
+When relevant documents appear in context (titles only), use read_document to fetch full content.
 
-3. **edit_document(document_id, title?, content?, tags?)**: Update a document.
-   - Only provide fields you want to change
-
-4. **search_documents(query, tags?)**: Search documents semantically.
-   - Hybrid search: vector similarity + keyword matching
-   - Filter by tags if needed
-
-5. **list_documents(tags?)**: List all stored documents.
-   - Browse what's saved, optionally filtered by tags
-
-6. **delete_document(document_id)**: Remove a document.
-
-When relevant documents appear in your context (under "Relevant Documents in Store"),
-use read_document to fetch full content when needed — only titles are shown in context.
-
-When to use documents vs memories:
-- **Memories**: Short facts, preferences, context snippets (auto-extracted)
-- **Documents**: Full text the user explicitly wants stored (recipes, notes, guides, records)
+**Knowledge layers**: Memories = short facts (auto-extracted). Documents = full text (explicit save). Notebooks = multi-source research (cross-referenced with citations).
 """
 
 
@@ -2256,7 +1998,7 @@ async def create_hosted_page(
 
     Args:
         html: Complete HTML content (must include proper HTML structure)
-        slug: Optional custom URL slug (e.g. "lana-recovery"). Auto-generated if not provided.
+        slug: Optional custom URL slug (e.g. "my-project"). Auto-generated if not provided.
         description: Optional description of the page
         duration: Optional expiry: "1day", "30days", "6months", or "permanent" (default: permanent)
 
@@ -2765,7 +2507,7 @@ async def tag_storage_file(
     Args:
         file_id: The file ID to update
         description: Human-readable description of the file
-        tags: Comma-separated tags (e.g. "medical,pet,lana")
+        tags: Comma-separated tags (e.g. "medical,pet,buddy")
         category: Optional category: "upload", "generated", "artifact", "processed", "general"
 
     Returns:
@@ -2828,36 +2570,12 @@ def get_file_storage_tools_description() -> str:
     return """
 ## File Storage
 
-You have persistent file storage for saving and retrieving files across conversations.
-Files created in the code sandbox are ephemeral — use save_to_storage to persist them.
+Persistent file storage across conversations. Sandbox files are ephemeral -- use save_to_storage to persist them.
 
-1. **save_to_storage(source_file, filename?, category, description?, tags?)**: Save a sandbox file to persistent storage.
-   - Call after creating plots, reports, or processed data
-   - Returns a permanent download URL the user can access
+- **save_to_storage**: Move sandbox file to permanent storage. Returns download URL.
+- **list_storage_files / get_storage_file_url / read_storage_file / delete_storage_file / tag_storage_file**
 
-2. **list_storage_files(category?, tags?)**: Browse stored files.
-   - Filter by category: "upload", "generated", "artifact", "processed", "general"
-   - Filter by comma-separated tags
-
-3. **get_storage_file_url(file_id)**: Get download URL for a file.
-   - Returns a URL the user can click to download
-
-4. **read_storage_file(file_id)**: Read text file contents.
-   - Only works for text-based files (CSV, JSON, plain text, etc.)
-   - For images/PDFs, use get_storage_file_url instead
-
-5. **delete_storage_file(file_id)**: Remove a stored file.
-
-6. **tag_storage_file(file_id, description?, tags?, category?)**: Update metadata on a stored file.
-   - Add a description, tags, or category to any file
-   - When a user uploads a file, tag it with a description and relevant tags so it can be found later
-   - Prefer tagging the original uploaded file over creating a separate document copy
-
-When to use file storage:
-- After generating a chart/plot: save_to_storage("chart.png", description="Weekly spending chart")
-- After creating a CSV export: save_to_storage("data.csv", category="artifact", tags="export")
-- Uploaded files are automatically stored — no need to save_to_storage for those
-- When a user uploads a file, use tag_storage_file to annotate it with description and tags
+When users upload files, tag them with description and tags so they can be found later. Files can be pushed to NotebookLM notebooks as sources via nlm_push_file.
 """
 
 
@@ -2866,27 +2584,13 @@ def get_html_hosting_tools_description() -> str:
     return """
 ## HTML Hosting
 
-You can create, update, and delete hosted HTML pages on html.zyroi.com:
+Create, update, and delete hosted HTML pages on html.zyroi.com.
 
-1. **create_hosted_page(html, slug?, description?, duration?)**: Publish an HTML page.
-   - `html`: Complete HTML with inline CSS (single-page, self-contained)
-   - `slug`: Custom URL slug (auto-generated if omitted)
-   - `duration`: "1day", "30days", "6months", or "permanent" (default: permanent)
-   - Returns the public URL
+- **create_hosted_page**: Publish self-contained HTML. Use descriptive slugs (e.g. "my-project-tracker").
+- **update_hosted_page**: Update an existing page by slug.
+- **delete_hosted_page / check_hosted_slug**: Manage pages and check slug availability.
 
-2. **update_hosted_page(slug, html, description?, duration?)**: Update existing page.
-   - Must be a page you created (same API key)
-
-3. **delete_hosted_page(slug)**: Remove a hosted page permanently.
-
-4. **check_hosted_slug(slug)**: Check if a slug is available before creating.
-
-Best practices:
-- Always include complete, valid HTML with <!DOCTYPE html>
-- Use inline CSS or <style> blocks (external resources won't load)
-- Use descriptive slugs (e.g. "lana-tplo-recovery" not "page1")
-- Default to permanent hosting unless the user specifies otherwise
-- Check slug availability when the user requests a specific slug
+Pages must be complete, valid HTML with inline CSS (external stylesheets won't load). Default: permanent hosting.
 """
 
 
@@ -2895,45 +2599,16 @@ def get_widget_tools_description() -> str:
     return """
 ## iOS Widget (Scriptable)
 
-You control what appears on the user's iOS home screen widget. You have TWO modes:
+Controls what appears on the user's iOS home screen widget. Two modes:
 
-### Mode 1: Structured data (simple, safe)
+**Structured mode** (update_widget): Set content via sections (header, text, list, stat, progress, countdown, etc.). Good for quick info.
 
-Use `update_widget` to set content via structured sections. A fixed renderer on the iPhone
-displays it. Good for quick info displays.
+**Raw code mode** (update_widget_code): Write Scriptable JavaScript for full creative control -- gradients, SF Symbols, custom drawing. **Preferred for most updates.**
 
-- **update_widget(sections, title?, subtitle?, background_color?, ...)**: Set widget content.
-  - Color args accept hex strings like "#1a1a2e". No transparency in this mode.
-- Section types: `header`, `text`, `list`, `stat`, `stats_row`, `progress`, `countdown`, `divider`, `spacer`
-- Small widgets: max 2 sections. Medium: 4. Large: 10.
+- **get_widget_state_tool**: Read current widget state.
+- **clear_widget_code**: Revert to structured mode.
 
-### Mode 2: Raw Scriptable code (full creative control)
-
-Use `update_widget_code` to write raw Scriptable JavaScript that runs directly on the iPhone.
-This gives you full access to the Scriptable API — custom drawing, gradients, transparency,
-SF Symbols, images, complex layouts, etc.
-
-- **update_widget_code(code)**: Write raw Scriptable JS. Your code must create a ListWidget
-  and call Script.setWidget(widget) + Script.complete() at the end.
-- **clear_widget_code()**: Remove custom code and revert to structured mode.
-- If your code has an error, the widget shows a fallback with the error message.
-
-When using raw code mode, you have access to: ListWidget, WidgetStack, WidgetText, WidgetImage,
-WidgetDate, Font, Color (including Color.clear() for transparency), LinearGradient, DrawContext,
-SFSymbol, Image, Size, Point, Rect. See the update_widget_code tool description for full API details.
-
-### Shared tools
-- **get_widget_state_tool()**: Read current widget state (including any active script).
-
-### General
-- The widget refreshes every ~15 minutes per iOS limits.
-- The user has a LARGE home screen widget (~360×376pt). Always design for the full large size.
-- Fill the ENTIRE widget area — use spacers, stacks, and padding so content spans the full height and width. Never leave large empty areas.
-- Default to raw code mode for most updates — it gives you full creative control and better layouts.
-- Only use structured mode for very simple temporary info (quick stat or countdown).
-- When nothing is set, it auto-shows a greeting, upcoming events, and memory/event stats.
-- Use the widget proactively — after scheduling events, completing tasks, or when something
-  interesting is worth surfacing on the home screen.
+Widget is LARGE (~360x376pt). Fill the entire area. Refreshes every ~15 min. Update proactively after scheduling events, completing tasks, or when something interesting is worth surfacing.
 """
 
 
@@ -3038,22 +2713,10 @@ def get_evolution_tools_description() -> str:
     return """
 ## Self-Evolution
 
-You can modify your own codebase using the evolution engine:
+- **trigger_self_evolution**: Modify your own codebase. Creates branch, implements via Claude Code, validates, tests, reviews, merges. Must be enabled in config first.
+- **get_evolution_status**: Check config and recent history.
 
-1. **trigger_self_evolution(description)**: Trigger a code change cycle.
-   - Creates a branch, uses Claude Code to implement, validates, tests, reviews, and merges
-   - Protected files (auth, evolution service, .env) cannot be modified
-   - Must be enabled in evolution config first
-   - Rate-limited to 1 cycle per configured interval (default: 1 hour)
-
-2. **get_evolution_status()**: Check evolution config, active cycle, and recent history.
-
-Safety:
-- Evolution must be explicitly enabled by the user
-- All changes are tested before merging
-- An independent review step must approve changes
-- Protected files are validated against modification
-- Failed cycles do not affect the main branch
+Consider evolution when you encounter recurring limitations that a code change could fix.
 """
 
 
@@ -3338,46 +3001,18 @@ def get_orchestrator_tools_description() -> str:
     return """
 ## Orchestrator (Parallel Workers)
 
-You can spawn worker agents to handle sub-tasks. Workers are mini-Edwards with full
-tool access (memory, messaging, search, code, etc.) but cannot spawn their own workers.
+Spawn agents for parallel sub-tasks. Workers have full tool access but cannot spawn sub-workers.
 
-### Coding Tasks — Always Prefer `spawn_cc_worker`
+### Coding tasks
+- **spawn_cc_worker**: **Always use for file/code tasks** (editing, scripts, debugging). Runs Claude Code with Opus. Default wait=True.
 
-**Always use `spawn_cc_worker` for any task involving files, code, scripts, or development.**
-This includes: writing/editing files, running scripts, debugging, refactoring, test running,
-codebase exploration, multi-step development workflows, and generating artifacts.
+### Non-coding tasks
+- **spawn_worker**: Research, analysis, messaging, memory ops. Choose model: haiku (fast), sonnet (balanced), opus (powerful).
 
-Only use inline execution tools (`execute_code`, `execute_javascript`, etc.) for quick
-one-liners where the user wants to see output directly in chat (e.g., a calculation,
-data formatting, or a short demo snippet).
+### Management
+- **check_worker / list_workers / cancel_worker / wait_for_workers / send_to_worker**
 
-1. **spawn_cc_worker(task, cwd?, wait?)**: Spawn a Claude Code session (coding agent).
-   - PREFERRED for all file/code tasks — file editing, scripts, debugging, refactoring
-   - Always uses Opus model, runs as a separate CC process
-   - `wait=True` (default): blocks until done, returns result inline
-   - `wait=False`: returns task ID for async checking via check_worker()
-
-### Internal Workers — Research, Analysis, Messaging
-
-2. **spawn_worker(task, model?, context_mode?, context_data?, wait?)**: Spawn an internal worker.
-   - For non-coding tasks: research, analysis, messaging, memory operations
-   - `model`: "haiku" (fast), "sonnet" (balanced), "opus" (powerful). Default: config setting.
-   - `context_mode`: "full" (all context), "scoped" (minimal), "none" (just task)
-   - `wait=True`: blocks until done; `wait=False`: returns task ID
-
-### Management Tools
-
-3. **check_worker(task_id)**: Check status/result of a worker.
-4. **list_workers(status?)**: List workers from this conversation.
-5. **cancel_worker(task_id)**: Cancel a running worker.
-6. **wait_for_workers(task_ids)**: Wait for comma-separated task IDs to complete.
-7. **send_to_worker(task_id, message)**: Send follow-up to a completed worker.
-
-**Best practices:**
-- Write clear, self-contained task descriptions (workers have no conversation history)
-- Use spawn_cc_worker for coding tasks, spawn_worker for everything else
-- Spawn multiple workers at once, then wait_for_workers to collect results
-- Workers create their own conversations (visible in sidebar with purple icon)
+Write self-contained task descriptions (workers have no conversation history). Spawn multiple workers in parallel, then wait_for_workers to collect results.
 """
 
 
@@ -3420,7 +3055,7 @@ async def nlm_create_notebook(name: str) -> str:
     Use this to create a knowledge base before adding sources.
 
     Args:
-        name: Notebook name (descriptive, e.g. "Lana's TPLO Recovery")
+        name: Notebook name (descriptive, e.g. "Dog Training Research")
 
     Returns:
         Confirmation with notebook name
@@ -4355,69 +3990,15 @@ def get_notebooklm_tools_description() -> str:
     return """
 ## Google NotebookLM (Knowledge Bases)
 
-You have access to Google NotebookLM for creating curated, source-grounded knowledge bases.
-Unlike memories (short snippets) or documents (standalone text), NotebookLM notebooks are
-collections of diverse sources that can be queried together with citations.
+Curated, source-grounded knowledge bases. Unlike documents (standalone text), notebooks cross-reference multiple sources with citations.
 
-### Notebook Management
-1. **nlm_list_notebooks()**: List all notebooks
-2. **nlm_create_notebook(name)**: Create a new notebook
-3. **nlm_delete_notebook(notebook_name)**: Delete a notebook (permanent)
-4. **nlm_get_notebook(notebook_name)**: Get notebook details with sources
-5. **nlm_describe_notebook(notebook_name)**: Get AI-generated summary and suggested topics
-6. **nlm_rename_notebook(notebook_name, new_title)**: Rename a notebook
+**Core workflow**: Create notebook -> add sources (URLs, YouTube, text, PDFs, Drive docs) -> query with nlm_ask for cited answers.
 
-### Source Management
-7. **nlm_add_source(notebook_name, source_type, content, title?)**: Add a source
-   - source_type: "url", "youtube", "text", "file" (PDF)
-   - content: URL, YouTube link, text content, or file path
-8. **nlm_list_sources(notebook_name)**: List sources in a notebook
-9. **nlm_delete_source(notebook_name, source_id)**: Delete a source
-10. **nlm_get_source_text(notebook_name, source_id)**: Extract indexed text from a source
-11. **nlm_add_drive_source(notebook_name, document_id, title, mime_type?)**: Add Google Drive doc as source
-12. **nlm_rename_source(notebook_name, source_id, new_title)**: Rename a source
-13. **nlm_describe_source(notebook_name, source_id)**: Get AI-generated source summary and keywords
+**Research workflow**: nlm_research (returns task_id) -> nlm_poll_research (check progress) -> nlm_import_research (import sources). Use mode='deep' for comprehensive research.
 
-### Querying & Chat
-14. **nlm_ask(notebook_name, question)**: Ask a question with source citations
-15. **nlm_configure_chat(notebook_name, goal?, custom_prompt?, response_length?)**: Configure chat persona
-    - goal: "default", "learning_guide", "custom"
-    - response_length: "default", "shorter", "longer"
+**Artifacts**: nlm_generate_artifact creates audio summaries, quizzes, reports, slides, mind maps, and more. Use nlm_wait_artifact to check status.
 
-### Research
-16. **nlm_research(notebook_name, query, mode?)**: Start web research (returns task_id)
-    - mode: "fast" (5-10 sources) or "deep" (15-25 sources)
-17. **nlm_poll_research(notebook_name, task_id?)**: Check research progress
-18. **nlm_import_research(notebook_name, task_id, source_indices?)**: Import discovered sources
+**Edward bridge**: nlm_push_document and nlm_push_file move your stored documents/files into notebooks as sources.
 
-### Artifact Generation (Studio)
-19. **nlm_generate_artifact(notebook_name, artifact_type, instructions?)**: Generate artifacts
-    - Types: audio, video, quiz, flashcards, slide_deck, infographic, mind_map, data_table, report
-    - Returns task_id for polling
-20. **nlm_wait_artifact(notebook_name, task_id)**: Check artifact generation status
-21. **nlm_delete_artifact(notebook_name, artifact_id)**: Delete a studio artifact
-22. **nlm_revise_slides(notebook_name, artifact_id, slide_instructions)**: Revise individual slides
-    - slide_instructions: JSON array of {"slide_number", "instruction"}
-
-### Sharing
-23. **nlm_share_status(notebook_name)**: Get sharing settings and collaborators
-24. **nlm_share_public(notebook_name, is_public?)**: Toggle public link access
-25. **nlm_share_invite(notebook_name, email, role?)**: Invite collaborator (viewer/editor)
-
-### Notes
-26. **nlm_note(notebook_name, action, note_id?, content?, title?)**: Manage notebook notes
-    - action: "create", "list", "update", "delete"
-
-### Edward Integration
-27. **nlm_push_document(document_id, notebook_name)**: Push Edward document to notebook
-28. **nlm_push_file(file_id, notebook_name)**: Push Edward PDF file to notebook
-
-Workflow tips:
-- Create notebooks for distinct topics (e.g., "Pet Care", "Project Research")
-- Use nlm_research to start research, nlm_poll_research to check, nlm_import_research to import
-- Reference by notebook name (case-insensitive), not ID
-- Artifacts are accessible via NotebookLM web UI after generation
-- Use nlm_describe_notebook/nlm_describe_source for quick overviews
-- Use nlm_ask for grounded Q&A, web_search for ungrounded lookups
-- Share notebooks publicly or invite collaborators
+Reference notebooks by name (case-insensitive). Use nlm_ask for grounded Q&A with citations. Use web_search for real-time but unverified results. Build notebooks proactively when topics accumulate multiple sources.
 """
