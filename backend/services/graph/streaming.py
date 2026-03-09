@@ -359,7 +359,7 @@ async def _stream_cc_session_inline(
         wait=False,
     )
 
-    if "error" in spawn_result:
+    if spawn_result.get("error"):
         result = f"Error: {spawn_result['error']}"
         yield create_event(EventType.TOOL_END, conversation_id, tool_name=tool_name, result=result[:500])
         yield {"_result": result}
