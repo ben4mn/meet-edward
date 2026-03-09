@@ -12,7 +12,7 @@ import os
 import anthropic
 import httpx
 
-from services.tool_registry import get_available_tools, get_tool_descriptions, get_tools_by_categories, get_routing_categories_prompt
+from services.tool_registry import get_available_tools, get_tool_descriptions
 from services.graph.tool_schema import tools_to_anthropic_schemas, tools_to_openai_schemas
 
 # Context budget constants
@@ -1236,71 +1236,6 @@ async def _call_llm(
     return await _call_anthropic(model, static_system, dynamic_context, messages, tool_schemas, temperature, max_tokens)
 
 
-# Self-routing prompt template
-_ROUTING_SYSTEM = "You classify user messages to select which tool categories are needed. Respond with ONLY a JSON array of category names."
-
-_ROUTING_PROMPT_TEMPLATE = """Which tool categories are needed for this message? Pick from:
-{categories}
-
-Rules:
-- Return ONLY a JSON array of category name strings, e.g. ["web_search", "messaging"]
-- If the message is casual conversation (greeting, chitchat, simple Q&A), return []
-- If unsure, include the category — better to over-include than miss
-- Always-on categories (memory, documents, file_storage, planning, custom_mcp) are included automatically — do NOT list them
-
-Message: {message}"""
-
-
-async def _route_tools(message: str, recent_messages: list = None) -> set:
-    """Use Haiku to classify which tool categories are needed.
-
-    Returns a set of category names. Falls back to {"all"} on error.
-    Cost: ~$0.0002/call, ~200ms latency.
-    """
-    from services.llm_client import haiku_call
-
-    categories_text = get_routing_categories_prompt()
-    prompt = _ROUTING_PROMPT_TEMPLATE.format(
-        categories=categories_text,
-        message=message[:500],  # Truncate long messages
-    )
-
-    try:
-        response = await asyncio.wait_for(
-            haiku_call(
-                system=_ROUTING_SYSTEM,
-                message=prompt,
-                max_tokens=150,
-                temperature=0,
-            ),
-            timeout=3.0,
-        )
-        response = response.strip()
-
-        # Extract JSON array
-        json_match = re.search(r'\[[\s\S]*?\]', response)
-        if json_match:
-            categories = _json.loads(json_match.group())
-            if isinstance(categories, list):
-                result = {c for c in categories if isinstance(c, str) and c.strip()}
-                # Co-selection: related categories should always appear together
-                if "messaging" in result or "whatsapp_bridge" in result:
-                    result.add("messaging")
-                    result.add("whatsapp_bridge")
-                print(f"[ROUTING] Message: {message[:60]}... → categories: {result or '{}'} (chat-only)")
-                return result
-
-        # Empty response = chat-only (no special tools needed)
-        print(f"[ROUTING] Message: {message[:60]}... → categories: {{}} (chat-only)")
-        return set()
-
-    except asyncio.TimeoutError:
-        print("[ROUTING] Timed out (3s), falling back to all tools")
-        return {"all"}
-    except Exception as e:
-        print(f"[ROUTING] Failed: {e}, falling back to all tools")
-        return {"all"}
-
 
 async def stream_with_memory(
     message: str,
@@ -1418,10 +1353,8 @@ async def stream_with_memory_events(
     except Exception as e:
         print(f"Heartbeat briefing failed: {e}")
 
-    # ===== SELF-ROUTING TOOL SELECTION =====
-    # Haiku classifies the message to select relevant tool categories
-    selected_categories = await _route_tools(message)
-    tools = await get_tools_by_categories(selected_categories)
+    # ===== TOOL SELECTION =====
+    tools = await get_available_tools()
 
     # Build enhanced system prompt with memories, tool descriptions, and current time
     memory_context = build_memory_context(
@@ -1710,14 +1643,12 @@ async def chat_with_memory(
     attachments: Optional[List[dict]] = None,
     skip_memory: bool = False,
     is_worker: bool = False,
-    skip_routing: bool = False,
 ) -> str:
     """Get a non-streaming response while maintaining conversation memory.
 
     Args:
         skip_memory: Skip memory retrieval, enrichment, and document retrieval (for workers)
         is_worker: Use worker-filtered tools (no evolution/orchestrator tools)
-        skip_routing: Skip self-routing, use all available tools (for system triggers like heartbeat/scheduler)
     """
     from services.memory_service import retrieve_memories, extract_and_store_memories, Memory
     from services.checkpoint_store import get_messages, save_messages
@@ -1794,17 +1725,13 @@ async def chat_with_memory(
         except Exception as e:
             print(f"Orchestrator briefing failed: {e}")
 
-    # ===== SELF-ROUTING TOOL SELECTION =====
-    # Workers get filtered set (no evolution/orchestrator), otherwise route
+    # ===== TOOL SELECTION =====
+    # Workers get filtered set (no evolution/orchestrator), otherwise all tools
     if is_worker:
         from services.tool_registry import get_worker_tools
         tools = await get_worker_tools()
-    elif skip_routing:
-        # System triggers (heartbeat, scheduler) need all tools — routing is unreliable for them
-        tools = await get_available_tools()
     else:
-        selected_categories = await _route_tools(message)
-        tools = await get_tools_by_categories(selected_categories)
+        tools = await get_available_tools()
 
     # Build enhanced system prompt with memories, tool descriptions, and current time
     memory_context = build_memory_context(
