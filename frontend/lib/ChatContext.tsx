@@ -826,6 +826,11 @@ export function ChatProvider({ children }: { children: ReactNode }) {
               }
               break;
 
+            case "error":
+              // LLM call failed — clear thinking state, content event will follow
+              updateAssistantMessage({ isThinking: false });
+              break;
+
             case "done":
               // Streaming complete
               break;

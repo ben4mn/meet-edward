@@ -641,6 +641,7 @@ export type StreamEventType =
   | "execution_result"
   | "tool_end"
   | "content"
+  | "error"
   | "done"
   | "interrupted"
   | "plan_created"
@@ -675,6 +676,7 @@ export interface StreamEvent {
   conversation_id: string;
   // Type-specific fields
   content?: string;        // for thinking, content, interrupted
+  error?: string;          // for error (LLM failure message)
   tool_name?: string;      // for tool_start, tool_end, progress
   code?: string;           // for code
   language?: string;       // for code

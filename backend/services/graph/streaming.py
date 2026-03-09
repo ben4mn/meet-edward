@@ -4,6 +4,7 @@ import hashlib
 import json as _json
 import re
 import sys
+import time
 from datetime import datetime
 from typing import AsyncGenerator, List, Any, Dict, Optional
 
@@ -153,6 +154,7 @@ class EventType:
     EXECUTION_RESULT = "execution_result"
     TOOL_END = "tool_end"
     CONTENT = "content"
+    ERROR = "error"
     DONE = "done"
     INTERRUPTED = "interrupted"
     PLAN_CREATED = "plan_created"
@@ -1049,7 +1051,16 @@ async def _call_codex(
 
     # Stream SSE and collect the response.completed event which has the full response
     completed_data = None
-    async with httpx.AsyncClient(timeout=120.0) as client:
+    # Separate timeouts: 30s connect, 90s between chunks (read), 30s write/pool
+    # The read timeout resets per chunk — handles slow reasoning without false timeout.
+    stream_timeout = httpx.Timeout(connect=30.0, read=90.0, write=30.0, pool=30.0)
+    # Hard cap: 180s total wall-clock time to prevent infinite hangs
+    CODEX_TOTAL_TIMEOUT = 180.0
+    stream_start = time.monotonic()
+    event_counts: Dict[str, int] = {}
+    last_event_time = stream_start
+
+    async with httpx.AsyncClient(timeout=stream_timeout) as client:
         async with client.stream("POST", CODEX_API_URL, json=body, headers=headers) as response:
             if response.status_code == 404:
                 body_text = ""
@@ -1068,6 +1079,8 @@ async def _call_codex(
                     body_text += chunk
                 raise ValueError(f"Codex API error ({response.status_code}): {body_text[:200]}")
 
+            print(f"[CODEX] Stream connected, waiting for response...")
+
             # Parse SSE stream — look for response.completed which has the full response
             # SSE format: "event: <type>\ndata: <json>\n\n"
             # Data can span multiple "data:" lines (concatenated with \n per SSE spec)
@@ -1075,6 +1088,12 @@ async def _call_codex(
             current_event = ""
             current_data_lines = []
             async for chunk in response.aiter_text():
+                # Check total wall-clock timeout
+                elapsed = time.monotonic() - stream_start
+                if elapsed > CODEX_TOTAL_TIMEOUT:
+                    _codex_log_summary(event_counts, elapsed, "TIMEOUT")
+                    raise ValueError(f"Codex API total timeout ({CODEX_TOTAL_TIMEOUT:.0f}s) exceeded. Try again or switch provider.")
+
                 buffer += chunk
                 while "\n" in buffer:
                     line, buffer = buffer.split("\n", 1)
@@ -1088,6 +1107,8 @@ async def _call_codex(
                     elif line == "":
                         # Blank line = event dispatch (per SSE spec)
                         if current_event and current_data_lines:
+                            event_counts[current_event] = event_counts.get(current_event, 0) + 1
+                            last_event_time = time.monotonic()
                             data_str = "\n".join(current_data_lines)
                             if current_event == "response.completed" and data_str.strip():
                                 try:
@@ -1100,9 +1121,12 @@ async def _call_codex(
                                     error_msg = error_data.get("error", {}).get("message", data_str[:200])
                                 except _json.JSONDecodeError:
                                     error_msg = data_str[:200]
+                                _codex_log_summary(event_counts, time.monotonic() - stream_start, "ERROR")
                                 raise ValueError(f"Codex API stream error: {error_msg}")
                         current_event = ""
                         current_data_lines = []
+
+    elapsed = time.monotonic() - stream_start
 
     # Handle edge case: stream ends without trailing blank line after last event
     if not completed_data and current_event == "response.completed" and current_data_lines:
@@ -1114,9 +1138,21 @@ async def _call_codex(
                 pass
 
     if not completed_data:
+        _codex_log_summary(event_counts, elapsed, "NO_COMPLETED")
         raise ValueError("Codex API stream ended without response.completed event")
 
+    _codex_log_summary(event_counts, elapsed, "OK")
     return _parse_codex_response(completed_data)
+
+
+def _codex_log_summary(event_counts: Dict[str, int], elapsed: float, status: str):
+    """Log a one-line summary of a Codex SSE stream."""
+    total = sum(event_counts.values())
+    parts = [f"{v} {k}" for k, v in sorted(event_counts.items(), key=lambda x: -x[1])]
+    summary = ", ".join(parts[:5])  # Top 5 event types
+    if len(parts) > 5:
+        summary += f", +{len(parts) - 5} more types"
+    print(f"[CODEX] Stream {status} in {elapsed:.1f}s ({total} events: {summary})" if total else f"[CODEX] Stream {status} in {elapsed:.1f}s (0 events)")
 
 
 def _parse_codex_response(data: dict) -> dict:
@@ -1391,6 +1427,9 @@ async def stream_with_memory_events(
     max_tool_iterations = 30
     iteration = 0
 
+    # Track whether a fatal LLM error occurred (to skip post-processing)
+    _llm_error_occurred = False
+
     while iteration < max_tool_iterations:
         iteration += 1
 
@@ -1399,10 +1438,20 @@ async def stream_with_memory_events(
             yield create_event(EventType.THINKING, conversation_id, content="Thinking...")
 
         # Call LLM (dispatches to Anthropic or OpenAI based on model)
-        result = await _call_llm(
-            model, static_system, dynamic_context, messages,
-            tool_schemas, temperature,
-        )
+        try:
+            result = await _call_llm(
+                model, static_system, dynamic_context, messages,
+                tool_schemas, temperature,
+            )
+        except Exception as e:
+            error_msg = str(e)
+            print(f"[LLM ERROR] {error_msg}")
+            yield create_event(EventType.ERROR, conversation_id, error=error_msg)
+            full_response = f"I encountered an error: {error_msg}"
+            yield create_event(EventType.CONTENT, conversation_id, content=full_response)
+            needs_streaming = False
+            _llm_error_occurred = True
+            break
 
         # Extract tool calls from normalized result
         response_tool_calls = result["tool_calls"]
@@ -1529,7 +1578,7 @@ async def stream_with_memory_events(
             break
 
     # Only stream a new response if the loop didn't produce one
-    if needs_streaming:
+    if needs_streaming and not _llm_error_occurred:
         if tool_calls_made:
             # Tools executed successfully but LLM returned no final text — this is valid
             # (GPT models return function_call without accompanying text, unlike Claude)
@@ -1594,37 +1643,38 @@ async def stream_with_memory_events(
         ] if tool_calls_made else [],
     })
 
-    # ===== MEMORY EXTRACTION (with timeout to guarantee done event) =====
+    # ===== MEMORY EXTRACTION (skip on LLM errors, still guarantee done event) =====
     try:
-        messages_for_extraction = [
-            {"role": "human" if _msg_role(m) == "user" else "assistant",
-             "content": _msg_content_text(m)}
-            for m in messages[-10:]
-            if _msg_role(m) in ("user", "assistant")
-        ]
-        await asyncio.wait_for(
-            extract_and_store_memories(
-                messages=messages_for_extraction,
-                conversation_id=conversation_id,
-                existing_memories=retrieved_memories
-            ),
-            timeout=30,
-        )
+        if not _llm_error_occurred:
+            messages_for_extraction = [
+                {"role": "human" if _msg_role(m) == "user" else "assistant",
+                 "content": _msg_content_text(m)}
+                for m in messages[-10:]
+                if _msg_role(m) in ("user", "assistant")
+            ]
+            await asyncio.wait_for(
+                extract_and_store_memories(
+                    messages=messages_for_extraction,
+                    conversation_id=conversation_id,
+                    existing_memories=retrieved_memories
+                ),
+                timeout=30,
+            )
 
-        # Fire-and-forget search tag generation
-        from services.search_tag_service import generate_search_tags_safe
-        asyncio.create_task(generate_search_tags_safe(conversation_id, messages_for_extraction))
+            # Fire-and-forget search tag generation
+            from services.search_tag_service import generate_search_tags_safe
+            asyncio.create_task(generate_search_tags_safe(conversation_id, messages_for_extraction))
 
-        # Fire-and-forget reflection for next turn's enrichment
-        try:
-            from services.reflection_service import should_reflect, run_reflection_safe
-            if should_reflect(messages_for_extraction, turn_count):
-                asyncio.create_task(run_reflection_safe(
-                    conversation_id, messages_for_extraction,
-                    [m.id for m in retrieved_memories]
-                ))
-        except Exception as e:
-            print(f"Reflection fire-and-forget failed: {e}")
+            # Fire-and-forget reflection for next turn's enrichment
+            try:
+                from services.reflection_service import should_reflect, run_reflection_safe
+                if should_reflect(messages_for_extraction, turn_count):
+                    asyncio.create_task(run_reflection_safe(
+                        conversation_id, messages_for_extraction,
+                        [m.id for m in retrieved_memories]
+                    ))
+            except Exception as e:
+                print(f"Reflection fire-and-forget failed: {e}")
     except asyncio.TimeoutError:
         print(f"Memory extraction timed out after 30s for conversation {conversation_id}")
     except Exception as e:
