@@ -465,6 +465,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         let newConversationId: string | undefined;
         let currentCodeBlock: CodeBlock | null = null;
         let codeBlockCounter = 0;
+        let doneSeen = false;
+        let contentSeen = false;
 
         // Helper to update the assistant message
         const updateAssistantMessage = (updates: Partial<Message>) => {
@@ -818,6 +820,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
             case "content":
               if (event.content) {
+                contentSeen = true;
                 streamingContentRef.current += event.content;
                 updateAssistantMessage({
                   content: streamingContentRef.current,
@@ -832,9 +835,17 @@ export function ChatProvider({ children }: { children: ReactNode }) {
               break;
 
             case "done":
-              // Streaming complete
+              doneSeen = true;
+              updateAssistantMessage({ isThinking: false });
               break;
           }
+        }
+
+        if (!doneSeen) {
+          updateAssistantMessage({
+            isThinking: false,
+            ...(contentSeen ? {} : { content: "Sorry, the response stream ended unexpectedly. Please try again." }),
+          });
         }
 
         // Refresh conversations list after sending (to get the new/updated conversation)

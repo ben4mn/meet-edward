@@ -12,7 +12,11 @@ from datetime import datetime
 from typing import Dict, Optional
 
 from services.database import async_session, OrchestratorTaskModel
-from services.orchestrator_service import _update_task_status, _update_task_field
+from services.orchestrator_service import (
+    _update_task_status,
+    _update_task_field,
+    _maybe_notify_parent_task_completion,
+)
 
 
 # Separate semaphore for CC sessions (independent from worker semaphore)
@@ -81,21 +85,47 @@ async def spawn_cc_for_task(
             result_summary=result_text,
             completed_at=datetime.utcnow(),
         )
+        await _maybe_notify_parent_task_completion(
+            parent_conversation_id=parent_conversation_id,
+            task_id=task_id,
+            task_description=task_description,
+            task_type="cc_session",
+            status="completed",
+            result_summary=result_text,
+        )
 
     except asyncio.TimeoutError:
+        error = f"CC session timed out after {timeout}s"
         await _update_task_status(
             task_id, "failed",
-            error=f"CC session timed out after {timeout}s",
+            error=error,
             completed_at=datetime.utcnow(),
+        )
+        await _maybe_notify_parent_task_completion(
+            parent_conversation_id=parent_conversation_id,
+            task_id=task_id,
+            task_description=task_description,
+            task_type="cc_session",
+            status="failed",
+            error=error,
         )
     except asyncio.CancelledError:
         await _update_task_status(task_id, "cancelled", completed_at=datetime.utcnow())
     except Exception as e:
         tb = traceback.format_exc()
+        error = f"{str(e)}\n{tb}"
         await _update_task_status(
             task_id, "failed",
-            error=f"{str(e)}\n{tb}",
+            error=error,
             completed_at=datetime.utcnow(),
+        )
+        await _maybe_notify_parent_task_completion(
+            parent_conversation_id=parent_conversation_id,
+            task_id=task_id,
+            task_description=task_description,
+            task_type="cc_session",
+            status="failed",
+            error=error,
         )
     finally:
         _cc_tasks.pop(task_id, None)

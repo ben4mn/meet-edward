@@ -2740,8 +2740,9 @@ async def spawn_worker(
     search, code execution, etc.) but cannot spawn its own workers.
 
     Workers run in their own conversation (visible in sidebar with purple icon).
-    Use wait=False to run in background, then check_worker() or wait_for_workers()
-    to get results.
+    Prefer wait=False when the task is likely to take more than one quick turn,
+    especially for multi-step research, long analysis, or follow-up polling.
+    Use check_worker() or wait_for_workers() to get results later.
 
     Args:
         task: Clear description of what the worker should do. Be specific!
@@ -2752,6 +2753,7 @@ async def spawn_worker(
         context_data: Extra context to provide in scoped mode (e.g., relevant facts, data)
         wait: If True, block until worker completes and return result inline.
               If False (default), return task ID immediately for async checking.
+              Prefer False for long-running or iterative work.
 
     Returns:
         If wait=True: the worker's result summary
@@ -2947,9 +2949,11 @@ async def spawn_cc_worker(task: str, cwd: Optional[str] = None, wait: bool = Tru
     involving file editing, script writing, test running, debugging, refactoring,
     or codebase exploration.
 
-    Always uses Opus model. Runs as a separate Claude Code process with its own
+    Always uses the configured coding agent. Runs as a separate coding session with its own
     concurrency limit (independent from internal workers). Creates an orchestrator-tracked
     task visible in the sidebar and task list.
+    Prefer wait=False for multi-file edits, build/test/debug loops, or any task likely
+    to take more than ~45 seconds.
 
     Args:
         task: Clear description of the coding task. Include file paths, expected
@@ -2957,6 +2961,7 @@ async def spawn_cc_worker(task: str, cwd: Optional[str] = None, wait: bool = Tru
         cwd: Working directory for Claude Code (defaults to Edward's project root)
         wait: If True (default), block until CC completes and return result.
               If False, return task ID for async checking via check_worker().
+              Prefer False for long-running coding tasks.
 
     Returns:
         If wait=True: the CC session's result summary
@@ -3004,15 +3009,15 @@ def get_orchestrator_tools_description() -> str:
 Spawn agents for parallel sub-tasks. Workers have full tool access but cannot spawn sub-workers.
 
 ### Coding tasks
-- **spawn_cc_worker**: **Always use for file/code tasks** (editing, scripts, debugging). Runs Claude Code with Opus. Default wait=True.
+- **spawn_cc_worker**: **Always use for file/code tasks** (editing, scripts, debugging). Prefer `wait=false` for multi-file edits, build/test/debug loops, or tasks likely to exceed ~45 seconds.
 
 ### Non-coding tasks
-- **spawn_worker**: Research, analysis, messaging, memory ops. Choose model: haiku (fast), sonnet (balanced), opus (powerful).
+- **spawn_worker**: Research, analysis, messaging, memory ops. Choose model: haiku (fast), sonnet (balanced), opus (powerful). Prefer `wait=false` for long multi-step work.
 
 ### Management
 - **check_worker / list_workers / cancel_worker / wait_for_workers / send_to_worker**
 
-Write self-contained task descriptions (workers have no conversation history). Spawn multiple workers in parallel, then wait_for_workers to collect results.
+Write self-contained task descriptions (workers have no conversation history). Interactive turns should finish explicitly; if work will take a while, hand it off in background and return a status summary instead of waiting inline.
 """
 
 

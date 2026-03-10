@@ -888,6 +888,8 @@ export async function* streamChatEvents(
 
   const decoder = new TextDecoder();
   let buffer = "";
+  let doneReceived = false;
+  let lastConversationId = conversationId;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -901,12 +903,30 @@ export async function* streamChatEvents(
       if (line.startsWith("data: ")) {
         try {
           const data = JSON.parse(line.slice(6)) as StreamEvent;
+          if (data.conversation_id) {
+            lastConversationId = data.conversation_id;
+          }
+          if (data.type === "done") {
+            doneReceived = true;
+          }
           yield data;
         } catch {
           // Ignore parsing errors for non-JSON lines
         }
       }
     }
+  }
+
+  if (!doneReceived && !abortSignal?.aborted) {
+    yield {
+      type: "error",
+      conversation_id: lastConversationId || "",
+      error: "The response stream ended unexpectedly.",
+    };
+    yield {
+      type: "done",
+      conversation_id: lastConversationId || "",
+    };
   }
 }
 

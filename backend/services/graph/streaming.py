@@ -75,6 +75,16 @@ PLANNING_DIRECTIVE = """
 ## Planning Requirement
 You MUST call create_plan() BEFORE starting work when a request involves 3+ tool calls or multiple steps (build, create, research, multi-part requests). Do NOT skip planning on complex tasks."""
 
+BACKGROUND_HANDOFF_DIRECTIVE = """
+
+## Interactive vs Background Work
+
+Interactive chat turns must end explicitly. If a task is obviously long-running or iterative, do not keep the main turn open indefinitely.
+
+- For multi-file coding, debugging loops, build/test/fix cycles, or work likely to take more than about 45 seconds, prefer `spawn_cc_worker(wait=false)`.
+- For non-coding research, synthesis, or operational tasks that need multiple steps or follow-up polling, prefer `spawn_worker(wait=false)`.
+- When handing work off, tell the user briefly what was delegated and how you will follow up instead of silently waiting."""
+
 ASSUMPTION_AWARENESS_CONTEXT = """
 
 ## Assumption Awareness
@@ -1013,7 +1023,7 @@ async def _call_codex(
 
     Uses chatgpt.com/backend-api/codex/responses endpoint via raw httpx.
     ChatGPT backend REQUIRES stream=true — we collect SSE events and extract
-    the full response from the 'response.completed' event.
+    the full response from the terminal response event.
     Returns same normalized dict as _call_anthropic() / _call_openai().
     """
     from services.codex_oauth_service import get_access_token, get_account_id, CODEX_API_URL
@@ -1049,8 +1059,9 @@ async def _call_codex(
         "Content-Type": "application/json",
     }
 
-    # Stream SSE and collect the response.completed event which has the full response
+    # Stream SSE and collect the terminal response event which has the full response.
     completed_data = None
+    terminal_event_name = None
     # Separate timeouts: 30s connect, 90s between chunks (read), 30s write/pool
     # The read timeout resets per chunk — handles slow reasoning without false timeout.
     stream_timeout = httpx.Timeout(connect=30.0, read=90.0, write=30.0, pool=30.0)
@@ -1081,7 +1092,7 @@ async def _call_codex(
 
             print(f"[CODEX] Stream connected, waiting for response...")
 
-            # Parse SSE stream — look for response.completed which has the full response
+            # Parse SSE stream — look for the terminal response event with the full response.
             # SSE format: "event: <type>\ndata: <json>\n\n"
             # Data can span multiple "data:" lines (concatenated with \n per SSE spec)
             buffer = ""
@@ -1110,11 +1121,12 @@ async def _call_codex(
                             event_counts[current_event] = event_counts.get(current_event, 0) + 1
                             last_event_time = time.monotonic()
                             data_str = "\n".join(current_data_lines)
-                            if current_event == "response.completed" and data_str.strip():
+                            if current_event in {"response.completed", "response.done"} and data_str.strip():
                                 try:
                                     completed_data = _json.loads(data_str)
+                                    terminal_event_name = current_event
                                 except _json.JSONDecodeError:
-                                    print(f"[CODEX ERROR] Failed to parse response.completed JSON: {data_str[:300]}")
+                                    print(f"[CODEX ERROR] Failed to parse {current_event} JSON: {data_str[:300]}")
                             elif current_event == "error" and data_str.strip():
                                 try:
                                     error_data = _json.loads(data_str)
@@ -1129,30 +1141,52 @@ async def _call_codex(
     elapsed = time.monotonic() - stream_start
 
     # Handle edge case: stream ends without trailing blank line after last event
-    if not completed_data and current_event == "response.completed" and current_data_lines:
+    if not completed_data and current_event in {"response.completed", "response.done"} and current_data_lines:
         data_str = "\n".join(current_data_lines)
         if data_str.strip():
             try:
                 completed_data = _json.loads(data_str)
+                terminal_event_name = current_event
             except _json.JSONDecodeError:
                 pass
 
     if not completed_data:
-        _codex_log_summary(event_counts, elapsed, "NO_COMPLETED")
-        raise ValueError("Codex API stream ended without response.completed event")
+        partial_event_count = sum(
+            count
+            for event_name, count in event_counts.items()
+            if event_name.startswith("response.output")
+            or event_name.startswith("response.function_call")
+        )
+        status = "NO_TERMINAL_PARTIAL" if partial_event_count else "NO_TERMINAL"
+        _codex_log_summary(event_counts, elapsed, status)
+        if partial_event_count:
+            raise ValueError(
+                "Codex API stream ended after partial output or tool-call events without a terminal response event."
+            )
+        raise ValueError("Codex API stream ended without response.done or response.completed.")
 
-    _codex_log_summary(event_counts, elapsed, "OK")
+    _codex_log_summary(event_counts, elapsed, "OK", terminal_event_name=terminal_event_name)
     return _parse_codex_response(completed_data)
 
 
-def _codex_log_summary(event_counts: Dict[str, int], elapsed: float, status: str):
+def _codex_log_summary(
+    event_counts: Dict[str, int],
+    elapsed: float,
+    status: str,
+    terminal_event_name: Optional[str] = None,
+):
     """Log a one-line summary of a Codex SSE stream."""
     total = sum(event_counts.values())
     parts = [f"{v} {k}" for k, v in sorted(event_counts.items(), key=lambda x: -x[1])]
     summary = ", ".join(parts[:5])  # Top 5 event types
     if len(parts) > 5:
         summary += f", +{len(parts) - 5} more types"
-    print(f"[CODEX] Stream {status} in {elapsed:.1f}s ({total} events: {summary})" if total else f"[CODEX] Stream {status} in {elapsed:.1f}s (0 events)")
+    terminal_suffix = f", terminal={terminal_event_name}" if terminal_event_name else ""
+    print(
+        f"[CODEX] Stream {status}{terminal_suffix} in {elapsed:.1f}s ({total} events: {summary})"
+        if total
+        else f"[CODEX] Stream {status}{terminal_suffix} in {elapsed:.1f}s (0 events)"
+    )
 
 
 def _parse_codex_response(data: dict) -> dict:
@@ -1307,6 +1341,7 @@ async def stream_with_memory_events(
     from services.memory_service import retrieve_memories, extract_and_store_memories, Memory
     from services.graph.tools import set_current_conversation_id
     from services.checkpoint_store import get_messages, save_messages
+    assistant_content_emitted = False
 
     # Set the conversation ID for code execution context
     set_current_conversation_id(conversation_id)
@@ -1404,7 +1439,7 @@ async def stream_with_memory_events(
         system_prompt
         + AUTONOMY_FRAMEWORK
         + _build_platform_context()
-        + ASSUMPTION_AWARENESS_CONTEXT + PLANNING_DIRECTIVE
+        + ASSUMPTION_AWARENESS_CONTEXT + PLANNING_DIRECTIVE + BACKGROUND_HANDOFF_DIRECTIVE
     )
     dynamic_context = memory_context + briefing_context + time_context
 
@@ -1448,6 +1483,7 @@ async def stream_with_memory_events(
             print(f"[LLM ERROR] {error_msg}")
             yield create_event(EventType.ERROR, conversation_id, error=error_msg)
             full_response = f"I encountered an error: {error_msg}"
+            assistant_content_emitted = True
             yield create_event(EventType.CONTENT, conversation_id, content=full_response)
             needs_streaming = False
             _llm_error_occurred = True
@@ -1568,6 +1604,7 @@ async def stream_with_memory_events(
             )
             if result["text"]:
                 full_response = result["text"]
+                assistant_content_emitted = True
                 yield create_event(EventType.CONTENT, conversation_id, content=full_response)
                 needs_streaming = False
             yield create_event(EventType.PROGRESS, conversation_id,
@@ -1584,6 +1621,7 @@ async def stream_with_memory_events(
             # (GPT models return function_call without accompanying text, unlike Claude)
             tool_summary = ", ".join(sorted(set(tc["name"] for tc in tool_calls_made)))
             full_response = f"[Completed: {tool_summary}]"
+            assistant_content_emitted = True
             yield create_event(EventType.CONTENT, conversation_id, content=full_response)
         else:
             print(f"[WARNING] Tool loop exited after {iteration}/{max_tool_iterations} iterations without final response, streaming new response")
@@ -1595,6 +1633,7 @@ async def stream_with_memory_events(
                 )
                 full_response = fallback_result["text"]
                 if full_response:
+                    assistant_content_emitted = True
                     yield create_event(EventType.CONTENT, conversation_id, content=full_response)
             else:
                 # Anthropic: streaming fallback
@@ -1606,6 +1645,8 @@ async def stream_with_memory_events(
                 async with client.messages.stream(**fallback_kwargs) as stream:
                     async for text in stream.text_stream:
                         full_response += text
+                        if text:
+                            assistant_content_emitted = True
                         yield create_event(EventType.CONTENT, conversation_id, content=text)
 
     # Safety net: if no content was ever produced, send a plan-aware fallback
@@ -1621,6 +1662,7 @@ async def stream_with_memory_events(
             )
         else:
             full_response = "I completed the requested actions. Let me know if you need anything else!"
+        assistant_content_emitted = True
         yield create_event(EventType.CONTENT, conversation_id, content=full_response)
 
     # Add assistant response to messages
@@ -1631,17 +1673,31 @@ async def stream_with_memory_events(
     final_plan = _get_plan_for_save(conversation_id)
 
     # Save conversation state to checkpoint store
-    await save_messages(conversation_id, messages, metadata={
-        "system_prompt": system_prompt,
-        "model": model,
-        "temperature": temperature,
-        "current_response": full_response,
-        "plan_steps": final_plan,
-        "tool_calls": [
-            {"name": tc["name"], "args": tc["args"]}
-            for tc in tool_calls_made
-        ] if tool_calls_made else [],
-    })
+    try:
+        await save_messages(conversation_id, messages, metadata={
+            "system_prompt": system_prompt,
+            "model": model,
+            "temperature": temperature,
+            "current_response": full_response,
+            "plan_steps": final_plan,
+            "tool_calls": [
+                {"name": tc["name"], "args": tc["args"]}
+                for tc in tool_calls_made
+            ] if tool_calls_made else [],
+        })
+    except Exception as e:
+        error_msg = f"Failed to save conversation state: {e}"
+        print(f"[STREAM ERROR] {error_msg}")
+        yield create_event(EventType.ERROR, conversation_id, error=error_msg)
+        if not assistant_content_emitted:
+            assistant_content_emitted = True
+            yield create_event(
+                EventType.CONTENT,
+                conversation_id,
+                content="I encountered an error before I could finish the response. Please try again.",
+            )
+        yield create_event(EventType.DONE, conversation_id)
+        return
 
     # ===== MEMORY EXTRACTION (skip on LLM errors, still guarantee done event) =====
     try:
@@ -1795,7 +1851,7 @@ async def chat_with_memory(
         system_prompt
         + AUTONOMY_FRAMEWORK
         + _build_platform_context()
-        + ASSUMPTION_AWARENESS_CONTEXT + PLANNING_DIRECTIVE
+        + ASSUMPTION_AWARENESS_CONTEXT + PLANNING_DIRECTIVE + BACKGROUND_HANDOFF_DIRECTIVE
     )
     dynamic_context = memory_context + briefing_context_sync + orchestrator_context + time_context
 

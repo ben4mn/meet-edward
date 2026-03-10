@@ -50,6 +50,11 @@ def is_user_chatting() -> bool:
     return len(_active_chats) > 0
 
 
+def is_conversation_active(conversation_id: str) -> bool:
+    """Check whether a specific conversation is currently open in the chat UI."""
+    return conversation_id in _active_chats
+
+
 # ===== Config =====
 
 async def _load_config() -> HeartbeatConfigModel:

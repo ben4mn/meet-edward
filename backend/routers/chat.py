@@ -123,18 +123,28 @@ async def chat(request: Request):
             # Register active chat so heartbeat defers triage
             from services.heartbeat.heartbeat_service import register_active_chat, unregister_active_chat
             register_active_chat(conversation_id)
+            done_sent = False
             try:
-                async for event in stream_with_memory_events(
-                    message=message,
-                    conversation_id=conversation_id,
-                    system_prompt=settings.system_prompt,
-                    model=settings.model,
-                    temperature=settings.temperature,
-                    attachments=attachments if attachments else None,
-                ):
-                    # Stream the full event object
-                    yield f"data: {json.dumps(event)}\n\n"
+                try:
+                    async for event in stream_with_memory_events(
+                        message=message,
+                        conversation_id=conversation_id,
+                        system_prompt=settings.system_prompt,
+                        model=settings.model,
+                        temperature=settings.temperature,
+                        attachments=attachments if attachments else None,
+                    ):
+                        if event.get("type") == EventType.DONE:
+                            done_sent = True
+                        yield f"data: {json.dumps(event)}\n\n"
+                except Exception as e:
+                    if not done_sent:
+                        yield f"data: {json.dumps({'type': EventType.ERROR, 'conversation_id': conversation_id, 'error': str(e)})}\n\n"
+                        yield f"data: {json.dumps({'type': EventType.DONE, 'conversation_id': conversation_id})}\n\n"
+                        done_sent = True
             finally:
+                if not done_sent:
+                    yield f"data: {json.dumps({'type': EventType.DONE, 'conversation_id': conversation_id})}\n\n"
                 unregister_active_chat(conversation_id)
 
         return StreamingResponse(

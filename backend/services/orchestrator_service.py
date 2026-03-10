@@ -272,14 +272,37 @@ async def _worker_lifecycle(
             )
 
         await _update_task_status(task_id, "completed", result_summary=result, completed_at=datetime.utcnow())
+        await _maybe_notify_parent_task_completion(
+            parent_conversation_id=parent_conversation_id,
+            task_id=task_id,
+            task_description=task_description,
+            status="completed",
+            result_summary=result,
+        )
 
     except asyncio.TimeoutError:
-        await _update_task_status(task_id, "failed", error=f"Timed out after {timeout}s", completed_at=datetime.utcnow())
+        error = f"Timed out after {timeout}s"
+        await _update_task_status(task_id, "failed", error=error, completed_at=datetime.utcnow())
+        await _maybe_notify_parent_task_completion(
+            parent_conversation_id=parent_conversation_id,
+            task_id=task_id,
+            task_description=task_description,
+            status="failed",
+            error=error,
+        )
     except asyncio.CancelledError:
         await _update_task_status(task_id, "cancelled", completed_at=datetime.utcnow())
     except Exception as e:
         tb = traceback.format_exc()
-        await _update_task_status(task_id, "failed", error=f"{str(e)}\n{tb}", completed_at=datetime.utcnow())
+        error = f"{str(e)}\n{tb}"
+        await _update_task_status(task_id, "failed", error=error, completed_at=datetime.utcnow())
+        await _maybe_notify_parent_task_completion(
+            parent_conversation_id=parent_conversation_id,
+            task_id=task_id,
+            task_description=task_description,
+            status="failed",
+            error=error,
+        )
     finally:
         _worker_tasks.pop(task_id, None)
 
@@ -386,6 +409,52 @@ async def _update_task_field(task_id: str, field: str, value) -> None:
         if task:
             setattr(task, field, value)
             await session.commit()
+
+
+async def _maybe_notify_parent_task_completion(
+    parent_conversation_id: str,
+    task_id: str,
+    task_description: str,
+    status: str,
+    task_type: str = "internal_worker",
+    result_summary: Optional[str] = None,
+    error: Optional[str] = None,
+) -> None:
+    """Best-effort push notification for background task completion/failure."""
+    try:
+        from services.push_service import is_configured, send_push_notification
+        from services.heartbeat.heartbeat_service import is_conversation_active
+        from services.conversation_service import mark_user_notified
+
+        if status not in {"completed", "failed"}:
+            return
+        if not is_configured():
+            return
+        if is_conversation_active(parent_conversation_id):
+            return
+
+        task_label = "Coding task" if task_type == "cc_session" else "Background task"
+        short_desc = task_description[:80] + ("..." if len(task_description) > 80 else "")
+        if status == "completed":
+            body_detail = (result_summary or "Completed.").strip()[:120]
+            title = f"{task_label} finished"
+            body = f"{short_desc}: {body_detail}"
+            tag = "task-complete"
+        else:
+            body_detail = (error or "Task failed.").strip().splitlines()[0][:120]
+            title = f"{task_label} failed"
+            body = f"{short_desc}: {body_detail}"
+            tag = "task-failed"
+
+        await send_push_notification(
+            title=title,
+            body=body,
+            url=f"/chat?c={parent_conversation_id}",
+            tag=tag,
+        )
+        await mark_user_notified(parent_conversation_id)
+    except Exception as e:
+        print(f"[ORCHESTRATOR] Completion notification failed for task {task_id}: {e}")
 
 
 async def get_task(task_id: str) -> dict:
