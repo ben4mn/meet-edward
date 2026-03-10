@@ -33,8 +33,8 @@ function Stop-PortProcess {
         return
     }
 
-    foreach ($pid in $pids) {
-        try { Stop-Process -Id $pid -ErrorAction SilentlyContinue } catch {}
+    foreach ($procId in $pids) {
+        try { Stop-Process -Id $procId -ErrorAction SilentlyContinue } catch {}
     }
 
     # Wait up to 5 seconds for graceful stop
@@ -51,10 +51,20 @@ function Stop-PortProcess {
                   Select-Object -ExpandProperty OwningProcess -Unique)
     if ($remaining) {
         Write-Warn "$Name didn't stop gracefully, force killing..."
-        foreach ($pid in $remaining) {
-            try { Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue } catch {}
+        foreach ($procId in $remaining) {
+            try { Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue } catch {}
         }
-        Start-Sleep -Seconds 1
+    }
+
+    # Wait for the port to actually be released (OS needs time after kill)
+    $portCleared = $false
+    for ($w = 0; $w -lt 20; $w++) {
+        Start-Sleep -Milliseconds 500
+        $check = Get-NetTCPConnection -LocalPort $Port -ErrorAction SilentlyContinue
+        if (-not $check) { $portCleared = $true; break }
+    }
+    if (-not $portCleared) {
+        Write-Warn "$Name port $Port still occupied after 10s - continuing anyway"
     }
 
     Write-Info "$Name stopped"
@@ -102,9 +112,9 @@ function Start-Frontend {
     $waited = 0
     while ($waited -lt 20) {
         try {
-            $response = Invoke-WebRequest -Uri "http://localhost:3000" -UseBasicParsing -TimeoutSec 2 -ErrorAction SilentlyContinue
+            $response = Invoke-WebRequest -Uri "http://localhost:3001" -UseBasicParsing -TimeoutSec 2 -ErrorAction SilentlyContinue
             if ($response) {
-                Write-Info "Frontend is UP on port 3000"
+                Write-Info "Frontend is UP on port 3001"
                 return
             }
         } catch {}
@@ -112,7 +122,7 @@ function Start-Frontend {
         $waited++
     }
 
-    Write-Err "Frontend didn't respond within 20s"
+    Write-Err "Frontend didn't respond within 20s (port 3001)"
 }
 
 # ── Main ─────────────────────────────────────────────────────────────
@@ -123,12 +133,12 @@ Write-Host ""
 switch ($Component) {
     "all" {
         Stop-PortProcess -Port 8000 -Name "backend"
-        Stop-PortProcess -Port 3000 -Name "frontend"
+        Stop-PortProcess -Port 3001 -Name "frontend"
         Start-Frontend
         Start-Backend
     }
     "frontend" {
-        Stop-PortProcess -Port 3000 -Name "frontend"
+        Stop-PortProcess -Port 3001 -Name "frontend"
         Start-Frontend
     }
     "backend" {
@@ -145,5 +155,5 @@ switch ($Component) {
 Write-Host ""
 Write-Info "=== Done ==="
 Write-Info "  Backend:  http://localhost:8000  (log: $BackendLog)"
-Write-Info "  Frontend: http://localhost:3000  (log: $FrontendLog)"
+Write-Info "  Frontend: http://localhost:3001  (log: $FrontendLog)"
 Write-Host ""

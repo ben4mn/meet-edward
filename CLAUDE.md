@@ -26,6 +26,8 @@ Active implementation plans for the `cl-feature` branch live in `IMPLEMENTATION_
 | [008_PROMPT_OPTIMIZATION_AND_MEMORY_SEEDING.md](IMPLEMENTATION_PLANS/008_PROMPT_OPTIMIZATION_AND_MEMORY_SEEDING.md) | System prompt trim + instruction memory seeding | **Complete** |
 | [009_DUAL_PROVIDER_LLM.md](IMPLEMENTATION_PLANS/009_DUAL_PROVIDER_LLM.md) | Direct-SDK dual-provider (remove LangChain/LangGraph, add OpenAI Responses API, self-routing tools, Codex OAuth for subscription credits) | Planned |
 | [010_CODEX_CLI_TIER3.md](IMPLEMENTATION_PLANS/010_CODEX_CLI_TIER3.md) | Codex CLI as default Tier 3 coding agent (reuse OAuth, `codex exec --json`, Claude Code fallback) | Planned |
+| [012_AUTO_RESTART_TUNNEL.md](IMPLEMENTATION_PLANS/012_AUTO_RESTART_TUNNEL.md) | Auto-restart on login (Task Scheduler), fixed port 3001, permanent ngrok tunnel, watchdog | **Complete** |
+| [013_LIVE_ACTIVITY_FEED.md](IMPLEMENTATION_PLANS/013_LIVE_ACTIVITY_FEED.md) | Live activity feed during LLM reasoning: keepalive heartbeat, human-readable tool labels, CODEX_TOTAL_TIMEOUT bump | Planned |
 | [DEFERRED_TELEGRAM_INTEGRATION.md](IMPLEMENTATION_PLANS/DEFERRED_TELEGRAM_INTEGRATION.md) | Telegram bot with long-polling | Deferred |
 
 **IMPORTANT**: Read the relevant plan BEFORE making changes. Each plan has STOP warnings, strict rules, and verification checklists.
