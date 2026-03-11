@@ -834,6 +834,11 @@ export async function removeCustomMCPServer(serverId: string): Promise<{ status:
  * @param abortSignal - Optional AbortSignal for cancelling the request
  * @param files - Optional file attachments to include
  */
+
+// Yields control back to the browser event loop so React can flush state and paint
+// between SSE events that arrive batched in a single TCP packet (e.g. through ngrok).
+const yieldToEventLoop = () => new Promise<void>(resolve => setTimeout(resolve, 0));
+
 export async function* streamChatEvents(
   message: string,
   conversationId?: string,
@@ -910,6 +915,7 @@ export async function* streamChatEvents(
             doneReceived = true;
           }
           yield data;
+          await yieldToEventLoop();
         } catch {
           // Ignore parsing errors for non-JSON lines
         }

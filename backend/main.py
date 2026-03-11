@@ -7,9 +7,21 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
+import logging
+import os
+
 from routers import chat, settings, debug, memories, conversations, webhooks, skills, events, auth, push, documents, files, widget, databases, heartbeat, custom_mcp, consolidation, evolution, orchestrator
 from services.database import init_db, DATABASE_URL
 from services.graph import initialize_checkpoint_store
+
+# Governance measurement log — persists turn samples to backend/logs/governance.jsonl
+_gov_log_path = os.path.join(os.path.dirname(__file__), "logs", "governance.jsonl")
+os.makedirs(os.path.dirname(_gov_log_path), exist_ok=True)
+_gov_handler = logging.FileHandler(_gov_log_path, encoding="utf-8")
+_gov_handler.setLevel(logging.DEBUG)
+_gov_logger = logging.getLogger("governance.sample")
+_gov_logger.addHandler(_gov_handler)
+_gov_logger.setLevel(logging.DEBUG)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

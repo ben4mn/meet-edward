@@ -28,10 +28,13 @@ from utils.message_signature import ensure_message_signature
 @tool
 async def remember_update(memory_id: str, new_content: str) -> str:
     """
-    Update an existing memory with new content.
+    Update an existing memory with new or corrected information.
 
-    Use this when the user provides updated information that should replace
-    or modify an existing memory. The memory's embedding will be regenerated.
+    Use this when the user corrects something you previously remembered, when a fact has
+    changed (new phone number, updated preference, changed circumstance), or when a memory
+    is outdated or incomplete. The memory's embedding will be regenerated so future retrieval
+    reflects the new content. For entirely new information with no existing memory to update,
+    use remember_save instead.
 
     Args:
         memory_id: The ID of the memory to update (from the memory context)
@@ -1108,11 +1111,12 @@ def _emit_plan_event(conversation_id: str, event: dict) -> None:
 @tool
 async def create_plan(steps: List[str]) -> str:
     """
-    Create a task plan with ordered steps for a complex request.
+    Create a visible task plan before beginning complex multi-step work.
 
-    Use this when you receive a request that involves multiple distinct steps.
-    The plan will be visible to the user and you should update each step as you
-    work through it.
+    Use this when a request involves 3 or more distinct tool calls or steps (building,
+    researching, creating, multi-part tasks). Creating a plan first gives the user
+    visibility into your approach and prevents backtracking mid-task. Do not create a
+    plan for simple single-step requests. Update each step as you complete it.
 
     Args:
         steps: List of step descriptions in order of execution
@@ -1437,7 +1441,9 @@ async def schedule_event(
     """
     Schedule a future event, reminder, or action.
 
-    Use this when the user asks you to:
+    Call this before responding whenever you make a commitment to follow up, check back,
+    or remind the user of something — the scheduled event IS part of the response, not an
+    optional add-on. Use this when the user asks you to:
     - Set a reminder for a specific time
     - Schedule a message to be sent later
     - Create a recurring task or check-in
@@ -1774,11 +1780,14 @@ def get_all_tools_description() -> str:
 @tool
 async def save_document(title: str, content: str, tags: Optional[str] = None) -> str:
     """
-    Save a new document to the persistent document store.
+    Save a document to the persistent store for long-term reference.
 
-    Use this when the user wants to store a full document for long-term reference,
-    such as recipes, meeting notes, reference guides, pet records, instructions,
-    or any text that's too large or structured for a simple memory.
+    Use this proactively — not only when the user explicitly asks. If a conversation
+    produces something durable (a plan, a list, a recipe, research notes, a decision log,
+    instructions), save it. The right signal: "would this be useful to retrieve in a future
+    conversation?" Documents support full-text search and can be pushed to NotebookLM as
+    sources. Use for structured or lengthy content; use remember_save for short facts and
+    preferences.
 
     Args:
         title: A descriptive title for the document
@@ -2735,9 +2744,11 @@ async def spawn_worker(
     """
     Spawn a background worker agent to handle a sub-task in parallel.
 
-    Use this when you have a complex goal that can be decomposed into independent
-    sub-tasks. Each worker is a mini-Edward with full tool access (memory, messaging,
-    search, code execution, etc.) but cannot spawn its own workers.
+    Prefer this over keeping the main turn open for work that will take more than ~45
+    seconds or requires multiple tool iterations. Use this when you have a complex goal
+    that can be decomposed into independent sub-tasks. Each worker is a mini-Edward with
+    full tool access (memory, messaging, search, code execution, etc.) but cannot spawn
+    its own workers.
 
     Workers run in their own conversation (visible in sidebar with purple icon).
     Prefer wait=False when the task is likely to take more than one quick turn,
@@ -3055,9 +3066,14 @@ async def nlm_list_notebooks() -> str:
 @tool
 async def nlm_create_notebook(name: str) -> str:
     """
-    Create a new Google NotebookLM notebook.
+    Create a new Google NotebookLM notebook for a topic that warrants a curated,
+    source-grounded knowledge base.
 
-    Use this to create a knowledge base before adding sources.
+    Use this when a topic has come up multiple times across conversations, when the user
+    has asked you to research or compile information on a subject, or when you're about
+    to add several sources on a related theme. A notebook is the right choice when depth
+    and recurrence matter — not for a one-off question. Create the notebook first, then
+    add sources with nlm_add_source.
 
     Args:
         name: Notebook name (descriptive, e.g. "Dog Training Research")

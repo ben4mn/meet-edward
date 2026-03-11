@@ -1,6 +1,6 @@
 # Plan 013: Live Activity Feed During LLM Processing
 
-## Status: Planned
+## Status: Complete
 
 ## Problem
 
@@ -198,8 +198,40 @@ The "started" event at line 1600 is now emitted before `_call_llm` (Change 3). R
 | File | Changes |
 |------|---------|
 | `backend/services/graph/streaming.py` | `CODEX_TOTAL_TIMEOUT` · `_tool_label()` helper · keepalive wrapper · tool progress labels + completions · remove duplicate "started" event |
+| `backend/routers/chat.py` | Added `X-Accel-Buffering: no` header to SSE response |
+| `backend/services/memory_service.py` | Fixed `UnicodeEncodeError` on Windows cp1252 terminals for 3 print calls |
+| `frontend/lib/api.ts` | Added `yieldToEventLoop` + stream drop recovery helper |
+| `frontend/lib/ChatContext.tsx` | Set `isThinking: true` on first progress event · stream drop recovery (fetch last message from DB on network error) |
+| `frontend/components/chat/MessageBubble.tsx` | Fixed fallback "Thinking..." condition: guard on `progressSteps.length > 0` instead of `isThinking` |
 
-No frontend changes required — `ThinkingIndicator` and `ChatContext` already handle everything.
+## Known Limitation — No Token Streaming During LLM Reasoning
+
+**The step list appears at stream end for fast responses (<5s)**, not progressively. This is an architectural constraint introduced by Plan 009:
+
+- Before Plan 009: LangGraph's `astream_events()` natively yielded internal events token-by-token
+- After Plan 009: `_call_llm()` is a blocking call — it waits for the complete response before returning
+  - `_call_anthropic()`: uses `client.messages.create()` (non-streaming)
+  - `_call_codex()`: reads SSE internally but collects everything into a dict before returning
+  - `_call_openai()`: uses `client.responses.create()` (non-streaming)
+
+**What Plan 013 delivers** (working as designed):
+- For responses >5s: keepalive timer ticks (`Generating response... (5s)`, `(10s)`, etc.)
+- Tool steps always show with human-readable labels in the collapsed post-response summary
+- Step list appears as a flash on fast responses — visible but brief
+
+**To restore true live token streaming** (separate future plan):
+
+*Option A — Anthropic only (Medium complexity, ~1 day):*
+- Switch `_call_anthropic()` to `async with client.messages.stream() as stream`
+- Yield `CONTENT` delta events as tokens arrive
+- Tool calls accumulate via `input_json_delta` chunks — no tool loop restructuring needed for non-tool responses
+- Covers simple Q&A (majority of use cases)
+
+*Option B — Full dual-provider streaming (High complexity, ~2 days):*
+- Restructure `_call_llm()` from returning a dict to being an async generator
+- Anthropic: `messages.stream()`, Codex: re-yield `response.output_text.delta` events already present in the SSE stream
+- Requires refactoring the entire tool loop in `stream_with_memory_events()` to handle streaming + tool call accumulation
+- Essentially rebuilds what LangGraph's `astream_events` provided
 
 ## Result UX
 

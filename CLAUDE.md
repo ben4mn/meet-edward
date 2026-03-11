@@ -24,10 +24,14 @@ Active implementation plans for the `cl-feature` branch live in `IMPLEMENTATION_
 | [005_EXECUTION_FIX.md](IMPLEMENTATION_PLANS/005_EXECUTION_FIX.md) | Windows execution env fix (subprocess + orchestrator + effort) | **Complete** |
 | [007_NOTEBOOKLM_REVAMP.md](IMPLEMENTATION_PLANS/007_NOTEBOOKLM_REVAMP.md) | Replace notebooklm-py with notebooklm-mcp-cli, expand to 28 tools | **Complete** |
 | [008_PROMPT_OPTIMIZATION_AND_MEMORY_SEEDING.md](IMPLEMENTATION_PLANS/008_PROMPT_OPTIMIZATION_AND_MEMORY_SEEDING.md) | System prompt trim + instruction memory seeding | **Complete** |
-| [009_DUAL_PROVIDER_LLM.md](IMPLEMENTATION_PLANS/009_DUAL_PROVIDER_LLM.md) | Direct-SDK dual-provider (remove LangChain/LangGraph, add OpenAI Responses API, self-routing tools, Codex OAuth for subscription credits) | Planned |
+| [009_DUAL_PROVIDER_LLM.md](IMPLEMENTATION_PLANS/009_DUAL_PROVIDER_LLM.md) | Direct-SDK dual-provider (remove LangChain/LangGraph, add OpenAI Responses API, self-routing tools, Codex OAuth for subscription credits) | **Complete** |
 | [010_CODEX_CLI_TIER3.md](IMPLEMENTATION_PLANS/010_CODEX_CLI_TIER3.md) | Codex CLI as default Tier 3 coding agent (reuse OAuth, `codex exec --json`, Claude Code fallback) | Planned |
 | [012_AUTO_RESTART_TUNNEL.md](IMPLEMENTATION_PLANS/012_AUTO_RESTART_TUNNEL.md) | Auto-restart on login (Task Scheduler), fixed port 3001, permanent ngrok tunnel, watchdog | **Complete** |
-| [013_LIVE_ACTIVITY_FEED.md](IMPLEMENTATION_PLANS/013_LIVE_ACTIVITY_FEED.md) | Live activity feed during LLM reasoning: keepalive heartbeat, human-readable tool labels, CODEX_TOTAL_TIMEOUT bump | Planned |
+| [013_LIVE_ACTIVITY_FEED.md](IMPLEMENTATION_PLANS/013_LIVE_ACTIVITY_FEED.md) | Live activity feed during LLM reasoning: keepalive heartbeat, human-readable tool labels, CODEX_TOTAL_TIMEOUT bump | **Complete** |
+| [014_CASCE_PHASE0_MEASURE.md](IMPLEMENTATION_PLANS/014_CASCE_PHASE0_MEASURE.md) | CASCE: governance measurement logger + system prompt additions (measure before building) | **Active** |
+| [014_CASCE_PHASE1_PROMPT.md](IMPLEMENTATION_PLANS/014_CASCE_PHASE1_PROMPT.md) | CASCE: upstream prompt shaping with concrete before/after examples | Pending gate |
+| [014_CASCE_PHASE2_COHERENCE.md](IMPLEMENTATION_PLANS/014_CASCE_PHASE2_COHERENCE.md) | CASCE: Haiku coherence check on operational turns (post-generation claim verification) | Pending gate |
+| [014_CASCE_PHASE3_REGISTRY.md](IMPLEMENTATION_PLANS/014_CASCE_PHASE3_REGISTRY.md) | CASCE: runtime capability registry + tiered audit engine | Deferred |
 | [DEFERRED_TELEGRAM_INTEGRATION.md](IMPLEMENTATION_PLANS/DEFERRED_TELEGRAM_INTEGRATION.md) | Telegram bot with long-polling | Deferred |
 
 **IMPORTANT**: Read the relevant plan BEFORE making changes. Each plan has STOP warnings, strict rules, and verification checklists.

@@ -542,6 +542,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
                     newMessages[newMessages.length - 1] = {
                       ...lastMessage,
+                      isThinking: true,
                       progressSteps: existingSteps,
                     };
                   }
@@ -846,6 +847,19 @@ export function ChatProvider({ children }: { children: ReactNode }) {
             isThinking: false,
             ...(contentSeen ? {} : { content: "Sorry, the response stream ended unexpectedly. Please try again." }),
           });
+          // Stream dropped mid-response (e.g. ngrok timeout) but backend likely saved the full reply.
+          // Try to recover the completed response from the DB.
+          if (contentSeen && (newConversationId || conversationId)) {
+            try {
+              const conv = await getConversation((newConversationId || conversationId)!);
+              const lastAssistant = [...(conv.messages || [])].reverse().find(m => m.role === "assistant");
+              if (lastAssistant?.content) {
+                updateAssistantMessage({ content: lastAssistant.content, isThinking: false });
+              }
+            } catch {
+              // Recovery failed silently — partial content already shown
+            }
+          }
         }
 
         // Refresh conversations list after sending (to get the new/updated conversation)
@@ -875,15 +889,29 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           await refreshConversations();
         } else {
           console.error("Error sending message:", error);
-          setMessages((prev) => {
-            const newMessages = [...prev];
-            const lastMessage = newMessages[newMessages.length - 1];
-            if (lastMessage.role === "assistant") {
-              lastMessage.content =
-                "Sorry, I encountered an error. Please try again.";
+          // Network error mid-stream (e.g. ngrok dropped the connection).
+          // If we were already streaming content, try to recover the full reply from DB.
+          if (contentSeen && (newConversationId || conversationId)) {
+            updateAssistantMessage({ isThinking: false });
+            try {
+              const conv = await getConversation((newConversationId || conversationId)!);
+              const lastAssistant = [...(conv.messages || [])].reverse().find(m => m.role === "assistant");
+              if (lastAssistant?.content) {
+                updateAssistantMessage({ content: lastAssistant.content, isThinking: false });
+              }
+            } catch {
+              updateAssistantMessage({ content: "Sorry, I encountered an error. Please try again.", isThinking: false });
             }
-            return newMessages;
-          });
+          } else {
+            setMessages((prev) => {
+              const newMessages = [...prev];
+              const lastMessage = newMessages[newMessages.length - 1];
+              if (lastMessage.role === "assistant") {
+                lastMessage.content = "Sorry, I encountered an error. Please try again.";
+              }
+              return newMessages;
+            });
+          }
         }
       } finally {
         setIsLoading(false);

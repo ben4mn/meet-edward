@@ -515,7 +515,7 @@ async def extract_and_store_memories(
             for m in existing_memories
         ])
 
-    print(f"Memory extraction: existing memories text: {existing_text[:100]}")
+    print(f"Memory extraction: existing memories text: {existing_text[:100]}".encode(errors='replace').decode())
 
     # Call LLM to extract memories
     dynamic_content = f"Conversation:\n{conversation_text}\n\nExisting memories (don't duplicate these):\n{existing_text}"
@@ -533,7 +533,7 @@ async def extract_and_store_memories(
         print(f"Memory extraction: got LLM response")
 
         response_text = response_text.strip()
-        print(f"Memory extraction raw response: {response_text[:500]}")
+        print(f"Memory extraction raw response: {response_text[:500]}".encode(errors='replace').decode())
 
         # Extract JSON from response - handle various formats
         # Remove markdown code blocks if present
@@ -549,7 +549,7 @@ async def extract_and_store_memories(
         if json_match:
             response_text = json_match.group()
 
-        print(f"Memory extraction parsed JSON: {response_text[:300]}")
+        print(f"Memory extraction parsed JSON: {response_text[:300]}".encode(errors='replace').decode())
 
         extracted = json.loads(response_text)
 

@@ -22,10 +22,16 @@ MCP_WHATSAPP_ENABLED = os.getenv("MCP_WHATSAPP_ENABLED", "false").lower() == "tr
 BRIDGE_URL = os.getenv("WHATSAPP_BRIDGE_URL", "http://localhost:3100")
 BRIDGE_PORT = os.getenv("WHATSAPP_BRIDGE_PORT", "3100")
 
+_WATCHDOG_INTERVAL = 30       # seconds between health checks
+_WATCHDOG_MAX_RETRIES = 3     # restart attempts before giving up until next cycle
+_WATCHDOG_RETRY_DELAYS = [30, 60, 120]  # backoff between retries (seconds)
+
 _client: Optional[httpx.AsyncClient] = None
 _initialized = False
+_bridge_healthy = False       # runtime health, updated by watchdog
 _last_error: Optional[str] = None
 _bridge_process: Optional[subprocess.Popen] = None
+_watchdog_task: Optional[asyncio.Task] = None
 
 
 def _bridge_dir() -> Path:
@@ -180,11 +186,79 @@ async def _stop_bridge_process():
         print("[WhatsApp Bridge] Subprocess stopped")
 
 
+# ── Watchdog ──────────────────────────────────────────────────────────────────
+
+async def _watchdog_loop():
+    """Background task: poll /health every 30s, restart on failure, push-notify on state change."""
+    global _bridge_healthy, _last_error, _initialized
+
+    # Lazy import to avoid circular dependency (push_service → tools → bridge)
+    from backend.services.push_service import send_push_notification
+
+    async def _notify(title: str, body: str):
+        try:
+            await send_push_notification(title, body, tag="whatsapp-bridge")
+        except Exception as e:
+            print(f"[WhatsApp Bridge] Push notify failed: {e}")
+
+    while True:
+        await asyncio.sleep(_WATCHDOG_INTERVAL)
+
+        if not MCP_WHATSAPP_ENABLED or not _initialized:
+            continue
+
+        # Health check
+        alive = False
+        try:
+            resp = await _client.get("/health", timeout=5.0)
+            alive = resp.status_code == 200
+        except Exception:
+            alive = False
+
+        if alive:
+            if not _bridge_healthy:
+                # Recovered from a previous drop
+                print("[WhatsApp Bridge] Watchdog: bridge recovered")
+                _bridge_healthy = True
+                _last_error = None
+                await _notify("✅ WhatsApp bridge recovered", "WhatsApp bridge is back online.")
+            continue
+
+        # Bridge is down
+        if _bridge_healthy:
+            print("[WhatsApp Bridge] Watchdog: bridge is down, attempting restart")
+            _bridge_healthy = False
+            await _notify("⚠️ WhatsApp bridge dropped", "Attempting to restart automatically…")
+
+        # Retry loop with backoff
+        restarted = False
+        for attempt, delay in enumerate(_WATCHDOG_RETRY_DELAYS, start=1):
+            print(f"[WhatsApp Bridge] Watchdog restart attempt {attempt}/{_WATCHDOG_MAX_RETRIES}")
+            started = await _start_bridge_process()
+            if started:
+                _bridge_healthy = True
+                _last_error = None
+                print("[WhatsApp Bridge] Watchdog: restart succeeded")
+                await _notify("✅ WhatsApp bridge restarted", f"Reconnected after {attempt} attempt(s).")
+                restarted = True
+                break
+            print(f"[WhatsApp Bridge] Watchdog: attempt {attempt} failed, waiting {delay}s")
+            await asyncio.sleep(delay)
+
+        if not restarted:
+            _last_error = "Bridge crashed and could not be restarted automatically"
+            print(f"[WhatsApp Bridge] Watchdog: all restart attempts failed")
+            await _notify(
+                "❌ WhatsApp bridge offline",
+                "Could not restart automatically. Manual intervention needed.",
+            )
+
+
 # ── Initialization ────────────────────────────────────────────────────────────
 
 async def initialize_bridge() -> bool:
     """Start the bridge subprocess and initialize the HTTP client."""
-    global _client, _initialized, _last_error
+    global _client, _initialized, _last_error, _bridge_healthy, _watchdog_task
 
     if not MCP_WHATSAPP_ENABLED:
         _last_error = "Disabled via MCP_WHATSAPP_ENABLED=false"
@@ -200,7 +274,9 @@ async def initialize_bridge() -> bool:
         if resp.status_code == 200:
             print("[WhatsApp Bridge] Found existing bridge already running")
             _initialized = True
+            _bridge_healthy = True
             _last_error = None
+            _watchdog_task = asyncio.create_task(_watchdog_loop())
             return True
     except Exception:
         pass  # Not running yet, we'll start it
@@ -219,16 +295,18 @@ async def initialize_bridge() -> bool:
         data = resp.json()
         if data.get("connected"):
             _initialized = True
+            _bridge_healthy = True
             _last_error = None
             user = data.get("user") or {}
             print(f"[WhatsApp Bridge] Connected as {user.get('name', 'unknown')} ({user.get('id', '')})")
-            return True
         else:
             # Bridge is running but WhatsApp not yet connected (may need QR scan)
             _initialized = True
+            _bridge_healthy = True
             _last_error = None
             print("[WhatsApp Bridge] Running but WhatsApp not yet connected (scan QR code)")
-            return True
+        _watchdog_task = asyncio.create_task(_watchdog_loop())
+        return True
     except Exception as e:
         _last_error = str(e)
         print(f"[WhatsApp Bridge] Status check failed: {e}")
@@ -237,7 +315,15 @@ async def initialize_bridge() -> bool:
 
 async def shutdown_bridge():
     """Shutdown the HTTP client and bridge subprocess."""
-    global _client, _initialized
+    global _client, _initialized, _bridge_healthy, _watchdog_task
+
+    if _watchdog_task and not _watchdog_task.done():
+        _watchdog_task.cancel()
+        try:
+            await _watchdog_task
+        except asyncio.CancelledError:
+            pass
+        _watchdog_task = None
 
     if _client:
         await _client.aclose()
@@ -245,6 +331,7 @@ async def shutdown_bridge():
 
     await _stop_bridge_process()
     _initialized = False
+    _bridge_healthy = False
     print("[WhatsApp Bridge] Shutdown complete")
 
 
@@ -267,6 +354,12 @@ def get_status() -> dict:
         return {
             "status": "error",
             "status_message": _last_error or "Not initialized",
+            "metadata": None,
+        }
+    if not _bridge_healthy:
+        return {
+            "status": "error",
+            "status_message": _last_error or "Bridge process is down",
             "metadata": None,
         }
     return {

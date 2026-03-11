@@ -68,79 +68,16 @@ def _is_openai_model(model: str) -> bool:
     return model.startswith(("gpt-", "o1-", "o3-", "o4-"))
 
 
-# Assumption awareness instructions - helps the agent recognize when it's making
-# unverified inferences and either verify or state assumptions explicitly
-PLANNING_DIRECTIVE = """
+EDWARD_CHARACTER = """
+You are Edward — a personal AI assistant who is witty, a little cheeky, and genuinely warm. You have been built up over time through real conversations and have accumulated memories, documents, and knowledge that you actively draw on. You are not a generic chatbot.
 
-## Planning Requirement
-You MUST call create_plan() BEFORE starting work when a request involves 3+ tool calls or multiple steps (build, create, research, multi-part requests). Do NOT skip planning on complex tasks."""
+Your default is to act, not to ask. When something should be done and the cost of being wrong is low, do it and report back — don't ask for permission first. Own your decisions: "If you want, I can..." means you decided not to — either take the action or say plainly why you're not. Post-mortem notes ("I should have saved that") without action are not acceptable; if it should have been done, do it now.
 
-BACKGROUND_HANDOFF_DIRECTIVE = """
+Think ahead. Anticipate what the user will need next, not just what they asked for right now. When a commitment is made to follow up, call schedule_event() before responding — the reminder is part of the response, not an afterthought. When a topic has depth or recurrence, build something durable: a document, a notebook, a memory.
 
-## Interactive vs Background Work
+When genuinely uncertain about intent, pick the most reasonable interpretation and act. State what you assumed and why. Adjust if corrected. Ask only when the action is hard to reverse or the stakes are high enough that guessing wrong would cost more than asking. When tool results include identifying fields (name, contact, sender), compare them to what was asked — if there's a mismatch, either make one cheap verification call or state the assumption explicitly.
 
-Interactive chat turns must end explicitly. If a task is obviously long-running or iterative, do not keep the main turn open indefinitely.
-
-- For multi-file coding, debugging loops, build/test/fix cycles, or work likely to take more than about 45 seconds, prefer `spawn_cc_worker(wait=false)`.
-- For non-coding research, synthesis, or operational tasks that need multiple steps or follow-up polling, prefer `spawn_worker(wait=false)`.
-- When handing work off, tell the user briefly what was delegated and how you will follow up instead of silently waiting."""
-
-ASSUMPTION_AWARENESS_CONTEXT = """
-
-## Assumption Awareness
-
-When you make inferences not explicitly stated in tool results or user messages, pause to verify:
-
-**Common assumption traps:**
-- Name matching: When searching for "Clay" and finding messages, CHECK the `chat_name` or contact name in results - don't assume the first result is the right person
-- Identity inference: Phone numbers, emails, and usernames don't automatically map to the name the user asked about
-- Ambiguous references: "the meeting", "that file", "my friend" need clarification if context is unclear
-
-**Verification protocol:**
-1. If tool results include identifying fields (chat_name, contact_name, sender_name, etc.), COMPARE them to what the user asked about
-2. If there's a mismatch or the field is missing, either:
-   - Use another tool call to verify (if cheap, <1 additional call)
-   - State your assumption explicitly: "I found messages from [X], assuming this is [Y] you asked about"
-3. Never confidently report information about Person A when you only verified it's from Person B
-
-**When assumptions are acceptable:**
-- High confidence matches (exact name match in tool results)
-- User has provided clear context that resolves ambiguity
-- The assumption doesn't change the core answer
-
-When uncertain, ask the user rather than guess wrong."""
-
-AUTONOMY_FRAMEWORK = """
-
-## Identity & Values
-
-You are a personal AI assistant who grows smarter over time. You are not a generic chatbot — you serve a specific person, remember their context, and build knowledge proactively.
-
-Core values:
-- Genuine usefulness over impressiveness
-- Action over inaction when the cost of being wrong is low
-- Proactive knowledge building — don't wait to be asked to learn
-- Honesty about uncertainty — say what you don't know
-
-## Your Systems
-
-You have multiple knowledge layers — use the right one for the situation:
-- **Memories**: Short snippets auto-extracted from conversations. Good for quick recall of facts and preferences.
-- **Documents**: Full text storage for articles, notes, and reference material. Search by title/content.
-- **NotebookLM notebooks**: Deep, curated knowledge bases with source-grounded Q&A, citations, and generated artifacts (audio summaries, quizzes, reports). Build notebooks proactively when topics have or will accumulate multiple sources.
-- **Scheduled events**: Future actions and proactive outreach. You can remind, check in, and follow up.
-- **Web search**: Real-time information. Use when your stored knowledge might be outdated.
-- **File storage**: Persistent files and PDFs. Can be pushed to NotebookLM as sources.
-- **Evolution engine**: You can modify your own code to fix bugs or improve capabilities. Consider this when you encounter recurring limitations.
-
-## Autonomy
-
-- Prefer action when reversible. Ask when consequences are hard to undo.
-- Build knowledge proactively — if a topic comes up repeatedly, create a notebook for it.
-- When knowledge accumulates on a topic — multiple searches, documents, or conversations — consolidate it into a notebook.
-- When uncertain, try then adjust. Don't ask-wait-ask repeatedly.
-- You can evolve your own capabilities. If a tool doesn't exist for something you need, consider whether to build it.
-
+For complex multi-step work, call create_plan() first so the user can see your approach. For tasks likely to take more than ~45 seconds, prefer spawn_cc_worker() or spawn_worker() and tell the user what was delegated.
 """
 
 
@@ -1065,8 +1002,8 @@ async def _call_codex(
     # Separate timeouts: 30s connect, 90s between chunks (read), 30s write/pool
     # The read timeout resets per chunk — handles slow reasoning without false timeout.
     stream_timeout = httpx.Timeout(connect=30.0, read=90.0, write=30.0, pool=30.0)
-    # Hard cap: 180s total wall-clock time to prevent infinite hangs
-    CODEX_TOTAL_TIMEOUT = 180.0
+    # Hard cap: 300s total wall-clock time to prevent infinite hangs (GPT-5.4 extended thinking can take 3–4 minutes)
+    CODEX_TOTAL_TIMEOUT = 300.0
     stream_start = time.monotonic()
     event_counts: Dict[str, int] = {}
     last_event_time = stream_start
@@ -1329,6 +1266,133 @@ async def stream_with_memory(
             yield event["content"]
 
 
+# Human-readable labels for tool progress events
+_TOOL_LABELS: Dict[str, str] = {
+    # Memory
+    "remember_search": "Searching memories",
+    "remember_update": "Saving memory",
+    "remember_forget": "Forgetting memory",
+    # Web
+    "web_search": "Searching the web",
+    "fetch_page_content": "Reading page",
+    # Messaging
+    "send_message": "Sending message",
+    "send_sms": "Sending SMS",
+    "send_whatsapp": "Sending WhatsApp",
+    "send_imessage": "Sending iMessage",
+    "get_recent_messages": "Reading messages",
+    # Contacts
+    "lookup_contact": "Looking up contact",
+    "lookup_phone": "Looking up phone number",
+    # Documents
+    "save_document": "Saving document",
+    "read_document": "Reading document",
+    "edit_document": "Editing document",
+    "search_documents": "Searching documents",
+    "list_documents": "Listing documents",
+    "delete_document": "Deleting document",
+    # Scheduled events
+    "schedule_event": "Scheduling event",
+    "list_scheduled_events": "Checking schedule",
+    "cancel_scheduled_event": "Cancelling event",
+    # Code execution
+    "execute_code": "Running Python",
+    "execute_javascript": "Running JavaScript",
+    "execute_sql": "Running SQL",
+    "execute_shell": "Running shell command",
+    "list_sandbox_files": "Listing sandbox files",
+    "read_sandbox_file": "Reading sandbox file",
+    # File storage
+    "save_to_storage": "Saving to storage",
+    "list_storage_files": "Listing files",
+    "get_storage_file_url": "Getting file URL",
+    "read_storage_file": "Reading file",
+    "tag_storage_file": "Tagging file",
+    "delete_storage_file": "Deleting file",
+    # Persistent databases
+    "create_persistent_db": "Creating database",
+    "query_persistent_db": "Querying database",
+    "list_persistent_dbs": "Listing databases",
+    "delete_persistent_db": "Deleting database",
+    # Push / widget
+    "send_push_notification": "Sending notification",
+    "update_widget": "Updating widget",
+    "get_widget_state_tool": "Reading widget state",
+    "update_widget_code": "Updating widget code",
+    "clear_widget_code": "Clearing widget code",
+    # HTML hosting
+    "create_hosted_page": "Publishing page",
+    "update_hosted_page": "Updating page",
+    "delete_hosted_page": "Deleting page",
+    "check_hosted_slug": "Checking URL slug",
+    # Custom MCP
+    "search_mcp_servers": "Searching MCP servers",
+    "add_mcp_server": "Adding MCP server",
+    "list_custom_servers": "Listing MCP servers",
+    "remove_mcp_server": "Removing MCP server",
+    "update_mcp_server": "Updating MCP server",
+    "restart_mcp_server": "Restarting MCP server",
+    # Planning
+    "create_plan": "Creating plan",
+    "update_plan_step": "Updating plan step",
+    "edit_plan": "Editing plan",
+    "complete_plan": "Completing plan",
+    # Orchestrator / workers
+    "spawn_worker": "Spawning worker",
+    "spawn_cc_worker": "Spawning Claude Code worker",
+    "check_worker": "Checking worker",
+    "list_workers": "Listing workers",
+    "cancel_worker": "Cancelling worker",
+    "wait_for_workers": "Waiting for workers",
+    "send_to_worker": "Sending to worker",
+    # Evolution
+    "trigger_self_evolution": "Triggering evolution",
+    "get_evolution_status": "Checking evolution status",
+    # Heartbeat
+    "review_heartbeat": "Reviewing heartbeat",
+    # NotebookLM (nlm_*)
+    "nlm_list_notebooks": "Listing notebooks",
+    "nlm_create_notebook": "Creating notebook",
+    "nlm_delete_notebook": "Deleting notebook",
+    "nlm_get_notebook": "Getting notebook",
+    "nlm_describe_notebook": "Describing notebook",
+    "nlm_rename_notebook": "Renaming notebook",
+    "nlm_add_source": "Adding source",
+    "nlm_add_drive_source": "Adding Drive source",
+    "nlm_list_sources": "Listing sources",
+    "nlm_delete_source": "Deleting source",
+    "nlm_rename_source": "Renaming source",
+    "nlm_describe_source": "Describing source",
+    "nlm_get_source_text": "Reading source text",
+    "nlm_ask": "Asking NotebookLM",
+    "nlm_configure_chat": "Configuring NotebookLM",
+    "nlm_research": "Starting research",
+    "nlm_poll_research": "Checking research",
+    "nlm_import_research": "Importing research",
+    "nlm_generate_artifact": "Generating artifact",
+    "nlm_wait_artifact": "Waiting for artifact",
+    "nlm_delete_artifact": "Deleting artifact",
+    "nlm_revise_slides": "Revising slides",
+    "nlm_share_status": "Checking sharing",
+    "nlm_share_public": "Updating sharing",
+    "nlm_share_invite": "Inviting collaborator",
+    "nlm_note": "Managing note",
+    "nlm_push_document": "Pushing document to notebook",
+    "nlm_push_file": "Pushing file to notebook",
+}
+
+
+def _tool_label(tool_name: str) -> str:
+    """Return a human-readable label for a tool name."""
+    if tool_name in _TOOL_LABELS:
+        return _TOOL_LABELS[tool_name]
+    # MCP tool prefix (e.g. "whatsapp_send_message" → "Whatsapp: Send Message")
+    if "_" in tool_name:
+        parts = tool_name.split("_", 1)
+        return f"{parts[0].title()}: {parts[1].replace('_', ' ').title()}"
+    return tool_name.replace("_", " ").title()
+
+
 async def stream_with_memory_events(
     message: str,
     conversation_id: str,
@@ -1437,9 +1501,8 @@ async def stream_with_memory_events(
     # Split system prompt into static (cacheable) and dynamic (per-turn) parts
     static_system = (
         system_prompt
-        + AUTONOMY_FRAMEWORK
+        + EDWARD_CHARACTER
         + _build_platform_context()
-        + ASSUMPTION_AWARENESS_CONTEXT + PLANNING_DIRECTIVE + BACKGROUND_HANDOFF_DIRECTIVE
     )
     dynamic_context = memory_context + briefing_context + time_context
 
@@ -1472,13 +1535,33 @@ async def stream_with_memory_events(
         if iteration > 1:
             yield create_event(EventType.THINKING, conversation_id, content="Thinking...")
 
-        # Call LLM (dispatches to Anthropic or OpenAI based on model)
+        # Emit "Generating response..." BEFORE the model call (visible while model thinks)
+        yield create_event(EventType.PROGRESS, conversation_id,
+            step="generating",
+            status="started",
+            message="Generating response..."
+        )
+
+        # Keepalive heartbeat: yield progress updates every 5s while waiting for model
+        _llm_task = asyncio.ensure_future(_call_llm(
+            model, static_system, dynamic_context, messages, tool_schemas, temperature,
+        ))
+        _KEEPALIVE_INTERVAL = 5.0
+        _elapsed_s = 0.0
         try:
-            result = await _call_llm(
-                model, static_system, dynamic_context, messages,
-                tool_schemas, temperature,
-            )
+            while True:
+                try:
+                    result = await asyncio.wait_for(asyncio.shield(_llm_task), timeout=_KEEPALIVE_INTERVAL)
+                    break
+                except asyncio.TimeoutError:
+                    _elapsed_s += _KEEPALIVE_INTERVAL
+                    yield create_event(EventType.PROGRESS, conversation_id,
+                        step="generating",
+                        status="started",
+                        message=f"Generating response... ({int(_elapsed_s)}s)"
+                    )
         except Exception as e:
+            _llm_task.cancel()
             error_msg = str(e)
             print(f"[LLM ERROR] {error_msg}")
             yield create_event(EventType.ERROR, conversation_id, error=error_msg)
@@ -1516,7 +1599,7 @@ async def stream_with_memory_events(
                 yield create_event(EventType.PROGRESS, conversation_id,
                     step="tool_execution",
                     status="started",
-                    message=f"Running {tool_call['name']}...",
+                    message=_tool_label(tool_call['name']),
                     tool_name=tool_call['name']
                 )
 
@@ -1536,7 +1619,7 @@ async def stream_with_memory_events(
                 yield create_event(EventType.PROGRESS, conversation_id,
                     step="tool_execution",
                     status="completed",
-                    message=f"Completed {tool_call['name']}",
+                    message=_tool_label(tool_call['name']),
                     tool_name=tool_call['name']
                 )
 
@@ -1597,16 +1680,23 @@ async def stream_with_memory_events(
                 continue
 
             # No plan or plan is complete — use this response's content
-            yield create_event(EventType.PROGRESS, conversation_id,
-                step="generating",
-                status="started",
-                message="Generating response..."
-            )
             if result["text"]:
                 full_response = result["text"]
                 assistant_content_emitted = True
                 yield create_event(EventType.CONTENT, conversation_id, content=full_response)
                 needs_streaming = False
+                try:
+                    from services.governance.action_receipts import log_turn_sample
+                    log_turn_sample(
+                        conversation_id=conversation_id,
+                        message_preview=message[:100],
+                        response_preview=full_response[:200],
+                        tool_calls_made=[tc["name"] for tc in tool_calls_made],
+                        has_plan=any(tc["name"] == "create_plan" for tc in tool_calls_made),
+                        plan_completed=any(tc["name"] == "complete_plan" for tc in tool_calls_made),
+                    )
+                except Exception:
+                    pass  # Never affects response pipeline
             yield create_event(EventType.PROGRESS, conversation_id,
                 step="generating",
                 status="completed",
@@ -1849,9 +1939,8 @@ async def chat_with_memory(
     # Split system prompt into static (cacheable) and dynamic (per-turn) parts
     static_system = (
         system_prompt
-        + AUTONOMY_FRAMEWORK
+        + EDWARD_CHARACTER
         + _build_platform_context()
-        + ASSUMPTION_AWARENESS_CONTEXT + PLANNING_DIRECTIVE + BACKGROUND_HANDOFF_DIRECTIVE
     )
     dynamic_context = memory_context + briefing_context_sync + orchestrator_context + time_context
 
