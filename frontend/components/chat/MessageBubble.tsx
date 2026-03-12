@@ -249,7 +249,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
           )}
 
           {/* Empty state for assistant messages that are still loading */}
-          {!isUser && !message.content && !hasCodeBlocks && !message.planBlock && !message.isThinking && !message.wasInterrupted && (
+          {!isUser && !message.content && !hasCodeBlocks && !message.planBlock && !message.wasInterrupted && !(message.progressSteps && message.progressSteps.length > 0) && (
             <ThinkingIndicator content="Thinking..." />
           )}
 

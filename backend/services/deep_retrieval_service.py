@@ -11,19 +11,14 @@ import json
 import re
 from typing import List
 
-from langchain_anthropic import ChatAnthropic
-from langchain_core.messages import HumanMessage
-
+from services.llm_client import haiku_call
 from services.memory_service import retrieve_memories, Memory
 from services.database import async_session, MemoryEnrichmentModel
 
 
-DEEP_QUERY_PROMPT = """Given this conversation, generate exactly 3 search queries to find relevant memories. The user's latest message may be short or ambiguous — use conversation context to infer what memories would be useful.
+DEEP_QUERY_INSTRUCTIONS = """Given this conversation, generate exactly 3 search queries to find relevant memories. The user's latest message may be short or ambiguous — use conversation context to infer what memories would be useful.
 
-Return ONLY a JSON array of 3 query strings.
-
-Last 5 messages:
-{conversation}"""
+Return ONLY a JSON array of 3 query strings."""
 
 
 async def should_deep_retrieve(message: str, conversation_id: str, turn_count: int) -> bool:
@@ -71,21 +66,16 @@ async def generate_search_queries(messages: list, model: str = "claude-haiku-4-5
     if not conversation_text.strip():
         return []
 
-    llm = ChatAnthropic(model=model, temperature=0, max_tokens=256)
-    prompt = DEEP_QUERY_PROMPT.format(conversation=conversation_text)
-
     try:
-        response = await asyncio.wait_for(
-            llm.ainvoke([HumanMessage(content=prompt)]),
+        response_text = await asyncio.wait_for(
+            haiku_call(
+                system=DEEP_QUERY_INSTRUCTIONS,
+                message=f"Last 5 messages:\n{conversation_text}",
+                max_tokens=256,
+                model=model,
+            ),
             timeout=3.0,
         )
-
-        response_text = response.content
-        if isinstance(response_text, list):
-            response_text = " ".join(
-                block.get("text", "") if isinstance(block, dict) else str(block)
-                for block in response_text
-            )
         response_text = response_text.strip()
 
         # Extract JSON array

@@ -34,6 +34,10 @@ _servers: Dict[str, ServerInstance] = {}
 
 async def _start_server_process(server: CustomMCPServerModel) -> ServerInstance:
     """Start an MCP server subprocess and connect to it."""
+    from mcp import ClientSession, StdioServerParameters
+    from mcp.client.stdio import stdio_client
+    from services.mcp_tool_wrapper import MCPToolWrapper
+
     instance = ServerInstance(
         server_id=server.id,
         name=server.name,
@@ -41,8 +45,6 @@ async def _start_server_process(server: CustomMCPServerModel) -> ServerInstance:
     )
 
     try:
-        from langchain_mcp_adapters.client import MultiServerMCPClient
-
         args_list = json.loads(server.args) if server.args else []
         env_vars = json.loads(server.env_vars) if server.env_vars else {}
 
@@ -59,40 +61,51 @@ async def _start_server_process(server: CustomMCPServerModel) -> ServerInstance:
         # Merge env vars with current environment
         full_env = {**os.environ, **env_vars} if env_vars else None
 
-        server_config = {
-            server.name: {
-                "command": command,
-                "args": args,
-                "transport": "stdio",
-            }
-        }
-        if full_env:
-            server_config[server.name]["env"] = full_env
+        server_params = StdioServerParameters(
+            command=command,
+            args=args,
+            env=full_env,
+        )
 
-        client = MultiServerMCPClient(server_config)
-        raw_tools = await client.get_tools()
+        # Open stdio transport (stays alive)
+        stdio_ctx = stdio_client(server_params)
+        read_stream, write_stream = await stdio_ctx.__aenter__()
 
-        # Prefix tool names to avoid collisions
+        # Create and initialize MCP session
+        session_ctx = ClientSession(read_stream, write_stream)
+        mcp_session = await session_ctx.__aenter__()
+        await mcp_session.initialize()
+
+        # List tools and wrap them
+        tools_result = await mcp_session.list_tools()
+        wrapped_tools = []
         prefix = server.tool_prefix
-        for tool in raw_tools:
-            if not tool.name.startswith(f"{prefix}_"):
-                tool.name = f"{prefix}_{tool.name}"
+        for t in tools_result.tools:
+            tool_name = t.name
+            if not tool_name.startswith(f"{prefix}_"):
+                tool_name = f"{prefix}_{tool_name}"
+            wrapped_tools.append(MCPToolWrapper(
+                session=mcp_session,
+                name=tool_name,
+                description=t.description or "",
+                input_schema=t.inputSchema if hasattr(t, 'inputSchema') else {},
+            ))
 
-        instance.client = client
-        instance.tools = raw_tools
+        instance.client = {"stdio_ctx": stdio_ctx, "session_ctx": session_ctx, "session": mcp_session}
+        instance.tools = wrapped_tools
         instance.status = "connected"
         instance.error = None
 
         # Update tool names in DB
-        tool_names = [t.name for t in raw_tools]
+        tool_names = [t.name for t in wrapped_tools]
         async with async_session() as session:
             db_server = await session.get(CustomMCPServerModel, server.id)
             if db_server:
                 db_server.tool_names = json.dumps(tool_names)
                 await session.commit()
 
-        print(f"Custom MCP server '{server.name}' started with {len(raw_tools)} tools")
-        for tool in raw_tools:
+        print(f"Custom MCP server '{server.name}' started with {len(wrapped_tools)} tools")
+        for tool in wrapped_tools:
             desc = tool.description[:60] if tool.description else "No description"
             print(f"  - {tool.name}: {desc}...")
 

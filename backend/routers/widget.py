@@ -39,12 +39,11 @@ async def widget_chat(req: WidgetChatRequest):
     if not await verify_token(req.token):
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
-    from services.graph import get_graph, chat_with_memory
+    from services.graph import chat_with_memory
     from services.settings_service import get_settings
     from services.conversation_service import create_conversation
 
     settings = await get_settings()
-    graph = await get_graph()
     conversation_id = str(uuid.uuid4())
 
     title = req.message[:50].strip()
@@ -58,7 +57,6 @@ async def widget_chat(req: WidgetChatRequest):
         system_prompt=settings.system_prompt,
         model=settings.model,
         temperature=settings.temperature,
-        graph=graph,
     )
 
     return {

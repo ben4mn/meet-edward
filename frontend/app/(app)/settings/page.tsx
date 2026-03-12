@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import {
+  Settings2,
   Zap,
   Puzzle,
   HeartPulse,
@@ -15,6 +16,7 @@ import {
   GitBranch,
   LucideIcon,
 } from "lucide-react";
+import { GeneralPanel } from "@/components/settings/GeneralPanel";
 import { MemoryBrowser } from "@/components/settings/MemoryBrowser";
 import { DocumentBrowser } from "@/components/settings/DocumentBrowser";
 import { SkillsPanel } from "@/components/settings/SkillsPanel";
@@ -34,6 +36,7 @@ interface TileConfig {
 }
 
 const TILES: TileConfig[] = [
+  { id: "general", title: "General", description: "Model, temperature, and providers", icon: Settings2 },
   { id: "skills", title: "Skills", description: "Enable and disable integrations", icon: Zap },
   { id: "mcp", title: "Edward's Servers", description: "Manage custom MCP servers", icon: Puzzle },
   { id: "heartbeat", title: "Heartbeat", description: "Monitor iMessage listener", icon: HeartPulse },
@@ -48,6 +51,7 @@ const TILES: TileConfig[] = [
 
 function renderPanel(id: string) {
   switch (id) {
+    case "general": return <GeneralPanel isExpanded hideHeader />;
     case "skills": return <SkillsPanel isExpanded hideHeader />;
     case "mcp": return <CustomMCPPanel isExpanded hideHeader />;
     case "heartbeat": return <HeartbeatPanel isExpanded hideHeader />;

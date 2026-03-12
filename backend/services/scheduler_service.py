@@ -116,14 +116,13 @@ def _build_scheduler_system_prompt(base_system_prompt: str, event) -> str:
 
 async def _execute_event(event) -> None:
     """Execute a single scheduled event by calling chat_with_memory."""
-    from services.graph import get_graph, chat_with_memory
+    from services.graph import chat_with_memory
     from services.graph.tools import set_current_conversation_id
     from services.settings_service import get_settings
     from services.conversation_service import create_conversation
 
     try:
         settings = await get_settings()
-        graph = await get_graph()
 
         # Create a real conversation so user can see Edward's response in UI
         conversation_id = str(uuid.uuid4())
@@ -155,7 +154,6 @@ async def _execute_event(event) -> None:
             system_prompt=system_prompt,
             model=settings.model,
             temperature=settings.temperature,
-            graph=graph,
         )
 
         result_summary = str(response)[:500] if response else "No response"

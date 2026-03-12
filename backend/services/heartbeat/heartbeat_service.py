@@ -25,6 +25,11 @@ from services.heartbeat.listener_email import (
     stop_email_listener,
     get_email_listener_status,
 )
+from services.heartbeat.listener_whatsapp import (
+    start_whatsapp_listener,
+    stop_whatsapp_listener,
+    get_whatsapp_listener_status,
+)
 
 _heartbeat_task: asyncio.Task | None = None
 _active_chats: set[str] = set()
@@ -43,6 +48,11 @@ def unregister_active_chat(conversation_id: str) -> None:
 
 def is_user_chatting() -> bool:
     return len(_active_chats) > 0
+
+
+def is_conversation_active(conversation_id: str) -> bool:
+    """Check whether a specific conversation is currently open in the chat UI."""
+    return conversation_id in _active_chats
 
 
 # ===== Config =====
@@ -94,6 +104,8 @@ async def get_pending_briefing() -> Optional[str]:
                 lines.append(f"- [CALENDAR] {summary} ({time_ago})")
             elif event.source == "email":
                 lines.append(f"- [EMAIL] {sender}: {summary} ({time_ago})")
+            elif event.source == "whatsapp":
+                lines.append(f"- [WHATSAPP] {sender} messaged: {summary} ({time_ago})")
             else:
                 lines.append(f"- [{status_label}] {sender} texted: {summary} ({time_ago})")
 
@@ -187,6 +199,11 @@ async def get_heartbeat_status() -> dict:
                 "status": get_email_listener_status(),
                 "poll_seconds": config.email_poll_seconds,
             },
+            "whatsapp": {
+                "enabled": config.whatsapp_enabled,
+                "status": get_whatsapp_listener_status(),
+                "poll_seconds": config.whatsapp_poll_seconds,
+            },
         },
         # Per-track config fields for frontend
         "imessage_enabled": config.imessage_enabled,
@@ -196,6 +213,8 @@ async def get_heartbeat_status() -> dict:
         "calendar_lookahead_minutes": config.calendar_lookahead_minutes,
         "email_enabled": config.email_enabled,
         "email_poll_seconds": config.email_poll_seconds,
+        "whatsapp_enabled": config.whatsapp_enabled,
+        "whatsapp_poll_seconds": config.whatsapp_poll_seconds,
     }
 
 
@@ -266,6 +285,8 @@ async def start_heartbeat() -> None:
 
     config = await _load_config()
 
+    print(f"[Heartbeat] Config: imessage={config.imessage_enabled}, calendar={config.calendar_enabled}, email={config.email_enabled}, whatsapp={config.whatsapp_enabled}")
+
     # Start each listener based on per-track config
     if config.imessage_enabled:
         await start_imessage_listener()
@@ -275,6 +296,9 @@ async def start_heartbeat() -> None:
 
     if config.email_enabled:
         await start_email_listener(config)
+
+    if config.whatsapp_enabled:
+        await start_whatsapp_listener(config)
 
     # Start triage loop
     _heartbeat_task = asyncio.create_task(_heartbeat_loop())
@@ -298,4 +322,5 @@ async def stop_heartbeat() -> None:
     await stop_imessage_listener()
     await stop_calendar_listener()
     await stop_email_listener()
+    await stop_whatsapp_listener()
     print("[Heartbeat] System stopped")

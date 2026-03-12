@@ -178,6 +178,7 @@ async def update_config(body: HeartbeatConfigUpdate):
         prev_imessage = config.imessage_enabled
         prev_calendar = config.calendar_enabled
         prev_email = config.email_enabled
+        prev_whatsapp = config.whatsapp_enabled
 
         if body.enabled is not None:
             config.enabled = body.enabled
@@ -208,12 +209,16 @@ async def update_config(body: HeartbeatConfigUpdate):
             config.email_enabled = body.email_enabled
         if body.email_poll_seconds is not None:
             config.email_poll_seconds = body.email_poll_seconds
+        if body.whatsapp_enabled is not None:
+            config.whatsapp_enabled = body.whatsapp_enabled
+        if body.whatsapp_poll_seconds is not None:
+            config.whatsapp_poll_seconds = body.whatsapp_poll_seconds
 
         await session.commit()
         await session.refresh(config)
 
         # Hot-start/stop listeners when enabled state changes
-        await _sync_listeners(config, prev_imessage, prev_calendar, prev_email)
+        await _sync_listeners(config, prev_imessage, prev_calendar, prev_email, prev_whatsapp)
 
         # Parse allowed_senders back for response
         allowed_senders = []
@@ -235,14 +240,17 @@ async def update_config(body: HeartbeatConfigUpdate):
             calendar_lookahead_minutes=config.calendar_lookahead_minutes,
             email_enabled=config.email_enabled,
             email_poll_seconds=config.email_poll_seconds,
+            whatsapp_enabled=config.whatsapp_enabled,
+            whatsapp_poll_seconds=config.whatsapp_poll_seconds,
         )
 
 
-async def _sync_listeners(config, prev_imessage: bool, prev_calendar: bool, prev_email: bool) -> None:
+async def _sync_listeners(config, prev_imessage: bool, prev_calendar: bool, prev_email: bool, prev_whatsapp: bool) -> None:
     """Start or stop listeners when their enabled state changes."""
     from services.heartbeat.listener_imessage import start_imessage_listener, stop_imessage_listener
     from services.heartbeat.listener_calendar import start_calendar_listener, stop_calendar_listener
     from services.heartbeat.listener_email import start_email_listener, stop_email_listener
+    from services.heartbeat.listener_whatsapp import start_whatsapp_listener, stop_whatsapp_listener
 
     # iMessage
     if config.imessage_enabled and not prev_imessage:
@@ -261,3 +269,9 @@ async def _sync_listeners(config, prev_imessage: bool, prev_calendar: bool, prev
         await start_email_listener(config)
     elif not config.email_enabled and prev_email:
         await stop_email_listener()
+
+    # WhatsApp
+    if config.whatsapp_enabled and not prev_whatsapp:
+        await start_whatsapp_listener(config)
+    elif not config.whatsapp_enabled and prev_whatsapp:
+        await stop_whatsapp_listener()

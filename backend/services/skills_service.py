@@ -31,8 +31,8 @@ SKILL_DEFINITIONS = {
         "get_status": lambda: _get_twilio_whatsapp_status(),
     },
     "whatsapp_mcp": {
-        "name": "WhatsApp (MCP)",
-        "description": "Read/send WhatsApp as the user via whatsapp-mcp bridge",
+        "name": "WhatsApp (Bridge)",
+        "description": "Read/send WhatsApp as the user via Baileys bridge with real-time @mention detection",
         "get_status": lambda: _get_whatsapp_mcp_status(),
     },
     "brave_search": {
@@ -90,6 +90,11 @@ SKILL_DEFINITIONS = {
         "description": "Spawn parallel worker agents for complex multi-step tasks",
         "get_status": lambda: {"status": "connected", "status_message": "Ready"},
     },
+    "notebooklm": {
+        "name": "Google NotebookLM",
+        "description": "Build knowledge bases, query sources, and generate artifacts",
+        "get_status": lambda: _get_notebooklm_status(),
+    },
 }
 
 
@@ -116,9 +121,9 @@ def _get_twilio_whatsapp_status() -> dict:
 
 
 def _get_whatsapp_mcp_status() -> dict:
-    """Get status from WhatsApp MCP client."""
-    from services.mcp_client import get_whatsapp_status
-    return get_whatsapp_status()
+    """Get status from WhatsApp bridge client."""
+    from services.whatsapp_bridge_client import get_status
+    return get_status()
 
 
 def _get_brave_search_status() -> dict:
@@ -178,6 +183,12 @@ def _get_html_hosting_status() -> dict:
 def _get_ios_widget_status() -> dict:
     """Get status from widget service."""
     from services.widget_service import get_status
+    return get_status()
+
+
+def _get_notebooklm_status() -> dict:
+    """Get status from NotebookLM service."""
+    from services.notebooklm_service import get_status
     return get_status()
 
 
@@ -321,6 +332,13 @@ async def set_skill_enabled(skill_id: str, enabled: bool) -> Optional[Skill]:
         except Exception as e:
             print(f"Failed to initialize Apple Services MCP client: {e}")
 
+    if skill_id == "notebooklm" and enabled:
+        try:
+            from services.notebooklm_service import initialize_notebooklm
+            await initialize_notebooklm()
+        except Exception as e:
+            print(f"Failed to initialize NotebookLM client: {e}")
+
     # Refresh tool registry to pick up skill state change
     try:
         from services.tool_registry import refresh_registry
@@ -358,6 +376,13 @@ async def reload_skills() -> List[Skill]:
         await initialize_apple_mcp()
     except Exception as e:
         print(f"Failed to reload Apple Services MCP client: {e}")
+
+    try:
+        from services.notebooklm_service import shutdown_notebooklm, initialize_notebooklm
+        await shutdown_notebooklm()
+        await initialize_notebooklm()
+    except Exception as e:
+        print(f"Failed to reload NotebookLM client: {e}")
 
     # Refresh tool registry to pick up changes
     try:
