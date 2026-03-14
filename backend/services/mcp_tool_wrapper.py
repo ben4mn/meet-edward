@@ -36,9 +36,11 @@ class MCPToolWrapper:
         name: str,
         description: str,
         input_schema: Optional[dict] = None,
+        original_name: Optional[str] = None,
     ):
         self._session = session
-        self.name = name
+        self.name = name  # prefixed name exposed to the LLM
+        self._original_name = original_name or name  # unprefixed name sent to the MCP server
         self.description = description
         self._input_schema = input_schema or {"type": "object", "properties": {}}
 
@@ -77,7 +79,7 @@ class MCPToolWrapper:
 
     async def ainvoke(self, args: dict) -> Any:
         """Execute the MCP tool via the session."""
-        result = await self._session.call_tool(self.name, arguments=args)
+        result = await self._session.call_tool(self._original_name, arguments=args)
 
         # Extract text from MCP result content blocks
         parts = []

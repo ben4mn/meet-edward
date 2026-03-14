@@ -582,6 +582,11 @@ def get_tool_descriptions(tools: List[Any]) -> str:
         from services.graph.tools import get_notebooklm_tools_description
         sections.append(get_notebooklm_tools_description())
 
+    # GitHub MCP tools section (guardrail for write actions)
+    # Sentinel: github-mcp-server always exposes "get_me" (prefixed as "github_get_me" by custom MCP)
+    if "get_me" in tool_names or "github_get_me" in tool_names:
+        sections.append(_get_github_mcp_description())
+
     # Apple Reminders tools section (special guidance to avoid confusion with scheduled events)
     if any(name.startswith("reminders_") for name in tool_names):
         sections.append(_get_apple_reminders_description())
@@ -593,6 +598,23 @@ def get_tool_descriptions(tools: List[Any]) -> str:
     # MCP tools use their own descriptions from the MCP server
 
     return "\n".join(sections)
+
+
+def _get_github_mcp_description() -> str:
+    """Write-confirmation guardrail for GitHub MCP tools."""
+    return """## GitHub (Read + Soft Write)
+
+You have access to GitHub tools for reading repositories, files, issues, and pull
+requests, and for creating issues and comments.
+
+IMPORTANT — Confirmation required before any write action:
+Before calling any tool that creates, modifies, or closes a GitHub resource
+(creating an issue, posting a comment, opening or updating a PR, etc.), you MUST
+first describe exactly what you are about to do — including repo, resource type,
+and content — and wait for the user to explicitly confirm before calling the tool.
+Example: "I'm about to open an issue titled 'X' in org/repo. Shall I proceed?"
+
+Read-only tools (list_*, get_*, search_*) do not require confirmation."""
 
 
 def _get_apple_reminders_description() -> str:
@@ -629,7 +651,7 @@ No restart required — new tools become available immediately.
 - `restart_mcp_server` — Restart a server (useful for error recovery)
 - `remove_mcp_server` — Stop and remove a server
 
-Use "npx" runtime for Node.js/TypeScript packages and "uvx" for Python packages.
+Use "npx" runtime for Node.js/TypeScript packages, "uvx" for Python packages, and "binary" for pre-installed native binaries already on PATH (package_name becomes the command directly, no package manager involved).
 Environment variables can be passed as a JSON object to configure servers that need API keys.
 To update env vars on an existing server, use update_mcp_server — env vars merge by default (set a key to "" to remove it)."""
 

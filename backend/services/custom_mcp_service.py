@@ -7,14 +7,149 @@ available to Edward immediately.
 """
 
 import os
+import sys
 import json
 import uuid
+import asyncio
+import threading
+import concurrent.futures
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
 
 from services.database import async_session, CustomMCPServerModel
 from sqlalchemy import select
+
+
+def _needs_proactor_thread() -> bool:
+    """
+    On Windows with SelectorEventLoop, asyncio cannot create subprocess pipes.
+    anyio (used by the MCP SDK) raises NotImplementedError in this case.
+    Detect this so we can launch MCP subprocesses in a dedicated ProactorEventLoop thread.
+    """
+    return sys.platform == "win32"
+
+
+class _ProactorMCPThread:
+    """
+    Runs a single MCP server subprocess on a dedicated ProactorEventLoop thread.
+
+    Required on Windows because the main backend uses SelectorEventLoop (forced
+    by run.py for psycopg compatibility), and SelectorEventLoop cannot create
+    subprocess pipes. All async session operations are dispatched to this thread
+    via run_coroutine_threadsafe so they stay on the correct event loop.
+    """
+
+    def __init__(self):
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._thread: Optional[threading.Thread] = None
+        self._ready = threading.Event()
+        self._stdio_ctx = None
+        self._session_ctx = None
+        self.session = None
+
+    def start(self):
+        """Start the background thread and its ProactorEventLoop."""
+        self._thread = threading.Thread(target=self._run_loop, daemon=True)
+        self._thread.start()
+        self._ready.wait(timeout=5.0)
+
+    def _run_loop(self):
+        self._loop = asyncio.ProactorEventLoop()
+        asyncio.set_event_loop(self._loop)
+        self._ready.set()
+        self._loop.run_forever()
+
+    def run(self, coro):
+        """Submit a coroutine to the ProactorEventLoop and block until done."""
+        future = asyncio.run_coroutine_threadsafe(coro, self._loop)
+        return future.result(timeout=30)
+
+    async def connect(self, server_params):
+        """Open the stdio transport and MCP session (runs on ProactorEventLoop)."""
+        from mcp import ClientSession
+        from mcp.client.stdio import stdio_client
+
+        self._stdio_ctx = stdio_client(server_params)
+        read_stream, write_stream = await self._stdio_ctx.__aenter__()
+        self._session_ctx = ClientSession(read_stream, write_stream)
+        self.session = await self._session_ctx.__aenter__()
+        await self.session.initialize()
+
+    async def list_tools(self):
+        return await self.session.list_tools()
+
+    async def call_tool(self, name: str, arguments: dict):
+        return await self.session.call_tool(name, arguments=arguments)
+
+    async def shutdown(self):
+        """Tear down session and stdio transport."""
+        try:
+            if self._session_ctx:
+                await self._session_ctx.__aexit__(None, None, None)
+        except Exception:
+            pass
+        try:
+            if self._stdio_ctx:
+                await self._stdio_ctx.__aexit__(None, None, None)
+        except Exception:
+            pass
+        self.session = None
+
+    def stop(self):
+        """Shut down the session and stop the ProactorEventLoop thread."""
+        if self._loop and self._loop.is_running():
+            try:
+                future = asyncio.run_coroutine_threadsafe(self.shutdown(), self._loop)
+                future.result(timeout=5)
+            except Exception:
+                pass
+            self._loop.call_soon_threadsafe(self._loop.stop)
+        if self._thread:
+            self._thread.join(timeout=5)
+
+
+class _ProactorMCPToolWrapper:
+    """
+    Wraps an MCP tool whose session lives on a ProactorEventLoop thread.
+    Dispatches ainvoke() calls to that thread via run_coroutine_threadsafe.
+    Matches the MCPToolWrapper interface (.name, .description, .args_schema, .ainvoke).
+    """
+
+    def __init__(self, mcp_thread: _ProactorMCPThread, name: str, original_name: str, description: str, input_schema: dict):
+        from services.mcp_tool_wrapper import MCPToolWrapper
+        self._thread = mcp_thread
+        self.name = name  # prefixed name exposed to the LLM
+        self._original_name = original_name  # unprefixed name sent to the MCP server
+        self.description = description
+        # Reuse MCPToolWrapper's Pydantic schema builder with a dummy session
+        _dummy = MCPToolWrapper.__new__(MCPToolWrapper)
+        _dummy.name = name
+        _dummy._input_schema = input_schema or {"type": "object", "properties": {}}
+        self.args_schema = _dummy._build_pydantic_schema()
+
+    async def ainvoke(self, args: dict) -> Any:
+        """Dispatch the tool call to the ProactorEventLoop thread."""
+        loop = asyncio.get_event_loop()
+        future = asyncio.run_coroutine_threadsafe(
+            self._thread.call_tool(self._original_name, args),
+            self._thread._loop,
+        )
+        # Await the concurrent.futures.Future from the main SelectorEventLoop
+        result = await loop.run_in_executor(None, future.result, 30)
+
+        parts = []
+        for block in result.content:
+            if hasattr(block, "text"):
+                parts.append(block.text)
+            elif hasattr(block, "data"):
+                parts.append(f"[binary data: {len(block.data)} bytes]")
+            else:
+                parts.append(str(block))
+        return "\n".join(parts) if parts else ""
+
+    def __repr__(self):
+        return f"_ProactorMCPToolWrapper(name={self.name!r})"
 
 
 @dataclass
@@ -34,8 +169,7 @@ _servers: Dict[str, ServerInstance] = {}
 
 async def _start_server_process(server: CustomMCPServerModel) -> ServerInstance:
     """Start an MCP server subprocess and connect to it."""
-    from mcp import ClientSession, StdioServerParameters
-    from mcp.client.stdio import stdio_client
+    from mcp import StdioServerParameters
     from services.mcp_tool_wrapper import MCPToolWrapper
 
     instance = ServerInstance(
@@ -55,11 +189,15 @@ async def _start_server_process(server: CustomMCPServerModel) -> ServerInstance:
         elif server.runtime == "uvx":
             command = "uvx"
             args = [server.package_name] + args_list
+        elif server.runtime == "binary":
+            # Direct binary execution — package_name is the command (must be on PATH or full path)
+            command = server.package_name
+            args = args_list
         else:
             raise ValueError(f"Unknown runtime: {server.runtime}")
 
         # Merge env vars with current environment
-        full_env = {**os.environ, **env_vars} if env_vars else None
+        full_env = {**os.environ, **env_vars} if env_vars else dict(os.environ)
 
         server_params = StdioServerParameters(
             command=command,
@@ -67,31 +205,67 @@ async def _start_server_process(server: CustomMCPServerModel) -> ServerInstance:
             env=full_env,
         )
 
-        # Open stdio transport (stays alive)
-        stdio_ctx = stdio_client(server_params)
-        read_stream, write_stream = await stdio_ctx.__aenter__()
+        if _needs_proactor_thread():
+            # On Windows, SelectorEventLoop cannot create subprocess pipes.
+            # Run the MCP subprocess on a dedicated ProactorEventLoop thread.
+            mcp_thread = _ProactorMCPThread()
+            mcp_thread.start()
+            try:
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(None, lambda: mcp_thread.run(mcp_thread.connect(server_params)))
+                tools_result = await loop.run_in_executor(None, lambda: mcp_thread.run(mcp_thread.list_tools()))
+            except Exception:
+                mcp_thread.stop()
+                raise
 
-        # Create and initialize MCP session
-        session_ctx = ClientSession(read_stream, write_stream)
-        mcp_session = await session_ctx.__aenter__()
-        await mcp_session.initialize()
+            wrapped_tools = []
+            prefix = server.tool_prefix
+            for t in tools_result.tools:
+                original_name = t.name
+                tool_name = original_name if original_name.startswith(f"{prefix}_") else f"{prefix}_{original_name}"
+                wrapped_tools.append(_ProactorMCPToolWrapper(
+                    mcp_thread=mcp_thread,
+                    name=tool_name,
+                    original_name=original_name,
+                    description=t.description or "",
+                    input_schema=t.inputSchema if hasattr(t, 'inputSchema') else {},
+                ))
 
-        # List tools and wrap them
-        tools_result = await mcp_session.list_tools()
-        wrapped_tools = []
-        prefix = server.tool_prefix
-        for t in tools_result.tools:
-            tool_name = t.name
-            if not tool_name.startswith(f"{prefix}_"):
-                tool_name = f"{prefix}_{tool_name}"
-            wrapped_tools.append(MCPToolWrapper(
-                session=mcp_session,
-                name=tool_name,
-                description=t.description or "",
-                input_schema=t.inputSchema if hasattr(t, 'inputSchema') else {},
-            ))
+            instance.client = {"mcp_thread": mcp_thread}
+        else:
+            # macOS/Linux: SelectorEventLoop supports subprocesses fine.
+            from mcp import ClientSession
+            from mcp.client.stdio import stdio_client
 
-        instance.client = {"stdio_ctx": stdio_ctx, "session_ctx": session_ctx, "session": mcp_session}
+            stdio_ctx = stdio_client(server_params)
+            read_stream, write_stream = await stdio_ctx.__aenter__()
+            try:
+                session_ctx = ClientSession(read_stream, write_stream)
+                mcp_session = await session_ctx.__aenter__()
+                await mcp_session.initialize()
+
+                tools_result = await mcp_session.list_tools()
+                wrapped_tools = []
+                prefix = server.tool_prefix
+                for t in tools_result.tools:
+                    original_name = t.name
+                    tool_name = original_name if original_name.startswith(f"{prefix}_") else f"{prefix}_{original_name}"
+                    wrapped_tools.append(MCPToolWrapper(
+                        session=mcp_session,
+                        name=tool_name,
+                        original_name=original_name,
+                        description=t.description or "",
+                        input_schema=t.inputSchema if hasattr(t, 'inputSchema') else {},
+                    ))
+            except Exception:
+                try:
+                    await stdio_ctx.__aexit__(None, None, None)
+                except Exception:
+                    pass
+                raise
+
+            instance.client = {"stdio_ctx": stdio_ctx, "session_ctx": session_ctx, "session": mcp_session}
+
         instance.tools = wrapped_tools
         instance.status = "connected"
         instance.error = None
@@ -133,8 +307,8 @@ async def add_server(
     Returns dict with server info and tool list.
     """
     # Validate runtime
-    if runtime not in ("npx", "uvx"):
-        raise ValueError(f"runtime must be 'npx' or 'uvx', got '{runtime}'")
+    if runtime not in ("npx", "uvx", "binary"):
+        raise ValueError(f"runtime must be 'npx', 'uvx', or 'binary', got '{runtime}'")
 
     # Generate tool prefix from name (lowercase, underscores)
     tool_prefix = name.lower().replace("-", "_").replace(" ", "_")
@@ -189,14 +363,26 @@ async def add_server(
     }
 
 
+def _cleanup_instance(instance: ServerInstance):
+    """Clean up a server instance, stopping its subprocess if needed."""
+    if instance.client:
+        mcp_thread = instance.client.get("mcp_thread")
+        if mcp_thread is not None:
+            try:
+                mcp_thread.stop()
+            except Exception:
+                pass
+    instance.status = "stopped"
+    instance.tools = []
+    instance.client = None
+
+
 async def remove_server(server_id: str) -> bool:
     """Stop and remove a custom MCP server."""
     # Stop if running
     if server_id in _servers:
         instance = _servers[server_id]
-        instance.status = "stopped"
-        instance.tools = []
-        instance.client = None
+        _cleanup_instance(instance)
         del _servers[server_id]
 
     # Delete from DB
@@ -332,9 +518,7 @@ async def stop_server(server_id: str) -> bool:
         return False
 
     instance = _servers[server_id]
-    instance.status = "stopped"
-    instance.tools = []
-    instance.client = None
+    _cleanup_instance(instance)
     del _servers[server_id]
 
     # Refresh tool registry
@@ -359,9 +543,7 @@ async def set_server_enabled(server_id: str, enabled: bool) -> Optional[dict]:
             _servers[server_id] = instance
         else:
             if server_id in _servers:
-                _servers[server_id].status = "stopped"
-                _servers[server_id].tools = []
-                _servers[server_id].client = None
+                _cleanup_instance(_servers[server_id])
                 del _servers[server_id]
 
         # Refresh tool registry
@@ -425,9 +607,7 @@ async def shutdown_custom_servers() -> None:
     for server_id in list(_servers.keys()):
         instance = _servers[server_id]
         print(f"Stopping custom MCP server '{instance.name}'...")
-        instance.status = "stopped"
-        instance.tools = []
-        instance.client = None
+        _cleanup_instance(instance)
     _servers.clear()
 
 
