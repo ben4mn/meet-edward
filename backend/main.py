@@ -1,3 +1,8 @@
+import sys
+import asyncio
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -42,6 +47,13 @@ async def lifespan(app: FastAPI):
         await initialize_custom_servers()
     except Exception as e:
         print(f"Custom MCP servers initialization skipped: {e}")
+
+    # Initialize NotebookLM client (if credentials exist)
+    try:
+        from services.notebooklm_service import initialize_notebooklm
+        await initialize_notebooklm()
+    except Exception as e:
+        print(f"NotebookLM initialization skipped: {e}")
 
     # Initialize tool registry (must be after skills and MCP)
     try:
@@ -111,6 +123,12 @@ async def lifespan(app: FastAPI):
         await stop_scheduler()
     except Exception as e:
         print(f"Scheduler shutdown error: {e}")
+
+    try:
+        from services.notebooklm_service import shutdown_notebooklm
+        await shutdown_notebooklm()
+    except Exception as e:
+        print(f"NotebookLM shutdown error: {e}")
 
     try:
         from services.custom_mcp_service import shutdown_custom_servers
