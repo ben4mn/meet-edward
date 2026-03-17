@@ -1,16 +1,33 @@
+import sys
+import asyncio
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
+import logging
+import os
+
 from routers import chat, settings, debug, memories, conversations, webhooks, skills, events, auth, push, documents, files, widget, databases, heartbeat, custom_mcp, consolidation, evolution, orchestrator
 from services.database import init_db, DATABASE_URL
-from services.graph import initialize_graph
+from services.graph import initialize_checkpoint_store
+
+# Governance measurement log — persists turn samples to backend/logs/governance.jsonl
+_gov_log_path = os.path.join(os.path.dirname(__file__), "logs", "governance.jsonl")
+os.makedirs(os.path.dirname(_gov_log_path), exist_ok=True)
+_gov_handler = logging.FileHandler(_gov_log_path, encoding="utf-8")
+_gov_handler.setLevel(logging.DEBUG)
+_gov_logger = logging.getLogger("governance.sample")
+_gov_logger.addHandler(_gov_handler)
+_gov_logger.setLevel(logging.DEBUG)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     await init_db()
-    await initialize_graph(DATABASE_URL)
+    await initialize_checkpoint_store(DATABASE_URL)
 
     # Ensure file storage directory exists
     from services.file_storage_service import ensure_storage_dir
@@ -42,6 +59,13 @@ async def lifespan(app: FastAPI):
         await initialize_custom_servers()
     except Exception as e:
         print(f"Custom MCP servers initialization skipped: {e}")
+
+    # Initialize NotebookLM client (if credentials exist)
+    try:
+        from services.notebooklm_service import initialize_notebooklm
+        await initialize_notebooklm()
+    except Exception as e:
+        print(f"NotebookLM initialization skipped: {e}")
 
     # Initialize tool registry (must be after skills and MCP)
     try:
@@ -113,6 +137,12 @@ async def lifespan(app: FastAPI):
         print(f"Scheduler shutdown error: {e}")
 
     try:
+        from services.notebooklm_service import shutdown_notebooklm
+        await shutdown_notebooklm()
+    except Exception as e:
+        print(f"NotebookLM shutdown error: {e}")
+
+    try:
         from services.custom_mcp_service import shutdown_custom_servers
         await shutdown_custom_servers()
     except Exception as e:
@@ -124,6 +154,12 @@ async def lifespan(app: FastAPI):
         await shutdown_apple_mcp()
     except Exception as e:
         print(f"MCP shutdown error: {e}")
+
+    try:
+        from services.graph import shutdown_legacy_graph
+        await shutdown_legacy_graph()
+    except Exception as e:
+        print(f"Legacy graph shutdown error: {e}")
 
 
 app = FastAPI(

@@ -94,21 +94,22 @@ async def debug_health():
 
     Returns status of various components.
     """
-    from services.graph import get_graph
     from services.database import async_session
 
     status = {
-        "graph": "unknown",
+        "checkpoint_store": "unknown",
         "database": "unknown",
         "memory_service": "unknown"
     }
 
-    # Check graph
+    # Check checkpoint store
     try:
-        graph = await get_graph()
-        status["graph"] = "healthy" if graph else "not_initialized"
+        from services.checkpoint_store import get_messages
+        # Quick smoke test — get_messages on a non-existent ID should return []
+        test = await get_messages("__health_check__")
+        status["checkpoint_store"] = "healthy"
     except Exception as e:
-        status["graph"] = f"error: {str(e)}"
+        status["checkpoint_store"] = f"error: {str(e)}"
 
     # Check database
     try:

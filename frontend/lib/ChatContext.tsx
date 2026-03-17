@@ -247,6 +247,59 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, authLoading, refreshConversations]);
 
+  // iOS PWA: recover stuck "Thinking" state when app returns to foreground after
+  // the network connection was dropped while backgrounded (ngrok drops long SSE streams).
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const onVisibility = async () => {
+      if (document.visibilityState !== "visible") return;
+      if (!isLoading) return; // not streaming, nothing to recover
+
+      // Give the stream 2s to recover on its own first
+      await new Promise(r => setTimeout(r, 2000));
+      if (!isLoading) return; // recovered naturally
+
+      // Stream is still stuck — abort it, recover last reply from DB
+      const cid = conversationId;
+      abortControllerRef.current?.abort();
+      abortControllerRef.current = null;
+      setIsLoading(false);
+      setCanStop(false);
+      setMessages(prev => {
+        const msgs = [...prev];
+        const last = msgs[msgs.length - 1];
+        if (last?.role === "assistant") {
+          msgs[msgs.length - 1] = { ...last, isThinking: false };
+        }
+        return msgs;
+      });
+
+      if (cid) {
+        try {
+          const conv = await getConversation(cid);
+          const lastAssistant = [...(conv.messages || [])].reverse().find(m => m.role === "assistant");
+          if (lastAssistant?.content) {
+            setMessages(prev => {
+              const msgs = [...prev];
+              const last = msgs[msgs.length - 1];
+              if (last?.role === "assistant") {
+                msgs[msgs.length - 1] = { ...last, content: lastAssistant.content, isThinking: false };
+              }
+              return msgs;
+            });
+          }
+        } catch {
+          // recovery failed silently
+        }
+      }
+      await refreshConversations();
+    };
+
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [isAuthenticated, isLoading, conversationId, refreshConversations]);
+
   // Debounced search
   const setSearchQuery = useCallback((query: string) => {
     setSearchQueryRaw(query);
@@ -460,30 +513,33 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       abortControllerRef.current = new AbortController();
       setCanStop(true);
 
+      streamingContentRef.current = "";
+      let newConversationId: string | undefined;
+      let currentCodeBlock: CodeBlock | null = null;
+      let codeBlockCounter = 0;
+      let doneSeen = false;
+      let contentSeen = false;
+
+      // Helper to update the assistant message
+      const updateAssistantMessage = (updates: Partial<Message>) => {
+        setMessages((prev) => {
+          const newMessages = [...prev];
+          const lastMessage = newMessages[newMessages.length - 1];
+          if (lastMessage.role === "assistant" && lastMessage.id === assistantMessageId) {
+            newMessages[newMessages.length - 1] = {
+              ...lastMessage,
+              ...updates,
+            };
+          }
+          return newMessages;
+        });
+      };
+
+      const EXECUTION_TOOLS = new Set([
+        "execute_code", "execute_javascript", "execute_sql", "execute_shell",
+      ]);
+
       try {
-        streamingContentRef.current = "";
-        let newConversationId: string | undefined;
-        let currentCodeBlock: CodeBlock | null = null;
-        let codeBlockCounter = 0;
-
-        // Helper to update the assistant message
-        const updateAssistantMessage = (updates: Partial<Message>) => {
-          setMessages((prev) => {
-            const newMessages = [...prev];
-            const lastMessage = newMessages[newMessages.length - 1];
-            if (lastMessage.role === "assistant" && lastMessage.id === assistantMessageId) {
-              newMessages[newMessages.length - 1] = {
-                ...lastMessage,
-                ...updates,
-              };
-            }
-            return newMessages;
-          });
-        };
-
-        const EXECUTION_TOOLS = new Set([
-          "execute_code", "execute_javascript", "execute_sql", "execute_shell",
-        ]);
 
         for await (const event of streamChatEvents(content, conversationId, abortControllerRef.current?.signal, files)) {
           // Track conversation_id from first event
@@ -540,6 +596,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
                     newMessages[newMessages.length - 1] = {
                       ...lastMessage,
+                      isThinking: stepStatus !== "completed",
                       progressSteps: existingSteps,
                     };
                   }
@@ -818,6 +875,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
             case "content":
               if (event.content) {
+                contentSeen = true;
                 streamingContentRef.current += event.content;
                 updateAssistantMessage({
                   content: streamingContentRef.current,
@@ -826,9 +884,35 @@ export function ChatProvider({ children }: { children: ReactNode }) {
               }
               break;
 
-            case "done":
-              // Streaming complete
+            case "error":
+              // LLM call failed — clear thinking state, content event will follow
+              updateAssistantMessage({ isThinking: false });
               break;
+
+            case "done":
+              doneSeen = true;
+              updateAssistantMessage({ isThinking: false });
+              break;
+          }
+        }
+
+        if (!doneSeen) {
+          updateAssistantMessage({
+            isThinking: false,
+            ...(contentSeen ? {} : { content: "Sorry, the response stream ended unexpectedly. Please try again." }),
+          });
+          // Stream dropped mid-response (e.g. ngrok timeout) but backend likely saved the full reply.
+          // Try to recover the completed response from the DB.
+          if (contentSeen && (newConversationId || conversationId)) {
+            try {
+              const conv = await getConversation((newConversationId || conversationId)!);
+              const lastAssistant = [...(conv.messages || [])].reverse().find(m => m.role === "assistant");
+              if (lastAssistant?.content) {
+                updateAssistantMessage({ content: lastAssistant.content, isThinking: false });
+              }
+            } catch {
+              // Recovery failed silently — partial content already shown
+            }
           }
         }
 
@@ -859,20 +943,36 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           await refreshConversations();
         } else {
           console.error("Error sending message:", error);
-          setMessages((prev) => {
-            const newMessages = [...prev];
-            const lastMessage = newMessages[newMessages.length - 1];
-            if (lastMessage.role === "assistant") {
-              lastMessage.content =
-                "Sorry, I encountered an error. Please try again.";
+          // Network error mid-stream (e.g. ngrok dropped the connection).
+          // If we were already streaming content, try to recover the full reply from DB.
+          if (contentSeen && (newConversationId || conversationId)) {
+            updateAssistantMessage({ isThinking: false });
+            try {
+              const conv = await getConversation((newConversationId || conversationId)!);
+              const lastAssistant = [...(conv.messages || [])].reverse().find(m => m.role === "assistant");
+              if (lastAssistant?.content) {
+                updateAssistantMessage({ content: lastAssistant.content, isThinking: false });
+              }
+            } catch {
+              updateAssistantMessage({ content: "Sorry, I encountered an error. Please try again.", isThinking: false });
             }
-            return newMessages;
-          });
+          } else {
+            setMessages((prev) => {
+              const newMessages = [...prev];
+              const lastMessage = newMessages[newMessages.length - 1];
+              if (lastMessage.role === "assistant") {
+                lastMessage.content = "Sorry, I encountered an error. Please try again.";
+              }
+              return newMessages;
+            });
+          }
         }
       } finally {
         setIsLoading(false);
         setCanStop(false);
         abortControllerRef.current = null;
+        // Guarantee thinking state is always cleared when stream ends
+        updateAssistantMessage({ isThinking: false });
       }
     },
     [conversationId, isLoading, refreshConversations]

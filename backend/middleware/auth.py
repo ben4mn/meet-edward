@@ -14,6 +14,7 @@ PUBLIC_ROUTES = {
     "/api/auth/setup",
     "/api/webhook/twilio",
     "/api/webhook/twilio/whatsapp",
+    "/api/webhook/whatsapp",
     "/api/push/vapid-key",
     "/api/push/status",
     "/api/widget",
