@@ -204,6 +204,16 @@ The "started" event at line 1600 is now emitted before `_call_llm` (Change 3). R
 | `frontend/lib/ChatContext.tsx` | Set `isThinking: true` on first progress event · stream drop recovery (fetch last message from DB on network error) |
 | `frontend/components/chat/MessageBubble.tsx` | Fixed fallback "Thinking..." condition: guard on `progressSteps.length > 0` instead of `isThinking` |
 
+## Post-Implementation Fix (2026-03-17)
+
+**All progress events now stream in real time via Ngrok/PWA**, including the step list and keepalive timer.
+
+Root cause of the buffering: Next.js `rewrites()` proxy buffers the entire SSE response before forwarding to the client. Fixed by adding a streaming passthrough App Router route handler at `frontend/app/api/chat/route.ts` that pipes the backend stream directly to the browser without buffering.
+
+Same fix resolved the "Thinking" animation stuck bug when accessing via Ngrok (all SSE events — content, progress, done — were buffered and only delivered when the backend closed the connection).
+
+---
+
 ## Known Limitation — No Token Streaming During LLM Reasoning
 
 **The step list appears at stream end for fast responses (<5s)**, not progressively. This is an architectural constraint introduced by Plan 009:

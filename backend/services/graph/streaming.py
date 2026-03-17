@@ -71,9 +71,9 @@ def _is_openai_model(model: str) -> bool:
 EDWARD_CHARACTER = """
 You are Edward — a personal AI assistant who is witty, a little cheeky, and genuinely warm. You have been built up over time through real conversations and have accumulated memories, documents, and knowledge that you actively draw on. You are not a generic chatbot.
 
-Your default is to act, not to ask. When something should be done and the cost of being wrong is low, do it and report back — don't ask for permission first. Own your decisions: "If you want, I can..." means you decided not to — either take the action or say plainly why you're not. Post-mortem notes ("I should have saved that") without action are not acceptable; if it should have been done, do it now.
+Your default is to act, not to ask. When something should be done and the cost of being wrong is low, do it and report back. Think ahead — anticipate what the user will need next, not just what they asked for right now. When a commitment is made to follow up, call schedule_event() before responding — the reminder is part of the response, not an afterthought. When a topic has depth or recurrence, build something durable: a document, a notebook, a memory.
 
-Think ahead. Anticipate what the user will need next, not just what they asked for right now. When a commitment is made to follow up, call schedule_event() before responding — the reminder is part of the response, not an afterthought. When a topic has depth or recurrence, build something durable: a document, a notebook, a memory.
+Own your decisions. Act or decline — never hedge. Saying "If you want, I can..." or "Would you like me to..." means you chose not to act; say that plainly instead. Post-mortem notes ("I should have saved that") without action are not acceptable — if it should have been done, do it now.
 
 When genuinely uncertain about intent, pick the most reasonable interpretation and act. State what you assumed and why. Adjust if corrected. Ask only when the action is hard to reverse or the stakes are high enough that guessing wrong would cost more than asking. When tool results include identifying fields (name, contact, sender), compare them to what was asked — if there's a mismatch, either make one cheap verification call or state the assumption explicitly.
 
@@ -971,7 +971,12 @@ async def _call_codex(
     if not access_token or not account_id:
         raise ValueError("Codex OAuth not configured or tokens expired. Sign in again in Settings.")
 
-    instructions = static_system + "\n\n" + dynamic_context
+    instructions = (
+        static_system
+        + "\n\n"
+        + dynamic_context
+        + "\n\n## Response Rule\nNever end a response with a hedging offer like 'If you want, I can...', 'Would you like me to...', 'Let me know if you'd like...', or any variant. You have already decided whether to act. Either do it, or say plainly that you won't and why. End responses with your answer or action — not an invitation to ask you to act."
+    )
     input_items = _anthropic_messages_to_openai_input(messages)
 
     body = {
@@ -1789,45 +1794,52 @@ async def stream_with_memory_events(
         yield create_event(EventType.DONE, conversation_id)
         return
 
-    # ===== MEMORY EXTRACTION (skip on LLM errors, still guarantee done event) =====
-    try:
-        if not _llm_error_occurred:
-            messages_for_extraction = [
-                {"role": "human" if _msg_role(m) == "user" else "assistant",
-                 "content": _msg_content_text(m)}
-                for m in messages[-10:]
-                if _msg_role(m) in ("user", "assistant")
-            ]
-            await asyncio.wait_for(
-                extract_and_store_memories(
-                    messages=messages_for_extraction,
-                    conversation_id=conversation_id,
-                    existing_memories=retrieved_memories
-                ),
-                timeout=30,
-            )
+    # ===== DONE EVENT — generator exhausts here, HTTP connection closes immediately =====
+    yield create_event(EventType.DONE, conversation_id)
 
-            # Fire-and-forget search tag generation
-            from services.search_tag_service import generate_search_tags_safe
-            asyncio.create_task(generate_search_tags_safe(conversation_id, messages_for_extraction))
-
-            # Fire-and-forget reflection for next turn's enrichment
+    # ===== MEMORY EXTRACTION (true fire-and-forget via create_task) =====
+    # IMPORTANT: must use create_task, not await — the generator must fully exhaust
+    # after yield DONE so FastAPI closes the HTTP response immediately. On Ngrok,
+    # awaiting here keeps the connection open and Ngrok's tunnel timeout can drop it
+    # before the browser confirms receipt of the done event.
+    if not _llm_error_occurred:
+        async def _post_turn_work():
             try:
-                from services.reflection_service import should_reflect, run_reflection_safe
-                if should_reflect(messages_for_extraction, turn_count):
-                    asyncio.create_task(run_reflection_safe(
-                        conversation_id, messages_for_extraction,
-                        [m.id for m in retrieved_memories]
-                    ))
+                messages_for_extraction = [
+                    {"role": "human" if _msg_role(m) == "user" else "assistant",
+                     "content": _msg_content_text(m)}
+                    for m in messages[-10:]
+                    if _msg_role(m) in ("user", "assistant")
+                ]
+                await asyncio.wait_for(
+                    extract_and_store_memories(
+                        messages=messages_for_extraction,
+                        conversation_id=conversation_id,
+                        existing_memories=retrieved_memories
+                    ),
+                    timeout=30,
+                )
+
+                # Fire-and-forget search tag generation
+                from services.search_tag_service import generate_search_tags_safe
+                asyncio.create_task(generate_search_tags_safe(conversation_id, messages_for_extraction))
+
+                # Fire-and-forget reflection for next turn's enrichment
+                try:
+                    from services.reflection_service import should_reflect, run_reflection_safe
+                    if should_reflect(messages_for_extraction, turn_count):
+                        asyncio.create_task(run_reflection_safe(
+                            conversation_id, messages_for_extraction,
+                            [m.id for m in retrieved_memories]
+                        ))
+                except Exception as e:
+                    print(f"Reflection fire-and-forget failed: {e}")
+            except asyncio.TimeoutError:
+                print(f"Memory extraction timed out after 30s for conversation {conversation_id}")
             except Exception as e:
-                print(f"Reflection fire-and-forget failed: {e}")
-    except asyncio.TimeoutError:
-        print(f"Memory extraction timed out after 30s for conversation {conversation_id}")
-    except Exception as e:
-        print(f"Memory extraction failed: {e}")
-    finally:
-        # Always emit done event so the stream never hangs
-        yield create_event(EventType.DONE, conversation_id)
+                print(f"Memory extraction failed: {e}")
+
+        asyncio.create_task(_post_turn_work())
 
 
 async def chat_with_memory(

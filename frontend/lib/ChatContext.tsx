@@ -247,6 +247,59 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, authLoading, refreshConversations]);
 
+  // iOS PWA: recover stuck "Thinking" state when app returns to foreground after
+  // the network connection was dropped while backgrounded (ngrok drops long SSE streams).
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const onVisibility = async () => {
+      if (document.visibilityState !== "visible") return;
+      if (!isLoading) return; // not streaming, nothing to recover
+
+      // Give the stream 2s to recover on its own first
+      await new Promise(r => setTimeout(r, 2000));
+      if (!isLoading) return; // recovered naturally
+
+      // Stream is still stuck — abort it, recover last reply from DB
+      const cid = conversationId;
+      abortControllerRef.current?.abort();
+      abortControllerRef.current = null;
+      setIsLoading(false);
+      setCanStop(false);
+      setMessages(prev => {
+        const msgs = [...prev];
+        const last = msgs[msgs.length - 1];
+        if (last?.role === "assistant") {
+          msgs[msgs.length - 1] = { ...last, isThinking: false };
+        }
+        return msgs;
+      });
+
+      if (cid) {
+        try {
+          const conv = await getConversation(cid);
+          const lastAssistant = [...(conv.messages || [])].reverse().find(m => m.role === "assistant");
+          if (lastAssistant?.content) {
+            setMessages(prev => {
+              const msgs = [...prev];
+              const last = msgs[msgs.length - 1];
+              if (last?.role === "assistant") {
+                msgs[msgs.length - 1] = { ...last, content: lastAssistant.content, isThinking: false };
+              }
+              return msgs;
+            });
+          }
+        } catch {
+          // recovery failed silently
+        }
+      }
+      await refreshConversations();
+    };
+
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [isAuthenticated, isLoading, conversationId, refreshConversations]);
+
   // Debounced search
   const setSearchQuery = useCallback((query: string) => {
     setSearchQueryRaw(query);
@@ -460,32 +513,33 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       abortControllerRef.current = new AbortController();
       setCanStop(true);
 
+      streamingContentRef.current = "";
+      let newConversationId: string | undefined;
+      let currentCodeBlock: CodeBlock | null = null;
+      let codeBlockCounter = 0;
+      let doneSeen = false;
+      let contentSeen = false;
+
+      // Helper to update the assistant message
+      const updateAssistantMessage = (updates: Partial<Message>) => {
+        setMessages((prev) => {
+          const newMessages = [...prev];
+          const lastMessage = newMessages[newMessages.length - 1];
+          if (lastMessage.role === "assistant" && lastMessage.id === assistantMessageId) {
+            newMessages[newMessages.length - 1] = {
+              ...lastMessage,
+              ...updates,
+            };
+          }
+          return newMessages;
+        });
+      };
+
+      const EXECUTION_TOOLS = new Set([
+        "execute_code", "execute_javascript", "execute_sql", "execute_shell",
+      ]);
+
       try {
-        streamingContentRef.current = "";
-        let newConversationId: string | undefined;
-        let currentCodeBlock: CodeBlock | null = null;
-        let codeBlockCounter = 0;
-        let doneSeen = false;
-        let contentSeen = false;
-
-        // Helper to update the assistant message
-        const updateAssistantMessage = (updates: Partial<Message>) => {
-          setMessages((prev) => {
-            const newMessages = [...prev];
-            const lastMessage = newMessages[newMessages.length - 1];
-            if (lastMessage.role === "assistant" && lastMessage.id === assistantMessageId) {
-              newMessages[newMessages.length - 1] = {
-                ...lastMessage,
-                ...updates,
-              };
-            }
-            return newMessages;
-          });
-        };
-
-        const EXECUTION_TOOLS = new Set([
-          "execute_code", "execute_javascript", "execute_sql", "execute_shell",
-        ]);
 
         for await (const event of streamChatEvents(content, conversationId, abortControllerRef.current?.signal, files)) {
           // Track conversation_id from first event
@@ -542,7 +596,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
                     newMessages[newMessages.length - 1] = {
                       ...lastMessage,
-                      isThinking: true,
+                      isThinking: stepStatus !== "completed",
                       progressSteps: existingSteps,
                     };
                   }
@@ -917,6 +971,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         setIsLoading(false);
         setCanStop(false);
         abortControllerRef.current = null;
+        // Guarantee thinking state is always cleared when stream ends
+        updateAssistantMessage({ isThinking: false });
       }
     },
     [conversationId, isLoading, refreshConversations]
