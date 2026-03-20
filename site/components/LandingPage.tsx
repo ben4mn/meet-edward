@@ -6,6 +6,7 @@ import { FeaturesGrid } from "./FeaturesGrid";
 import { HowItWorks } from "./HowItWorks";
 import { GetStarted } from "./GetStarted";
 import { TechOverview } from "./TechOverview";
+import FAQSection from "./FAQSection";
 import { LandingFooter } from "./LandingFooter";
 
 export function LandingPage() {
@@ -17,6 +18,7 @@ export function LandingPage() {
       <HowItWorks />
       <GetStarted />
       <TechOverview />
+      <FAQSection />
       <LandingFooter />
     </div>
   );
