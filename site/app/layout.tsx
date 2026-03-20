@@ -65,6 +65,10 @@ export const metadata: Metadata = {
   },
   alternates: {
     canonical: "https://meet-edward.com",
+    types: {
+      "application/rss+xml": "https://meet-edward.com/feed.xml",
+      "application/feed+json": "https://meet-edward.com/feed.json",
+    },
   },
 };
 

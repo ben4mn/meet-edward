@@ -28,4 +28,8 @@ Allow: /
 # /llms.txt      — structured index
 # /llms-full.txt — complete documentation
 
+# Feeds
+# /feed.xml  — RSS 2.0
+# /feed.json — JSON Feed 1.1
+
 Sitemap: https://meet-edward.com/sitemap.xml
