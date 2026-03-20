@@ -1,0 +1,2 @@
+# Redirect www to non-www (301 permanent)
+https://www.meet-edward.com/* https://meet-edward.com/:splat 301
