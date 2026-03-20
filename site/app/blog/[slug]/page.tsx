@@ -31,11 +31,13 @@ export function generateMetadata({
       publishedTime: post.publishDate,
       authors: ["Ben Foreman"],
       tags: post.tags,
+      images: [`/og/${post.slug}.png`],
     },
     twitter: {
       card: "summary_large_image",
       title: post.title,
       description: post.description,
+      images: [`/og/${post.slug}.png`],
     },
   };
 }
