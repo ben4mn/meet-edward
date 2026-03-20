@@ -34,6 +34,7 @@ export const metadata: Metadata = {
     "personal AI",
     "multi-agent",
   ],
+  manifest: "/manifest.json",
   robots: "index, follow",
   icons: {
     icon: "/favicon.svg",

@@ -1,0 +1,16 @@
+{
+  "name": "Edward — AI Assistant with Long-Term Memory",
+  "short_name": "Edward",
+  "description": "Open-source AI assistant that remembers every conversation, evolves its own code, and runs on your machine.",
+  "start_url": "/",
+  "display": "browser",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
