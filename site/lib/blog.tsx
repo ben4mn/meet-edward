@@ -8,6 +8,7 @@ export interface BlogPost {
   publishDate: string;
   readingTime: string;
   tags: string[];
+  relatedSlugs?: string[];
   content: () => ReactNode;
 }
 
@@ -22,6 +23,7 @@ export const posts: BlogPost[] = [
     publishDate: "2026-03-04",
     readingTime: "5 min read",
     tags: ["AI memory", "personal AI assistant", "long-term memory AI"],
+    relatedSlugs: ["how-ai-memory-works", "the-heartbeat-system"],
     content: () => (
       <>
         <p>
@@ -114,6 +116,7 @@ export const posts: BlogPost[] = [
     publishDate: "2026-03-11",
     readingTime: "5 min read",
     tags: ["proactive AI", "AI monitoring", "heartbeat system", "AI automation"],
+    relatedSlugs: ["why-your-ai-forgets-you", "agents-that-work-while-you-sleep"],
     content: () => (
       <>
         <p>
@@ -213,6 +216,7 @@ export const posts: BlogPost[] = [
       "automated code generation",
       "Claude Code",
     ],
+    relatedSlugs: ["agents-that-work-while-you-sleep", "why-i-built-edward"],
     content: () => (
       <>
         <p>
@@ -315,6 +319,7 @@ export const posts: BlogPost[] = [
       "memory consolidation",
       "memory types",
     ],
+    relatedSlugs: ["why-your-ai-forgets-you", "the-heartbeat-system"],
     content: () => (
       <>
         <p>
@@ -423,6 +428,7 @@ export const posts: BlogPost[] = [
       "scheduled AI tasks",
       "autonomous AI",
     ],
+    relatedSlugs: ["self-evolving-ai", "the-heartbeat-system"],
     content: () => (
       <>
         <p>
@@ -505,6 +511,7 @@ export const posts: BlogPost[] = [
       "personal AI project",
       "self-hosted AI",
     ],
+    relatedSlugs: ["why-your-ai-forgets-you", "self-evolving-ai"],
     content: () => (
       <>
         <p>
