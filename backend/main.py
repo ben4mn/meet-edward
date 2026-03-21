@@ -132,6 +132,12 @@ async def lifespan(app: FastAPI):
         print(f"Custom MCP servers shutdown error: {e}")
 
     try:
+        from services.execution.browser_execution import shutdown_browser
+        await shutdown_browser()
+    except Exception as e:
+        print(f"Browser shutdown error: {e}")
+
+    try:
         from services.mcp_client import shutdown_whatsapp_mcp, shutdown_apple_mcp
         await shutdown_whatsapp_mcp()
         await shutdown_apple_mcp()

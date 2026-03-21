@@ -27,6 +27,7 @@ SKILL_TOOL_MAPPING: Dict[str, List[str]] = {
     "ios_widget": ["update_widget", "get_widget_state_tool"],
     "contacts_lookup": ["lookup_contact", "lookup_phone"],
     "orchestrator": ["spawn_worker", "check_worker", "list_workers", "cancel_worker", "wait_for_workers", "send_to_worker", "spawn_cc_worker"],
+    "browser_automation": ["browse_web", "browser_click", "browser_type", "browser_extract"],
     # "whatsapp_mcp" and "apple_services" tools are handled dynamically since they come from MCP
 }
 
@@ -96,6 +97,7 @@ async def _get_skill_states(force_refresh: bool = False) -> Dict[str, bool]:
         "html_hosting": await is_skill_enabled("html_hosting"),
         "ios_widget": await is_skill_enabled("ios_widget"),
         "orchestrator": await is_skill_enabled("orchestrator"),
+        "browser_automation": await is_skill_enabled("browser_automation"),
     }
     _cache_timestamp = now
 
@@ -297,6 +299,15 @@ def _get_shell_execution_tools(skill_states: Dict[str, bool]) -> List[BaseTool]:
     return SHELL_EXECUTION_TOOLS
 
 
+def _get_browser_tools(skill_states: Dict[str, bool]) -> List[BaseTool]:
+    """Get browser automation tools if browser_automation is enabled."""
+    if not skill_states.get("browser_automation"):
+        return []
+
+    from services.graph.tools import BROWSER_TOOLS
+    return BROWSER_TOOLS
+
+
 def _get_contacts_tools(skill_states: Dict[str, bool]) -> List[BaseTool]:
     """Get contacts tools if contacts_lookup is enabled."""
     if not skill_states.get("contacts_lookup"):
@@ -420,6 +431,9 @@ async def get_available_tools() -> List[Any]:
     add_tools(_get_javascript_execution_tools(skill_states))
     add_tools(_get_sql_execution_tools(skill_states))
     add_tools(_get_shell_execution_tools(skill_states))
+
+    # Browser automation tools if enabled
+    add_tools(_get_browser_tools(skill_states))
 
     # Evolution tools are always available
     from services.graph.tools import EVOLUTION_TOOLS

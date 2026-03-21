@@ -1048,6 +1048,100 @@ SEARCH_TOOLS = [web_search, fetch_page_content]
 
 
 # ============================================================================
+# BROWSER AUTOMATION TOOLS
+# ============================================================================
+
+@tool
+async def browse_web(url: str, wait_for: Optional[str] = None) -> str:
+    """
+    Navigate to a URL and extract the page content using a headless browser.
+
+    Use this for JavaScript-heavy pages that fetch_page_content can't handle,
+    or when you need to interact with page elements.
+
+    Args:
+        url: The URL to navigate to
+        wait_for: Optional wait condition: 'load', 'domcontentloaded', or 'networkidle'
+
+    Returns:
+        Page title and text content
+    """
+    from services.execution.browser_execution import navigate
+    conversation_id = get_current_conversation_id() or "default"
+    result = await navigate(conversation_id, url, wait_for)
+    if result.success:
+        return result.output
+    return f"Browser error: {result.error}"
+
+
+@tool
+async def browser_click(selector: str) -> str:
+    """
+    Click an element on the currently loaded page.
+
+    Must call browse_web first to load a page.
+
+    Args:
+        selector: CSS selector of the element to click
+
+    Returns:
+        Confirmation or error message
+    """
+    from services.execution.browser_execution import click
+    conversation_id = get_current_conversation_id() or "default"
+    result = await click(conversation_id, selector)
+    if result.success:
+        return result.output
+    return f"Browser error: {result.error}"
+
+
+@tool
+async def browser_type(selector: str, text: str) -> str:
+    """
+    Type text into an input field on the currently loaded page.
+
+    Must call browse_web first to load a page.
+
+    Args:
+        selector: CSS selector of the input element
+        text: Text to type
+
+    Returns:
+        Confirmation or error message
+    """
+    from services.execution.browser_execution import type_text
+    conversation_id = get_current_conversation_id() or "default"
+    result = await type_text(conversation_id, selector, text)
+    if result.success:
+        return result.output
+    return f"Browser error: {result.error}"
+
+
+@tool
+async def browser_extract(selector: Optional[str] = None) -> str:
+    """
+    Extract text content from the currently loaded page.
+
+    Must call browse_web first to load a page.
+
+    Args:
+        selector: Optional CSS selector (defaults to full page body)
+
+    Returns:
+        Extracted text content
+    """
+    from services.execution.browser_execution import extract_text
+    conversation_id = get_current_conversation_id() or "default"
+    result = await extract_text(conversation_id, selector)
+    if result.success:
+        return result.output
+    return f"Browser error: {result.error}"
+
+
+BROWSER_TOOLS = [browse_web, browser_click, browser_type, browser_extract]
+
+
+# ============================================================================
 # PLAN TOOLS
 # ============================================================================
 
