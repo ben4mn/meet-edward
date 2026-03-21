@@ -136,8 +136,8 @@ export default function MemoryPage() {
       </ul>
       <p>
         This combination catches both semantically similar memories and ones that
-        share specific keywords. The context budget is capped at 8,000 characters
-        to avoid overwhelming the LLM.
+        share specific keywords. The context budget is capped at 12,000 characters
+        with up to 10 memories per turn.
       </p>
 
       <h2>Memory Extraction</h2>
@@ -181,6 +181,29 @@ export default function MemoryPage() {
         turn to provide deeper context. This runs asynchronously and adds zero
         latency to the current response.
       </p>
+
+      <h2>Entity-Linked Memories</h2>
+      <p>
+        Edward tracks entities (people, projects, places, organizations, topics)
+        extracted from conversations. When entities are mentioned in a message,
+        their linked memories are automatically merged into the retrieval results.
+        This means mentioning &quot;Sarah&quot; pulls in not just semantically similar
+        memories but also all memories specifically linked to the Sarah entity —
+        even if they wouldn&apos;t match the query text.
+      </p>
+
+      <h2>Implication Service</h2>
+      <p>
+        After memory extraction, a fire-and-forget implication analysis step
+        looks for two things:
+      </p>
+      <ul>
+        <li><strong>Open loops</strong> — unresolved items, commitments, and follow-ups
+          (e.g., &quot;I need to call the dentist&quot;). Tracked separately for nudging.</li>
+        <li><strong>Implications</strong> — inferred facts not explicitly stated
+          (e.g., mentioning a client meeting implies an ongoing business relationship).
+          Stored as low-confidence memories.</li>
+      </ul>
 
       <h2>Consolidation</h2>
       <p>

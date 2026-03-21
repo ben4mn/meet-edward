@@ -19,6 +19,7 @@ Edward (Enhanced Digital Workflow Assistant for Routine Decisions) is an open-so
 - [Widget](https://meet-edward.com/docs/widget): iOS home screen widget via Scriptable
 - [File Storage](https://meet-edward.com/docs/file-storage): Persistent file storage with categories and tags
 - [Orchestrator & Claude Code](https://meet-edward.com/docs/orchestrator): Parallel worker agents and Claude Code sessions
+- [Proactive Intelligence](https://meet-edward.com/docs/proactive): Morning briefings, meeting prep, open loop nudges, entity tracking, pattern detection
 
 ## Key Features
 
@@ -29,6 +30,8 @@ Edward (Enhanced Digital Workflow Assistant for Routine Decisions) is an open-so
 - **Scheduled events**: Self-triggering reminders, messages, and tasks with cron support
 - **Worker agents**: Orchestrator spawns mini-Edwards with full tool access for parallel tasks
 - **Self-evolution**: Claude Code integration for autonomous code changes with validation
+- **Proactive intelligence**: Morning briefings, meeting prep, open loop nudges, entity tracking, weekly pattern detection
+- **Browser automation**: Headless browser via Lightpanda for JS-heavy pages
 - **Custom MCP servers**: Discover, install, and use MCP servers at runtime
 - **iOS widget**: Home screen widget via Scriptable with structured data or raw JavaScript
 - **Document store**: Persistent document storage with semantic search

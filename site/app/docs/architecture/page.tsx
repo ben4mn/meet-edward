@@ -125,6 +125,44 @@ tool_calls? ──yes──> execute tools
         <Link href="/docs/orchestrator">Read the full orchestrator deep dive →</Link>
       </p>
 
+      <h3>Entity Tracking</h3>
+      <p>
+        LLM-based entity extraction identifies people, projects, places,
+        organizations, and topics from conversations. Entities are linked to
+        memories via mention records, enabling entity-aware memory retrieval.
+        Fast substring detection at retrieval time avoids extra LLM calls.
+      </p>
+
+      <h3>Open Loop Tracking</h3>
+      <p>
+        Post-turn implication analysis detects unresolved items (tasks,
+        follow-ups, commitments) and tracks them as open loops. The system
+        also infers implicit facts and stores them as low-confidence memories.
+      </p>
+
+      <h3>Session Briefing</h3>
+      <p>
+        When a new conversation starts, Edward generates a continuity summary
+        of what happened between sessions — new memories stored, scheduled
+        events fired, orchestrator tasks completed, triage activity, and
+        consolidation results. Pure DB queries, no LLM call needed.
+      </p>
+
+      <h3>Proactive Intelligence</h3>
+      <p>
+        Autonomous background services that operate on their own schedules
+        (all disabled by default):
+      </p>
+      <ul>
+        <li><strong>Morning briefing</strong> — daily summary with calendar, open loops, and activity</li>
+        <li><strong>Meeting prep</strong> — calendar-based preparation briefs with entity context</li>
+        <li><strong>Open loop nudges</strong> — daily reminders for stale unresolved items</li>
+        <li><strong>Pattern detection</strong> — weekly analysis of conversation themes and entity trends</li>
+      </ul>
+      <p>
+        <Link href="/docs/proactive">Read the full proactive intelligence deep dive →</Link>
+      </p>
+
       <h2>Key Directories</h2>
       <pre><code>{`meet-edward/
 ├── frontend/              # Next.js app
@@ -165,6 +203,7 @@ tool_calls? ──yes──> execute tools
         <li><strong>Consolidation</strong> — hourly memory clustering</li>
         <li><strong>Evolution</strong> — check for pending deploys</li>
         <li><strong>Orchestrator</strong> — recover crashed worker tasks</li>
+        <li><strong>Proactive services</strong> — morning briefing, meeting prep, nudges, patterns</li>
       </ol>
       <p>All have matching shutdown hooks in reverse order.</p>
 

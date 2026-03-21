@@ -105,6 +105,12 @@ export default function SkillsPage() {
             <td>Create, update, and delete hosted HTML pages</td>
             <td><code>HTML_HOSTING_API_KEY</code></td>
           </tr>
+          <tr>
+            <td><strong>Browser Automation</strong></td>
+            <td>Execution</td>
+            <td>Headless browser via Lightpanda — navigate, click, type, extract text from JS-heavy pages</td>
+            <td><code>LIGHTPANDA_PATH</code></td>
+          </tr>
         </tbody>
       </table>
 

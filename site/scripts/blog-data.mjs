@@ -52,7 +52,7 @@ export const BLOG_POSTS = [
 export const DOC_PAGES = [
   'introduction', 'beginner-guide', 'setup-with-ai', 'getting-started',
   'configuration', 'platform-support', 'architecture', 'skills',
-  'memory', 'heartbeat', 'widget', 'file-storage', 'orchestrator',
+  'memory', 'heartbeat', 'widget', 'file-storage', 'orchestrator', 'proactive',
 ];
 
 export function getPublishedPosts() {

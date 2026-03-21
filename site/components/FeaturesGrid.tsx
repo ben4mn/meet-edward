@@ -1,6 +1,6 @@
 "use client";
 
-import { Brain, Calendar, MessageSquare, Code2, Workflow, GitBranch } from "lucide-react";
+import { Brain, Calendar, MessageSquare, Code2, Workflow, GitBranch, Sparkles } from "lucide-react";
 import { ScrollReveal, StaggerContainer, StaggerItem } from "./ScrollReveal";
 
 const features = [
@@ -39,6 +39,12 @@ const features = [
     title: "Self-Evolution",
     description:
       "Edward can propose, test, and deploy improvements to his own codebase — with full rollback safety and review.",
+  },
+  {
+    icon: Sparkles,
+    title: "Proactive Intelligence",
+    description:
+      "Morning briefings, meeting prep, open loop tracking, and weekly pattern detection — Edward acts before you ask.",
   },
 ];
 

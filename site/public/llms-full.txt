@@ -807,6 +807,7 @@ The backend initializes components in a specific order (defined in `main.py` lif
 8. **Consolidation** — hourly memory clustering
 9. **Evolution** — check for pending deploys
 10. **Orchestrator** — recover crashed worker tasks
+11. **Proactive services** — morning briefing, meeting prep, nudges, patterns
 
 All have matching shutdown hooks in reverse order.
 
@@ -850,6 +851,7 @@ Skills are managed from the **Settings** page in the web UI. Each skill can be t
 | **Shell / Bash** | Execution | Execute shell commands with blocklist safety | None |
 | **Apple Services** | Apple | Calendar, Reminders, Notes, Mail, Contacts, Maps (macOS only) | `MCP_APPLE_ENABLED=true` |
 | **HTML Hosting** | System | Create, update, and delete hosted HTML pages | `HTML_HOSTING_API_KEY` |
+| **Browser Automation** | Execution | Headless browser via Lightpanda — navigate, click, type, extract text | `LIGHTPANDA_PATH` |
 
 ### Always-Available Tools
 
@@ -1301,3 +1303,49 @@ Orchestrator settings are managed via `PATCH /api/orchestrator/config` or the se
 | `max_concurrent_workers` | `5` | Maximum parallel worker agents |
 | `max_concurrent_cc` | `2` | Maximum parallel Claude Code sessions |
 | `auto_recover` | `true` | Recover crashed tasks on startup |
+
+---
+
+## Proactive Intelligence
+
+Edward's proactive intelligence suite runs autonomous background services that initiate actions without being asked.
+
+### Services (all disabled by default)
+
+- **Morning Briefing** — daily summary delivered at a configurable time with calendar events, open loops, and activity. Delivered via push, iMessage, or chat.
+- **Meeting Prep** — polls calendar and generates prep briefs with entity-linked memory context before upcoming meetings.
+- **Open Loop Nudges** — daily check for stale unresolved items. Generates gentle reminders via push notification.
+- **Pattern Detection** — weekly analysis of conversation themes, memory distribution, and entity trends. Stored as a document.
+
+### Entity Tracking
+
+LLM-based extraction identifies people, projects, places, organizations, and topics. Entities are resolved by name/alias, linked to memories, and detected at retrieval time via fast substring matching (no LLM call). Entity-linked memories are merged into conversation context automatically.
+
+### Open Loop Tracking
+
+Post-turn implication analysis detects unresolved items (tasks, follow-ups, commitments) and inferred facts. Open loops are tracked with priority, nudge history, and snooze support. Implied facts are stored as low-confidence memories.
+
+### Session Briefing
+
+On first turn of a new conversation, Edward generates a continuity summary — new memories, fired events, completed tasks, triage activity, consolidation results. Pure DB queries, no LLM needed.
+
+### State Documents
+
+Documents tagged "state" are injected into every conversation's system prompt. Use for current goals, weekly plans, or ongoing context.
+
+### Browser Automation
+
+Headless browser via Lightpanda (CDP-compatible). Skill-gated — only available when `browser_automation` skill is enabled and `LIGHTPANDA_PATH` env var is set. Tools: `browse_web`, `browser_click`, `browser_type`, `browser_extract`.
+
+### Configuration
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/proactive/config` | Get configuration |
+| `PATCH /api/proactive/config` | Update configuration |
+| `GET /api/proactive/status` | Service status |
+| `GET /api/proactive/open-loops` | List open loops |
+| `PATCH /api/proactive/open-loops/:id` | Resolve/snooze loop |
+| `GET /api/proactive/entities` | List tracked entities |
+
+Set `TIMEZONE` env var (default: `UTC`) for correct scheduling.
