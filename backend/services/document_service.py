@@ -322,6 +322,35 @@ async def retrieve_relevant_documents(query: str, limit: int = 3) -> List[Docume
         ]
 
 
+async def get_state_documents(limit: int = 5) -> List[Document]:
+    """Get documents tagged as 'state' — living reference docs that should be
+    injected into the LLM context for every conversation.
+
+    State documents are things like "current goals", "weekly plan",
+    "project status", etc. that the user wants Edward to always be aware of.
+    """
+    async with async_session() as session:
+        result = await session.execute(
+            select(DocumentModel)
+            .where(DocumentModel.tags.ilike("%state%"))
+            .order_by(DocumentModel.updated_at.desc())
+            .limit(limit)
+        )
+        rows = result.scalars().all()
+        return [
+            Document(
+                id=row.id,
+                title=row.title,
+                content=row.content,
+                tags=row.tags,
+                source_conversation_id=row.source_conversation_id,
+                created_at=row.created_at,
+                updated_at=row.updated_at,
+            )
+            for row in rows
+        ]
+
+
 async def get_document_stats() -> dict:
     """Get statistics: total count, tag breakdown."""
     async with async_session() as session:

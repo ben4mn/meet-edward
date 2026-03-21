@@ -10,10 +10,10 @@ from langchain_anthropic import ChatAnthropic
 from services.tool_registry import get_available_tools, get_tool_descriptions
 
 # Context budget constants
-MAX_NORMAL_MEMORIES = 5
+MAX_NORMAL_MEMORIES = 10
 MAX_ENRICHED_MEMORIES = 5
 MAX_DOCUMENTS = 3
-MAX_MEMORY_CONTEXT_CHARS = 8000
+MAX_MEMORY_CONTEXT_CHARS = 12000
 
 # Models that support the effort parameter (Claude 4.6+)
 _EFFORT_MODELS = {"claude-sonnet-4-6", "claude-opus-4-6"}
@@ -33,6 +33,16 @@ PLANNING_DIRECTIVE = """
 
 ## Planning Requirement
 You MUST call create_plan() BEFORE starting work when a request involves 3+ tool calls or multiple steps (build, create, research, multi-part requests). Do NOT skip planning on complex tasks."""
+
+STATE_DOCUMENT_DIRECTIVE = """
+
+## State Documents
+State documents (tagged "state") are living reference docs you should always be aware of.
+They represent the user's current goals, plans, or ongoing context.
+When relevant, reference them in your responses. Update them when the user's situation changes."""
+
+# Session briefing cache: conversation_id -> briefing text
+_session_briefing_cache: Dict[str, Optional[str]] = {}
 
 ASSUMPTION_AWARENESS_CONTEXT = """
 
@@ -408,6 +418,8 @@ def build_memory_context(
     tools: List[Any] = None,
     documents: list = None,
     enriched_memories: list = None,
+    state_documents: list = None,
+    open_loops: list = None,
 ) -> str:
     """Build the memory context section for the system prompt.
 
@@ -455,6 +467,20 @@ def build_memory_context(
         context_parts.append(memory_text)
     if enrichment_text:
         context_parts.append(enrichment_text)
+
+    if state_documents:
+        context_parts.append("\n\n## Active State Documents:")
+        for doc in state_documents[:3]:
+            # Include title + truncated content for state docs (always relevant)
+            content_preview = doc.content[:300] + "..." if len(doc.content) > 300 else doc.content
+            context_parts.append(f"### {doc.title} (document_id: {doc.id})")
+            context_parts.append(content_preview)
+
+    if open_loops:
+        context_parts.append("\n\n## Open Items Tracking:")
+        for loop in open_loops[:5]:
+            priority_tag = f" [priority: {loop.priority:.1f}]" if hasattr(loop, 'priority') else ""
+            context_parts.append(f"- {loop.description}{priority_tag}")
 
     if documents:
         context_parts.append("\n\n## Relevant Documents in Store:")
@@ -688,6 +714,50 @@ async def stream_with_memory_events(
     except Exception as e:
         print(f"Document retrieval failed: {e}")
 
+    # ===== SESSION BRIEFING (first turn only) =====
+    session_briefing_context = ""
+    if turn_count <= 1:
+        try:
+            if conversation_id in _session_briefing_cache:
+                session_briefing = _session_briefing_cache.pop(conversation_id)
+            else:
+                from services.session_briefing_service import generate_briefing
+                session_briefing = await generate_briefing(conversation_id)
+            if session_briefing:
+                session_briefing_context = f"\n\n{session_briefing}"
+        except Exception as e:
+            print(f"Session briefing failed: {e}")
+
+    # ===== STATE DOCUMENTS =====
+    state_documents = []
+    try:
+        from services.document_service import get_state_documents
+        state_documents = await get_state_documents(limit=3)
+    except Exception as e:
+        print(f"State document retrieval failed: {e}")
+
+    # ===== OPEN LOOPS =====
+    open_loops = []
+    try:
+        from services.open_loop_service import get_active_open_loops
+        open_loops = await get_active_open_loops(limit=5)
+    except Exception as e:
+        print(f"Open loop retrieval failed: {e}")
+
+    # ===== ENTITY MEMORIES =====
+    try:
+        from services.memory_service import retrieve_entity_memories
+        entity_memories = await retrieve_entity_memories(message, limit=5)
+        if entity_memories:
+            # Merge with retrieved memories, dedup by ID
+            existing_ids = {m.id for m in retrieved_memories}
+            for em in entity_memories:
+                if em.id not in existing_ids:
+                    retrieved_memories.append(em)
+                    existing_ids.add(em.id)
+    except Exception as e:
+        print(f"Entity memory retrieval failed: {e}")
+
     # ===== HEARTBEAT BRIEFING =====
     briefing_context = ""
     try:
@@ -706,10 +776,13 @@ async def stream_with_memory_events(
     memory_context = build_memory_context(
         retrieved_memories, tools=tools, documents=relevant_documents,
         enriched_memories=enriched_memories,
+        state_documents=state_documents,
+        open_loops=open_loops,
     )
     now = datetime.now()
     time_context = f"\n\nCurrent date and time: {now.strftime('%A, %B %d, %Y at %I:%M %p')}"
-    enhanced_system_prompt = system_prompt + memory_context + briefing_context + time_context + ASSUMPTION_AWARENESS_CONTEXT + PLANNING_DIRECTIVE
+    state_doc_directive = STATE_DOCUMENT_DIRECTIVE if state_documents else ""
+    enhanced_system_prompt = system_prompt + memory_context + session_briefing_context + briefing_context + time_context + ASSUMPTION_AWARENESS_CONTEXT + PLANNING_DIRECTIVE + state_doc_directive
 
     # Create LLM with dynamic tool binding
     llm = _build_llm(model, temperature)
@@ -1078,6 +1151,52 @@ async def chat_with_memory(
         except Exception as e:
             print(f"Document retrieval failed: {e}")
 
+    # ===== SESSION BRIEFING (first turn only, non-streaming) =====
+    session_briefing_context_sync = ""
+    if not skip_memory and turn_count <= 1:
+        try:
+            if conversation_id in _session_briefing_cache:
+                sb = _session_briefing_cache.pop(conversation_id)
+            else:
+                from services.session_briefing_service import generate_briefing
+                sb = await generate_briefing(conversation_id)
+            if sb:
+                session_briefing_context_sync = f"\n\n{sb}"
+        except Exception as e:
+            print(f"Session briefing failed: {e}")
+
+    # ===== STATE DOCUMENTS (non-streaming) =====
+    state_documents_sync = []
+    if not skip_memory:
+        try:
+            from services.document_service import get_state_documents
+            state_documents_sync = await get_state_documents(limit=3)
+        except Exception as e:
+            print(f"State document retrieval failed: {e}")
+
+    # ===== OPEN LOOPS (non-streaming) =====
+    open_loops_sync = []
+    if not skip_memory:
+        try:
+            from services.open_loop_service import get_active_open_loops
+            open_loops_sync = await get_active_open_loops(limit=5)
+        except Exception as e:
+            print(f"Open loop retrieval failed: {e}")
+
+    # ===== ENTITY MEMORIES (non-streaming) =====
+    if not skip_memory:
+        try:
+            from services.memory_service import retrieve_entity_memories
+            entity_memories_sync = await retrieve_entity_memories(message, limit=5)
+            if entity_memories_sync:
+                existing_ids = {m.id for m in retrieved_memories}
+                for em in entity_memories_sync:
+                    if em.id not in existing_ids:
+                        retrieved_memories.append(em)
+                        existing_ids.add(em.id)
+        except Exception as e:
+            print(f"Entity memory retrieval failed: {e}")
+
     # ===== HEARTBEAT BRIEFING (non-streaming) =====
     briefing_context_sync = ""
     try:
@@ -1111,10 +1230,13 @@ async def chat_with_memory(
     memory_context = build_memory_context(
         retrieved_memories, tools=tools, documents=relevant_documents,
         enriched_memories=enriched_memories,
+        state_documents=state_documents_sync,
+        open_loops=open_loops_sync,
     )
     now = datetime.now()
     time_context = f"\n\nCurrent date and time: {now.strftime('%A, %B %d, %Y at %I:%M %p')}"
-    enhanced_system_prompt = system_prompt + memory_context + briefing_context_sync + orchestrator_context + time_context + ASSUMPTION_AWARENESS_CONTEXT + PLANNING_DIRECTIVE
+    state_doc_directive_sync = STATE_DOCUMENT_DIRECTIVE if state_documents_sync else ""
+    enhanced_system_prompt = system_prompt + memory_context + session_briefing_context_sync + briefing_context_sync + orchestrator_context + time_context + ASSUMPTION_AWARENESS_CONTEXT + PLANNING_DIRECTIVE + state_doc_directive_sync
 
     # Create LLM with dynamic tool binding
     llm = _build_llm(model, temperature)
