@@ -69,6 +69,8 @@ class MemoryModel(Base):
     temporal_nature = Column(String, default="timeless")  # timeless, temporary, evolving
     tier = Column(String, default="observation")  # observation, belief, knowledge
     reinforcement_count = Column(Integer, default=0)
+    source_type = Column(String, default="inferred")  # inferred, user_stated
+    confidence = Column(Float, default=0.5)  # 0-1, used by implication service
     user_id = Column(String, nullable=True, index=True)  # For future multi-user support
 
     __table_args__ = (
@@ -440,6 +442,88 @@ class EvolutionHistoryModel(Base):
     created_at = Column(DateTime, server_default=func.now())
 
 
+class EntityModel(Base):
+    """Core entity table for people, projects, places, orgs, topics."""
+    __tablename__ = "entities"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    name = Column(String, nullable=False, index=True)
+    entity_type = Column(String, nullable=False, index=True)  # person, project, place, org, topic
+    aliases = Column(Text, nullable=True)  # JSON array of alternate names
+    metadata_json = Column(Text, nullable=True)  # JSON object for flexible properties
+    first_seen = Column(DateTime, server_default=func.now())
+    last_seen = Column(DateTime, server_default=func.now())
+    mention_count = Column(Integer, default=0)
+
+    __table_args__ = (
+        Index('ix_entities_name_fts', text("to_tsvector('english', name)"),
+              postgresql_using='gin'),
+    )
+
+
+class EntityMentionModel(Base):
+    """Links entities to memories and conversations."""
+    __tablename__ = "entity_mentions"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    entity_id = Column(String, nullable=False, index=True)
+    memory_id = Column(String, nullable=True)
+    conversation_id = Column(String, nullable=True)
+    relationship = Column(String, nullable=True)  # subject, mentioned, discussed, etc.
+    context_snippet = Column(Text, nullable=True)
+
+    __table_args__ = (
+        Index('ix_entity_mentions_memory', 'memory_id'),
+        Index('ix_entity_mentions_unique', 'entity_id', 'memory_id',
+              unique=True, postgresql_where=text('memory_id IS NOT NULL')),
+    )
+
+
+class OpenLoopModel(Base):
+    """Unresolved items Edward should track and potentially nudge about."""
+    __tablename__ = "open_loops"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    description = Column(Text, nullable=False)
+    source_memory_id = Column(String, nullable=True)
+    source_conversation_id = Column(String, nullable=True)
+    entity_id = Column(String, nullable=True)
+    status = Column(String, default="open")  # open, resolved, snoozed, expired
+    priority = Column(Float, default=0.5)
+    detected_at = Column(DateTime, server_default=func.now())
+    last_nudged_at = Column(DateTime, nullable=True)
+    resolved_at = Column(DateTime, nullable=True)
+    snooze_until = Column(DateTime, nullable=True)
+    nudge_count = Column(Integer, default=0)
+
+    __table_args__ = (
+        Index('ix_open_loops_active', 'status',
+              postgresql_where=text("status = 'open'")),
+    )
+
+
+class ProactiveConfigModel(Base):
+    """Single-row config for all proactive intelligence behaviors."""
+    __tablename__ = "proactive_config"
+
+    id = Column(String, primary_key=True, default="default")
+    # Morning briefing
+    morning_briefing_enabled = Column(Boolean, default=False)
+    morning_briefing_time = Column(String, default="08:00")
+    morning_briefing_channel = Column(String, default="push")  # push, imessage, chat
+    # Meeting prep
+    meeting_prep_enabled = Column(Boolean, default=False)
+    meeting_prep_advance_minutes = Column(Integer, default=30)
+    # Pattern detection
+    pattern_detection_enabled = Column(Boolean, default=False)
+    # Open loop nudges
+    open_loop_nudge_enabled = Column(Boolean, default=False)
+    open_loop_nudge_days = Column(Integer, default=7)
+    # Extraction depth
+    extraction_depth = Column(String, default="standard")  # light, standard, deep
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
 class OrchestratorTaskModel(Base):
     """Tasks spawned by the orchestrator for parallel worker execution."""
     __tablename__ = "orchestrator_tasks"
@@ -628,6 +712,14 @@ async def init_db():
             ALTER TABLE memories ADD COLUMN IF NOT EXISTS reinforcement_count INTEGER DEFAULT 0;
         """))
 
+        # Memory: source_type and confidence columns (for implication service)
+        await conn.execute(text("""
+            ALTER TABLE memories ADD COLUMN IF NOT EXISTS source_type VARCHAR DEFAULT 'inferred';
+        """))
+        await conn.execute(text("""
+            ALTER TABLE memories ADD COLUMN IF NOT EXISTS confidence FLOAT DEFAULT 0.5;
+        """))
+
         # Consolidation: merge/promotion tracking columns
         await conn.execute(text("""
             ALTER TABLE consolidation_cycles ADD COLUMN IF NOT EXISTS merges_performed INTEGER DEFAULT 0;
@@ -758,6 +850,13 @@ async def init_db():
         if not result.scalar_one_or_none():
             default_orchestrator = OrchestratorConfigModel(id="default")
             session.add(default_orchestrator)
+            await session.commit()
+
+        # Create default proactive config if not exists
+        result = await session.execute(select(ProactiveConfigModel).where(ProactiveConfigModel.id == "default"))
+        if not result.scalar_one_or_none():
+            default_proactive = ProactiveConfigModel(id="default")
+            session.add(default_proactive)
             await session.commit()
 
 async def get_session() -> AsyncSession:
