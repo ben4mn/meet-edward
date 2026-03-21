@@ -49,6 +49,8 @@ class Memory:
     temporal_nature: str = "timeless"  # timeless, temporary, evolving
     tier: str = "observation"  # observation, belief, knowledge
     reinforcement_count: int = 0
+    source_type: str = "inferred"  # inferred, user_stated
+    confidence: float = 0.5  # 0-1, used by implication service
     user_id: Optional[str] = None  # For future multi-user support
     score: float = 0.0  # Relevance score during retrieval
 
@@ -276,6 +278,42 @@ async def retrieve_memories(
         return memories[:limit]
 
 
+async def retrieve_entity_memories(query: str, limit: int = 5) -> List[Memory]:
+    """Retrieve memories linked to entities detected in the query text.
+
+    Uses fast substring detection (no LLM) to find mentioned entities,
+    then loads their linked memories via entity_mentions.
+    """
+    try:
+        from services.entity_service import detect_entities_in_text, get_entity_memories
+
+        entities = await detect_entities_in_text(query)
+        if not entities:
+            return []
+
+        memory_ids = set()
+        for entity in entities[:5]:
+            mentions = await get_entity_memories(entity.id, limit=3)
+            for m in mentions:
+                if m["memory_id"]:
+                    memory_ids.add(m["memory_id"])
+
+        if not memory_ids:
+            return []
+
+        # Load the actual memory objects
+        memories = []
+        for mid in list(memory_ids)[:limit]:
+            mem = await get_memory_by_id(mid)
+            if mem:
+                memories.append(mem)
+
+        return memories
+    except Exception as e:
+        print(f"Entity memory retrieval failed: {e}")
+        return []
+
+
 async def store_memory(memory: Memory) -> Memory:
     """Store a single memory in the database."""
     async with async_session() as session:
@@ -291,6 +329,8 @@ async def store_memory(memory: Memory) -> Memory:
             temporal_nature=memory.temporal_nature,
             tier=memory.tier,
             reinforcement_count=memory.reinforcement_count,
+            source_type=memory.source_type,
+            confidence=memory.confidence,
             source_conversation_id=memory.source_conversation_id
         )
 

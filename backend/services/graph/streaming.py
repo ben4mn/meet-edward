@@ -978,6 +978,17 @@ async def stream_with_memory_events(
                 ))
         except Exception as e:
             print(f"Reflection fire-and-forget failed: {e}")
+
+        # Fire-and-forget implication analysis (open loops + inferred facts)
+        try:
+            from services.implication_service import run_implication_safe
+            stored_ids = [m.id for m in retrieved_memories if m.id]
+            if stored_ids:
+                asyncio.create_task(run_implication_safe(
+                    conversation_id, messages_for_extraction, stored_ids
+                ))
+        except Exception as e:
+            print(f"Implication fire-and-forget failed: {e}")
     except asyncio.TimeoutError:
         print(f"Memory extraction timed out after 30s for conversation {conversation_id}")
     except Exception as e:
@@ -1291,6 +1302,17 @@ async def chat_with_memory(
                 ))
         except Exception as e:
             print(f"Reflection fire-and-forget failed: {e}")
+
+        # Fire-and-forget implication analysis (open loops + inferred facts)
+        try:
+            from services.implication_service import run_implication_safe
+            stored_ids = [m.id for m in retrieved_memories if m.id]
+            if stored_ids:
+                asyncio.create_task(run_implication_safe(
+                    conversation_id, messages_for_extraction, stored_ids
+                ))
+        except Exception as e:
+            print(f"Implication fire-and-forget failed: {e}")
     except Exception as e:
         print(f"Memory extraction failed: {e}")
 
