@@ -11,8 +11,8 @@ import json
 import re
 from typing import List
 
-from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage
+from services.llm_utils import build_background_llm
 
 from services.memory_service import retrieve_memories, Memory
 from services.database import async_session, MemoryEnrichmentModel
@@ -71,7 +71,7 @@ async def generate_search_queries(messages: list, model: str = "claude-haiku-4-5
     if not conversation_text.strip():
         return []
 
-    llm = ChatAnthropic(model=model, temperature=0, max_tokens=256)
+    llm = build_background_llm(max_tokens=256)
     prompt = DEEP_QUERY_PROMPT.format(conversation=conversation_text)
 
     try:

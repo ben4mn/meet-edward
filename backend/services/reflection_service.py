@@ -13,8 +13,8 @@ import uuid
 from typing import List, Optional
 from datetime import datetime, timedelta
 
-from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage
+from services.llm_utils import build_background_llm
 
 from services.database import async_session, MemoryEnrichmentModel
 from services.memory_service import retrieve_memories, Memory
@@ -63,7 +63,7 @@ def should_reflect(messages: list, turn_count: int) -> bool:
 
 
 async def generate_reflection_queries(messages: list, model: str = "claude-haiku-4-5-20251001") -> List[str]:
-    """Use Haiku to generate search queries from recent conversation context."""
+    """Use background LLM to generate search queries from recent conversation context."""
     # Format last 10 messages
     conversation_text = "\n".join([
         f"{msg.get('role', 'unknown').upper()}: {msg.get('content', '')}"
@@ -74,7 +74,7 @@ async def generate_reflection_queries(messages: list, model: str = "claude-haiku
     if not conversation_text.strip():
         return []
 
-    llm = ChatAnthropic(model=model, temperature=0, max_tokens=512)
+    llm = build_background_llm(max_tokens=512)
     prompt = REFLECTION_QUERY_PROMPT.format(conversation=conversation_text)
 
     try:

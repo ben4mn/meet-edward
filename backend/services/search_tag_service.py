@@ -3,8 +3,8 @@
 import asyncio
 from typing import List, Dict
 
-from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import SystemMessage, HumanMessage
+from services.llm_utils import build_background_llm
 
 from services.conversation_service import update_search_tags
 
@@ -29,11 +29,7 @@ async def generate_search_tags(conversation_id: str, messages: List[Dict[str, st
     if not conversation_text.strip():
         return
 
-    llm = ChatAnthropic(
-        model="claude-haiku-4-5-20251001",
-        temperature=0,
-        max_tokens=150,
-    )
+    llm = build_background_llm(max_tokens=150)
 
     system = (
         "Generate 5-10 comma-separated search keywords for this conversation. "

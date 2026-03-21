@@ -16,6 +16,7 @@ from sqlalchemy import select, update, and_
 from croniter import croniter
 
 from services.database import async_session, ScheduledEventModel
+from services.timezone_utils import format_local, now_utc, get_user_tz
 
 VALID_DELIVERY_CHANNELS = {"sms", "imessage", "chat", "push", None}
 
@@ -37,8 +38,8 @@ def _to_naive_utc(dt: datetime) -> datetime:
 
 
 def _format_local(dt: datetime, fmt: str = '%A, %B %d, %Y at %I:%M %p') -> str:
-    """Format a naive-UTC datetime in the server's local timezone."""
-    return dt.replace(tzinfo=timezone.utc).astimezone().strftime(fmt)
+    """Format a naive-UTC datetime in the user's configured timezone."""
+    return format_local(dt, fmt)
 
 
 def _utcnow() -> datetime:

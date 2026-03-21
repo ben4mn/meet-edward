@@ -82,7 +82,7 @@ async def _consolidation_loop() -> None:
 
 async def _run_consolidation_cycle() -> None:
     """Run a single consolidation cycle: cluster, connect, flag."""
-    from langchain_anthropic import ChatAnthropic
+    from services.llm_utils import build_background_llm
 
     start_time = time.monotonic()
     haiku_calls = 0
@@ -128,7 +128,7 @@ async def _run_consolidation_cycle() -> None:
     print(f"Consolidation: reviewing {len(memories)} memories")
 
     # 4. Send to Haiku for entity grouping
-    llm = ChatAnthropic(model="claude-haiku-4-5-20251001", temperature=0, max_tokens=4096)
+    llm = build_background_llm(max_tokens=4096)
 
     memory_list = []
     for m in memories:

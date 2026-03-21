@@ -16,8 +16,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from sqlalchemy import select, text, func, update
-from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
+from services.llm_utils import build_background_llm
 
 from services.database import async_session, MemoryModel
 
@@ -313,7 +313,7 @@ async def store_memories(memories: List[Memory]) -> List[Memory]:
 
 async def _llm_merge_content(content_a: str, content_b: str, model: str = "claude-haiku-4-5-20251001") -> str:
     """Use Haiku to merge two memory contents into one clean version."""
-    llm = ChatAnthropic(model=model, temperature=0, max_tokens=256)
+    llm = build_background_llm(max_tokens=256)
     prompt = f"""Merge these two related memories into one clear, concise memory:
 
 Memory A: {content_a}
@@ -525,7 +525,7 @@ async def extract_and_store_memories(
     print(f"Memory extraction: existing memories text: {existing_text[:100]}")
 
     # Call LLM to extract memories
-    llm = ChatAnthropic(model=model, temperature=0, max_tokens=2048)
+    llm = build_background_llm(max_tokens=2048)
 
     prompt = MEMORY_EXTRACTION_PROMPT.format(
         conversation=conversation_text,
@@ -1118,7 +1118,7 @@ async def resolve_memory_conflict(
     Returns:
         ConflictResolution with action and optional merged content
     """
-    llm = ChatAnthropic(model=model, temperature=0, max_tokens=512)
+    llm = build_background_llm(max_tokens=512)
 
     prompt = CONFLICT_RESOLUTION_PROMPT.format(
         existing_content=existing.content,
@@ -1197,7 +1197,7 @@ async def backfill_temporal_nature(
     Returns:
         Summary dict with counts of each classification.
     """
-    llm = ChatAnthropic(model=model, temperature=0, max_tokens=2048)
+    llm = build_background_llm(max_tokens=2048)
     summary = {"total": 0, "timeless": 0, "temporary": 0, "evolving": 0, "errors": 0}
 
     async with async_session() as session:
@@ -1446,7 +1446,7 @@ async def _process_merge_groups(
     absorbed: set,
 ) -> None:
     """Process a batch of merge groups via Haiku."""
-    llm = ChatAnthropic(model=model, temperature=0, max_tokens=4096)
+    llm = build_background_llm(max_tokens=4096)
 
     prompt = DEDUP_CLASSIFY_PROMPT.format(
         groups_json=json.dumps(groups, indent=2)

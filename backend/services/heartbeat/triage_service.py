@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
-from langchain_anthropic import ChatAnthropic
+from services.llm_utils import build_background_llm
 from langchain_core.messages import HumanMessage, SystemMessage
 from sqlalchemy import select, update, func
 
@@ -431,11 +431,7 @@ async def _haiku_classify(
         events_digest=events_digest,
     )
 
-    llm = ChatAnthropic(
-        model="claude-haiku-4-5-20251001",
-        temperature=0,
-        max_tokens=1024,
-    )
+    llm = build_background_llm(max_tokens=1024)
 
     try:
         response = await llm.ainvoke([HumanMessage(content=prompt)])

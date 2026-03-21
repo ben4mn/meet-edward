@@ -15,6 +15,7 @@ import traceback
 import uuid
 from datetime import datetime
 
+from services.timezone_utils import now_local
 from services.scheduled_events_service import (
     get_due_events,
     mark_event_completed,
@@ -147,7 +148,7 @@ async def _execute_event(event) -> None:
 
         # Trigger message (delivery enforcement is in the system prompt)
         # Include conversation_id so Edward can link to it in push notifications
-        now = datetime.now()
+        now = now_local()
         trigger_message = (
             f"[SCHEDULED EVENT] The following event is now due.\n"
             f"Description: '{event.description}'\n"
