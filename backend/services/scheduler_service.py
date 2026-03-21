@@ -91,6 +91,13 @@ def _build_scheduler_system_prompt(base_system_prompt: str, event) -> str:
             "- Do NOT just respond in chat — the user is not watching.\n"
             "- If iMessage fails, report the failure but do not silently swallow it."
         )
+    elif channel == "push":
+        delivery_rules = (
+            "- You MUST deliver via push notification using send_push_notification().\n"
+            "- Do NOT just respond in chat — the user is not watching.\n"
+            "- Keep the title short (<50 chars) and body actionable (<100 chars).\n"
+            "- Include url='/?c=<conversation_id>' so the user can tap to see details."
+        )
     elif channel == "chat":
         delivery_rules = (
             "- Respond normally in chat. No external message is needed.\n"
@@ -100,6 +107,7 @@ def _build_scheduler_system_prompt(base_system_prompt: str, event) -> str:
         # No channel specified — infer from description
         delivery_rules = (
             "- If the description asks you to send a message/text someone, use the appropriate messaging tool.\n"
+            "- If the description is a reminder or alert for the user, prefer send_push_notification().\n"
             "- Otherwise, respond normally in chat. The response will be stored in the event record."
         )
 

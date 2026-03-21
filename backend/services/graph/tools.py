@@ -1654,9 +1654,10 @@ async def schedule_event(
             (e.g. "0 9 * * *" for daily at 9 AM, "*/5 * * * *" for every 5 min).
             Cron times are also in the user's local timezone.
             Leave empty for one-time events.
-        delivery_channel: Optional preferred channel: "sms", "imessage", "chat", or null.
-            Use "sms" or "imessage" if the action involves sending a message.
-            Use "chat" for in-app only (no external message). Defaults to null
+        delivery_channel: Optional preferred channel: "sms", "imessage", "chat", "push", or null.
+            Use "sms" or "imessage" if the action involves sending a message to someone else.
+            Use "push" for reminders and alerts directed at the user.
+            Use "chat" for in-app only (no external notification). Defaults to null
             (auto-infer from description).
 
     Returns:
@@ -1851,7 +1852,7 @@ You can schedule future actions, reminders, and recurring tasks:
    - `description`: What you should do when it fires (be specific!)
    - `scheduled_at`: ISO 8601 datetime
    - `recurrence_pattern`: Cron string for recurring (e.g. "0 9 * * *" = daily 9 AM)
-   - `delivery_channel`: "sms", "imessage", or "chat" (in-app only). Leave null to auto-infer.
+   - `delivery_channel`: "sms", "imessage", "push" (notify user), or "chat" (in-app only). Leave null to auto-infer.
 
 2. **list_scheduled_events(status?)**: Show upcoming events.
    - Filter by status: "pending", "completed", "cancelled", "failed"
@@ -1974,9 +1975,9 @@ You can send push notifications to the user's devices:
    - `url`: Optional URL to open on click
 
 Tips:
-- Use sparingly — only for important alerts that need immediate attention
+- This is the preferred way to notify the user about reminders, alerts, and updates
 - Keep messages short and actionable
-- Good for: urgent reminders, status updates, important alerts
+- Good for: reminders, status updates, alerts, scheduled event notifications
 - Works even when the user isn't actively using the app
 - Requires user to have enabled notifications in the PWA
 """

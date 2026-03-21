@@ -17,7 +17,7 @@ from croniter import croniter
 
 from services.database import async_session, ScheduledEventModel
 
-VALID_DELIVERY_CHANNELS = {"sms", "imessage", "chat", None}
+VALID_DELIVERY_CHANNELS = {"sms", "imessage", "chat", "push", None}
 
 
 def _validate_delivery_channel(channel: Optional[str]) -> None:
@@ -25,7 +25,7 @@ def _validate_delivery_channel(channel: Optional[str]) -> None:
     if channel not in VALID_DELIVERY_CHANNELS:
         raise ValueError(
             f"Invalid delivery_channel '{channel}'. "
-            f"Must be one of: 'sms', 'imessage', 'chat', or null."
+            f"Must be one of: 'sms', 'imessage', 'chat', 'push', or null."
         )
 
 
