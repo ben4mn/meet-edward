@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
-from routers import chat, settings, debug, memories, conversations, webhooks, skills, events, auth, push, documents, files, widget, databases, heartbeat, custom_mcp, consolidation, evolution, orchestrator
+from routers import chat, settings, debug, memories, conversations, webhooks, skills, events, auth, push, documents, files, widget, databases, heartbeat, custom_mcp, consolidation, evolution, orchestrator, proactive
 from services.database import init_db, DATABASE_URL
 from services.graph import initialize_graph
 
@@ -85,9 +85,22 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"Orchestrator initialization error: {e}")
 
+    # Start proactive services (morning briefing, meeting prep, etc.)
+    try:
+        from services.proactive import start_proactive_services
+        await start_proactive_services()
+    except Exception as e:
+        print(f"Proactive services initialization error: {e}")
+
     yield
 
     # Shutdown
+    try:
+        from services.proactive import stop_proactive_services
+        await stop_proactive_services()
+    except Exception as e:
+        print(f"Proactive services shutdown error: {e}")
+
     try:
         from services.orchestrator_service import stop_orchestrator
         await stop_orchestrator()
@@ -176,6 +189,7 @@ app.include_router(custom_mcp.router, prefix="/api", tags=["custom-mcp"])
 app.include_router(consolidation.router, prefix="/api", tags=["consolidation"])
 app.include_router(evolution.router, prefix="/api", tags=["evolution"])
 app.include_router(orchestrator.router, prefix="/api", tags=["orchestrator"])
+app.include_router(proactive.router, prefix="/api", tags=["proactive"])
 
 @app.get("/")
 async def root():
