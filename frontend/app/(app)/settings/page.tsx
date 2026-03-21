@@ -13,6 +13,7 @@ import {
   ArrowLeft,
   Dna,
   GitBranch,
+  Sparkles,
   LucideIcon,
 } from "lucide-react";
 import { MemoryBrowser } from "@/components/settings/MemoryBrowser";
@@ -25,6 +26,7 @@ import { DatabaseBrowser } from "@/components/settings/DatabaseBrowser";
 import { FileBrowser } from "@/components/settings/FileBrowser";
 import { EvolutionPanel } from "@/components/settings/EvolutionPanel";
 import { OrchestratorPanel } from "@/components/settings/OrchestratorPanel";
+import { ProactivePanel } from "@/components/settings/ProactivePanel";
 
 interface TileConfig {
   id: string;
@@ -44,6 +46,7 @@ const TILES: TileConfig[] = [
   { id: "files", title: "Files", description: "Browse stored files", icon: FolderOpen },
   { id: "evolution", title: "Evolution", description: "Self-coding and auto-deployment", icon: Dna },
   { id: "orchestrator", title: "Orchestrator", description: "Manage parallel worker agents", icon: GitBranch },
+  { id: "proactive", title: "Proactive", description: "Entities, open loops, briefings", icon: Sparkles },
 ];
 
 function renderPanel(id: string) {
@@ -58,6 +61,7 @@ function renderPanel(id: string) {
     case "files": return <FileBrowser isExpanded hideHeader />;
     case "evolution": return <EvolutionPanel isExpanded hideHeader />;
     case "orchestrator": return <OrchestratorPanel isExpanded hideHeader />;
+    case "proactive": return <ProactivePanel isExpanded hideHeader />;
     default: return null;
   }
 }

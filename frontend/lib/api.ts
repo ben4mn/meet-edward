@@ -1,3 +1,66 @@
+// ============================================================================
+// PROACTIVE INTELLIGENCE TYPES
+// ============================================================================
+
+export interface ProactiveConfig {
+  morning_briefing_enabled: boolean;
+  morning_briefing_time: string;
+  morning_briefing_channel: string;
+  meeting_prep_enabled: boolean;
+  meeting_prep_advance_minutes: number;
+  pattern_detection_enabled: boolean;
+  open_loop_nudge_enabled: boolean;
+  open_loop_nudge_days: number;
+  extraction_depth: string;
+}
+
+export interface ProactiveStatus {
+  config: ProactiveConfig;
+  entity_count: number;
+  open_loop_count: number;
+  morning_briefing_running: boolean;
+  meeting_prep_running: boolean;
+  pattern_detection_running: boolean;
+  open_loop_nudge_running: boolean;
+}
+
+export interface OpenLoop {
+  id: string;
+  description: string;
+  source_memory_id: string | null;
+  source_conversation_id: string | null;
+  entity_id: string | null;
+  status: string;
+  priority: number;
+  detected_at: string | null;
+  last_nudged_at: string | null;
+  resolved_at: string | null;
+  snooze_until: string | null;
+  nudge_count: number;
+}
+
+export interface EntityInfo {
+  id: string;
+  name: string;
+  entity_type: string;
+  aliases: string[];
+  mention_count: number;
+  first_seen: string | null;
+  last_seen: string | null;
+}
+
+// ============================================================================
+// TOOL ACTIVITY TYPES
+// ============================================================================
+
+export interface ToolActivity {
+  id: string;
+  tool_name: string;
+  args_summary?: string;
+  result?: string;
+  status: "running" | "completed" | "error";
+}
+
 // Use relative URLs in browser (works for any domain), absolute for SSR
 const API_URL = typeof window !== "undefined"
   ? ""
@@ -1300,4 +1363,49 @@ export async function* streamTaskEvents(
       }
     }
   }
+}
+
+
+// ============================================================================
+// PROACTIVE INTELLIGENCE API
+// ============================================================================
+
+export async function getProactiveStatus(): Promise<ProactiveStatus> {
+  const res = await authFetch(`${API_URL}/api/proactive/status`);
+  if (!res.ok) throw new Error("Failed to get proactive status");
+  return res.json();
+}
+
+export async function getOpenLoops(status?: string): Promise<OpenLoop[]> {
+  const params = status ? `?status=${status}` : "";
+  const res = await authFetch(`${API_URL}/api/proactive/open-loops${params}`);
+  if (!res.ok) throw new Error("Failed to get open loops");
+  return res.json();
+}
+
+export async function getEntities(entityType?: string): Promise<EntityInfo[]> {
+  const params = entityType ? `?entity_type=${entityType}` : "";
+  const res = await authFetch(`${API_URL}/api/proactive/entities${params}`);
+  if (!res.ok) throw new Error("Failed to get entities");
+  return res.json();
+}
+
+export async function updateProactiveConfig(updates: Partial<ProactiveConfig>): Promise<ProactiveConfig> {
+  const res = await authFetch(`${API_URL}/api/proactive/config`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(updates),
+  });
+  if (!res.ok) throw new Error("Failed to update proactive config");
+  return res.json();
+}
+
+export async function updateOpenLoop(id: string, updates: { status?: string; snooze_until?: string }): Promise<OpenLoop> {
+  const res = await authFetch(`${API_URL}/api/proactive/open-loops/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(updates),
+  });
+  if (!res.ok) throw new Error("Failed to update open loop");
+  return res.json();
 }
