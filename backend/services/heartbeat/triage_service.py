@@ -336,7 +336,7 @@ async def _rule_pre_filter(
 
 # ===== Layer 2: Haiku classification =====
 
-TRIAGE_PROMPT = """You are Edward's triage classifier. Your job is to classify incoming messages by urgency.
+TRIAGE_INSTRUCTIONS = """You are Edward's triage classifier. Your job is to classify incoming messages by urgency.
 You are NOT acting on these messages — just classifying them so Edward can decide what to do.
 
 Be conservative: most messages should be DISMISS or NOTE. Only use ACT for messages that clearly require Edward to do something. Only use ESCALATE for genuinely urgent messages that need immediate attention.
@@ -346,11 +346,6 @@ For each event, return a classification:
 - NOTE: Worth remembering but no action needed (store a memory about this)
 - ACT: Edward should take action (reply, look something up, do a task)
 - ESCALATE: Urgent — needs Edward's immediate attention AND a push notification
-
-{contact_context}
-
-Events to classify:
-{events_digest}
 
 Return ONLY a valid JSON array with one object per event:
 [{{"event_id": "...", "classification": "DISMISS|NOTE|ACT|ESCALATE", "reasoning": "brief why", "note_content": "memory text if NOTE", "action_description": "what to do if ACT/ESCALATE"}}]"""
@@ -426,10 +421,7 @@ async def _haiku_classify(
     contact_context = await _build_contact_context(events)
     events_digest = _build_events_digest(events, config.digest_token_cap)
 
-    prompt = TRIAGE_PROMPT.format(
-        contact_context=contact_context or "No contact context available.",
-        events_digest=events_digest,
-    )
+    dynamic_data = f"{contact_context or 'No contact context available.'}\n\nEvents to classify:\n{events_digest}"
 
     llm = ChatAnthropic(
         model="claude-haiku-4-5-20251001",
@@ -438,7 +430,13 @@ async def _haiku_classify(
     )
 
     try:
-        response = await llm.ainvoke([HumanMessage(content=prompt)])
+        response = await llm.ainvoke([
+            SystemMessage(
+                content=TRIAGE_INSTRUCTIONS,
+                additional_kwargs={"cache_control": {"type": "ephemeral"}},
+            ),
+            HumanMessage(content=dynamic_data),
+        ])
 
         # Extract token usage
         input_tokens = 0
