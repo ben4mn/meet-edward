@@ -88,16 +88,34 @@ self.addEventListener('pushsubscriptionchange', (event) => {
   console.log('Push subscription changed, re-subscribing...');
 
   event.waitUntil(
-    self.registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      // Note: applicationServerKey should match the VAPID public key
-      // This is handled by the main app when it re-subscribes
-    }).then((subscription) => {
-      // Send the new subscription to the server
-      // This is a fallback; the main app should handle re-subscription
-      console.log('Re-subscribed to push notifications');
-    }).catch((error) => {
-      console.error('Failed to re-subscribe:', error);
-    })
+    fetch('/api/push/vapid-key')
+      .then((res) => res.json())
+      .then((data) => {
+        if (!data.vapid_public_key) throw new Error('No VAPID key from server');
+        // Convert base64url VAPID key to Uint8Array
+        const raw = atob(data.vapid_public_key.replace(/-/g, '+').replace(/_/g, '/'));
+        const key = new Uint8Array(raw.length);
+        for (let i = 0; i < raw.length; i++) key[i] = raw.charCodeAt(i);
+
+        return self.registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: key,
+        });
+      })
+      .then((subscription) => {
+        const key = subscription.getKey('p256dh');
+        const auth = subscription.getKey('auth');
+        return fetch('/api/push/subscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            endpoint: subscription.endpoint,
+            p256dh: btoa(String.fromCharCode(...new Uint8Array(key))),
+            auth: btoa(String.fromCharCode(...new Uint8Array(auth))),
+          }),
+        });
+      })
+      .then(() => console.log('Re-subscribed to push notifications'))
+      .catch((error) => console.error('Failed to re-subscribe:', error))
   );
 });

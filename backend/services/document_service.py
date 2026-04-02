@@ -7,6 +7,7 @@ Handles:
 - Embedding generation reuses the same sentence-transformers model as memory_service
 """
 
+import asyncio
 import uuid
 from typing import List, Optional
 from dataclasses import dataclass, field
@@ -53,11 +54,13 @@ def _model_to_document(row, score: float = 0.0) -> Document:
 
 async def save_document(doc: Document) -> Document:
     """Save a new document. Generates embedding from title + content[:500]."""
-    async with async_session() as session:
-        doc_id = doc.id or str(uuid.uuid4())
-        embedding_text = f"{doc.title} {doc.content[:500]}"
-        embedding = get_embedding(embedding_text)
+    doc_id = doc.id or str(uuid.uuid4())
+    embedding_text = f"{doc.title} {doc.content[:500]}"
+    # Compute embedding OUTSIDE async session to avoid blocking the
+    # asyncpg greenlet context (sentence-transformers is sync/CPU-bound)
+    embedding = get_embedding(embedding_text)
 
+    async with async_session() as session:
         db_doc = DocumentModel(
             id=doc_id,
             title=doc.title,
@@ -88,6 +91,11 @@ async def get_document_by_id(document_id: str) -> Optional[Document]:
         if not row:
             return None
 
+        # Convert to dataclass BEFORE the UPDATE — the update triggers
+        # onupdate=func.now() which expires row.updated_at, causing a
+        # lazy-load greenlet error when accessed after commit.
+        doc = _model_to_document(row)
+
         # Update access tracking
         await session.execute(
             update(DocumentModel)
@@ -99,7 +107,7 @@ async def get_document_by_id(document_id: str) -> Optional[Document]:
         )
         await session.commit()
 
-        return _model_to_document(row)
+        return doc
 
 
 async def update_document(
@@ -109,6 +117,7 @@ async def update_document(
     tags: Optional[str] = None,
 ) -> Optional[Document]:
     """Partial update. Re-embeds if title or content changes."""
+    # Phase 1: Read current state and determine what changed
     async with async_session() as session:
         result = await session.execute(
             select(DocumentModel).where(DocumentModel.id == document_id)
@@ -118,21 +127,27 @@ async def update_document(
             return None
 
         re_embed = False
+        new_title = doc.title
+        new_content = doc.content
 
         if title is not None and title != doc.title:
             doc.title = title
+            new_title = title
             re_embed = True
 
         if content is not None and content != doc.content:
             doc.content = content
+            new_content = content
             re_embed = True
 
         if tags is not None:
             doc.tags = tags
 
+        # Compute embedding via to_thread to avoid blocking the asyncpg
+        # greenlet context (sentence-transformers is sync/CPU-bound)
         if re_embed:
-            embedding_text = f"{doc.title} {doc.content[:500]}"
-            doc.embedding = get_embedding(embedding_text)
+            embedding_text = f"{new_title} {new_content[:500]}"
+            doc.embedding = await asyncio.to_thread(get_embedding, embedding_text)
 
         await session.commit()
         await session.refresh(doc)

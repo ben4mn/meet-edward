@@ -2,11 +2,19 @@
 Claude Code integration service for Edward.
 
 Delegates coding tasks to Claude Code via the claude-agent-sdk Python package.
+
+On Windows, the main event loop is SelectorEventLoop (required by psycopg),
+which cannot spawn subprocesses. The SDK uses anyio.open_process() internally,
+so we run the entire query() session in a dedicated thread with its own
+ProactorEventLoop and shuttle events back via a thread-safe queue.
 """
 
 import uuid
 import json
 import asyncio
+import sys
+import threading
+from queue import Queue as ThreadQueue, Empty
 from typing import Optional, Dict, List, Any, AsyncGenerator
 from datetime import datetime
 
@@ -16,6 +24,9 @@ from sqlalchemy import select, desc
 
 # In-memory tracking of active sessions
 _active_sessions: Dict[str, dict] = {}
+
+# Sentinel to signal end of event stream
+_STREAM_END = object()
 
 
 def get_status() -> dict:
@@ -33,6 +44,51 @@ def get_status() -> dict:
         }
 
 
+def _run_query_in_thread(
+    task: str,
+    options: Any,
+    event_queue: ThreadQueue,
+) -> None:
+    """
+    Run claude-agent-sdk query() in a dedicated thread with ProactorEventLoop.
+
+    Puts event dicts into event_queue. Puts _STREAM_END when done.
+    """
+    import os
+    os.environ.pop("CLAUDECODE", None)
+
+    from claude_agent_sdk import query, AssistantMessage, TextBlock, ToolUseBlock, ToolResultBlock
+
+    async def _run():
+        try:
+            async for message in query(prompt=task, options=options):
+                if isinstance(message, AssistantMessage):
+                    for block in message.content:
+                        if isinstance(block, TextBlock):
+                            event_queue.put(("text", block.text))
+                        elif isinstance(block, ToolUseBlock):
+                            event_queue.put(("tool_use", block.name, str(getattr(block, "input", ""))[:500]))
+                        elif isinstance(block, ToolResultBlock):
+                            event_queue.put(("tool_result", str(block.content)[:500]))
+            event_queue.put(("done", None))
+        except Exception as e:
+            print(f"[CC] Query error: {type(e).__name__}: {e}")
+            event_queue.put(("error", str(e)))
+
+    if sys.platform == "win32":
+        # ProactorEventLoop required — SelectorEventLoop can't spawn subprocesses
+        loop = asyncio.ProactorEventLoop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(_run())
+        finally:
+            loop.close()
+    else:
+        asyncio.run(_run())
+
+    event_queue.put(_STREAM_END)
+
+
 async def run_claude_code(
     task: str,
     conversation_id: Optional[str] = None,
@@ -47,7 +103,7 @@ async def run_claude_code(
     Yields dicts with event_type: cc_text, cc_tool_use, cc_done, cc_error
     """
     try:
-        from claude_agent_sdk import query, ClaudeAgentOptions, AssistantMessage, TextBlock, ToolUseBlock, ToolResultBlock
+        from claude_agent_sdk import ClaudeAgentOptions
     except ImportError:
         yield {
             "event_type": "cc_error",
@@ -90,41 +146,84 @@ async def run_claude_code(
     accumulated_text = []
     error_text = None
 
+    # Run query in a separate thread (Windows SelectorEventLoop can't spawn subprocesses)
+    event_queue: ThreadQueue = ThreadQueue()
+    thread = threading.Thread(
+        target=_run_query_in_thread,
+        args=(task, options, event_queue),
+        daemon=True,
+    )
+    thread.start()
+
     try:
-        async for message in query(
-            prompt=task,
-            options=options,
-        ):
-            if isinstance(message, AssistantMessage):
-                # Process content blocks
-                for block in message.content:
-                    if isinstance(block, TextBlock):
-                        accumulated_text.append(block.text)
-                        yield {
-                            "event_type": "cc_text",
-                            "session_id": session_id,
-                            "text": block.text,
-                        }
-                    elif isinstance(block, ToolUseBlock):
-                        yield {
-                            "event_type": "cc_tool_use",
-                            "session_id": session_id,
-                            "tool_name": block.name,
-                            "tool_input": str(getattr(block, "input", ""))[:500],
-                        }
-                    elif isinstance(block, ToolResultBlock):
-                        yield {
-                            "event_type": "cc_tool_result",
-                            "session_id": session_id,
-                            "content": str(block.content)[:500],
-                        }
+        while True:
+            # Poll the thread-safe queue from the async event loop
+            try:
+                item = event_queue.get_nowait()
+            except Empty:
+                # Check if thread died without sending STREAM_END
+                if not thread.is_alive():
+                    error_text = "Claude Code thread exited unexpectedly"
+                    print(f"[CC] {error_text}")
+                    yield {
+                        "event_type": "cc_error",
+                        "session_id": session_id,
+                        "error": error_text,
+                    }
+                    break
+                await asyncio.sleep(0.05)
+                continue
+
+            if item is _STREAM_END:
+                break
+
+            event_type = item[0]
+
+            if event_type == "text":
+                text = item[1]
+                accumulated_text.append(text)
+                yield {
+                    "event_type": "cc_text",
+                    "session_id": session_id,
+                    "text": text,
+                }
+            elif event_type == "tool_use":
+                yield {
+                    "event_type": "cc_tool_use",
+                    "session_id": session_id,
+                    "tool_name": item[1],
+                    "tool_input": item[2],
+                }
+            elif event_type == "tool_result":
+                yield {
+                    "event_type": "cc_tool_result",
+                    "session_id": session_id,
+                    "content": item[1],
+                }
+            elif event_type == "error":
+                error_text = item[1]
+                print(f"[CC] Error from query thread: {error_text}")
+                yield {
+                    "event_type": "cc_error",
+                    "session_id": session_id,
+                    "error": error_text,
+                }
+                break
+            elif event_type == "done":
+                break
     except Exception as e:
+        import traceback
         error_text = str(e)
+        print(f"[CC] Exception: {type(e).__name__}: {error_text}")
+        print(f"[CC] Traceback:\n{traceback.format_exc()}")
         yield {
             "event_type": "cc_error",
             "session_id": session_id,
             "error": error_text,
         }
+
+    # Wait for thread to finish (should already be done)
+    thread.join(timeout=10)
 
     # Finalize session
     full_output = "\n".join(accumulated_text)

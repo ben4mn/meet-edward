@@ -13,23 +13,18 @@ import uuid
 from typing import List, Optional
 from datetime import datetime, timedelta
 
-from langchain_anthropic import ChatAnthropic
-from langchain_core.messages import HumanMessage
-
+from services.llm_client import haiku_call
 from services.database import async_session, MemoryEnrichmentModel
 from services.memory_service import retrieve_memories, Memory
 
 
-REFLECTION_QUERY_PROMPT = """Analyze this conversation and generate 3-5 search queries that would find relevant context from long-term memory. Focus on:
+REFLECTION_QUERY_INSTRUCTIONS = """Analyze this conversation and generate 3-5 search queries that would find relevant context from long-term memory. Focus on:
 
 1. People, places, or topics mentioned or implied
 2. Related context the user might expect you to remember
 3. Background information that would improve your next response
 
-Return ONLY a JSON array of query strings. Example: ["Ben's work projects", "previous discussions about Python", "Ben's preferences for code style"]
-
-Conversation (last 10 messages):
-{conversation}"""
+Return ONLY a JSON array of query strings. Example: ["Ben's work projects", "previous discussions about Python", "Ben's preferences for code style"]"""
 
 
 def should_reflect(messages: list, turn_count: int) -> bool:
@@ -74,21 +69,16 @@ async def generate_reflection_queries(messages: list, model: str = "claude-haiku
     if not conversation_text.strip():
         return []
 
-    llm = ChatAnthropic(model=model, temperature=0, max_tokens=512)
-    prompt = REFLECTION_QUERY_PROMPT.format(conversation=conversation_text)
-
     try:
-        response = await asyncio.wait_for(
-            llm.ainvoke([HumanMessage(content=prompt)]),
+        response_text = await asyncio.wait_for(
+            haiku_call(
+                system=REFLECTION_QUERY_INSTRUCTIONS,
+                message=f"Conversation (last 10 messages):\n{conversation_text}",
+                max_tokens=512,
+                model=model,
+            ),
             timeout=5.0,
         )
-
-        response_text = response.content
-        if isinstance(response_text, list):
-            response_text = " ".join(
-                block.get("text", "") if isinstance(block, dict) else str(block)
-                for block in response_text
-            )
         response_text = response_text.strip()
 
         # Extract JSON array

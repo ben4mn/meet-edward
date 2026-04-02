@@ -315,6 +315,8 @@ class HeartbeatConfigModel(Base):
     calendar_lookahead_minutes = Column(Integer, default=30)
     email_enabled = Column(Boolean, default=False)
     email_poll_seconds = Column(Integer, default=300)
+    whatsapp_enabled = Column(Boolean, default=False)
+    whatsapp_poll_seconds = Column(Integer, default=30)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
@@ -476,6 +478,29 @@ class OrchestratorConfigModel(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
+class ConversationMessagesModel(Base):
+    """Simple message checkpoint store replacing LangGraph."""
+    __tablename__ = "conversation_messages"
+
+    conversation_id = Column(String, primary_key=True)
+    messages = Column(Text, nullable=False, default="[]")  # JSONB via PostgreSQL
+    metadata_ = Column("metadata", Text, nullable=True)  # Settings snapshot
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class CodexOAuthTokenModel(Base):
+    """Codex OAuth tokens for ChatGPT subscription-based GPT-5.4 access."""
+    __tablename__ = "codex_oauth_tokens"
+
+    id = Column(String, primary_key=True, default="default")
+    access_token = Column(Text, nullable=False)
+    refresh_token = Column(Text, nullable=False)
+    account_id = Column(String(255), nullable=False)
+    email = Column(String(255), nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
 async def init_db():
     """Initialize the database tables."""
     async with engine.begin() as conn:
@@ -618,6 +643,12 @@ async def init_db():
         """))
         await conn.execute(text("""
             ALTER TABLE heartbeat_config ADD COLUMN IF NOT EXISTS email_poll_seconds INTEGER DEFAULT 300;
+        """))
+        await conn.execute(text("""
+            ALTER TABLE heartbeat_config ADD COLUMN IF NOT EXISTS whatsapp_enabled BOOLEAN DEFAULT false;
+        """))
+        await conn.execute(text("""
+            ALTER TABLE heartbeat_config ADD COLUMN IF NOT EXISTS whatsapp_poll_seconds INTEGER DEFAULT 30;
         """))
 
         # Memory: tier system columns

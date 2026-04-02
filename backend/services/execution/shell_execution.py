@@ -11,6 +11,7 @@ Provides shell command execution with:
 import os
 import re
 import shutil
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -118,19 +119,31 @@ async def execute_shell(
         )
 
     # Restricted environment - no API keys passed through
-    restricted_env = {
-        "PATH": "/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin",
-        "HOME": os.environ.get("HOME", str(working_dir)),
-        "TMPDIR": str(working_dir),
-        "LANG": "en_US.UTF-8",
-        "LC_ALL": "en_US.UTF-8",
-        "TERM": "xterm-256color",
-        "SHELL": "/bin/bash",
-        "USER": os.environ.get("USER", ""),
-    }
+    if sys.platform == "win32":
+        restricted_env = {
+            "PATH": os.environ.get("PATH", ""),
+            "USERPROFILE": os.environ.get("USERPROFILE", str(working_dir)),
+            "TEMP": str(working_dir),
+            "TMP": str(working_dir),
+            "SYSTEMROOT": os.environ.get("SYSTEMROOT", r"C:\Windows"),
+            "COMSPEC": os.environ.get("COMSPEC", r"C:\Windows\System32\cmd.exe"),
+        }
+        shell_args = ["cmd.exe", "/c", command]
+    else:
+        restricted_env = {
+            "PATH": "/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin",
+            "HOME": os.environ.get("HOME", str(working_dir)),
+            "TMPDIR": str(working_dir),
+            "LANG": "en_US.UTF-8",
+            "LC_ALL": "en_US.UTF-8",
+            "TERM": "xterm-256color",
+            "SHELL": "/bin/bash",
+            "USER": os.environ.get("USER", ""),
+        }
+        shell_args = ["bash", "-c", command]
 
     result = await run_subprocess(
-        args=["bash", "-c", command],
+        args=shell_args,
         working_dir=working_dir,
         timeout=timeout,
         env=restricted_env,
@@ -139,16 +152,19 @@ async def execute_shell(
 
 
 def is_available() -> bool:
-    """Check if shell execution is available (bash installed)."""
+    """Check if shell execution is available."""
+    if sys.platform == "win32":
+        return shutil.which("cmd.exe") is not None
     return shutil.which("bash") is not None
 
 
 def get_status() -> dict:
     """Get the status of the shell execution service."""
     available = is_available()
+    shell_name = "cmd.exe" if sys.platform == "win32" else "Bash"
     return {
         "status": "connected" if available else "error",
-        "status_message": "Bash shell available" if available else "Bash not found",
+        "status_message": f"{shell_name} shell available" if available else f"{shell_name} not found",
         "metadata": {
             "timeout_seconds": EXECUTION_LIMITS["timeout_seconds"],
             "max_output_bytes": EXECUTION_LIMITS["max_output_bytes"],

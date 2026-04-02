@@ -4,11 +4,8 @@ import json
 import uuid
 import base64
 
-from langchain_anthropic import ChatAnthropic
-from langchain_core.messages import HumanMessage
-
 from models import ChatRequest
-from services.graph import get_graph, stream_with_memory, stream_with_memory_events, chat_with_memory, EventType
+from services.graph import stream_with_memory, stream_with_memory_events, chat_with_memory, EventType
 from services.settings_service import get_settings
 from services.conversation_service import (
     create_conversation,
@@ -106,7 +103,6 @@ async def chat(request: Request):
             raise HTTPException(status_code=400, detail="Message or files required")
 
         settings = await get_settings()
-        graph = await get_graph()
 
         is_new_conversation = conversation_id is None
         conversation_id = conversation_id or str(uuid.uuid4())
@@ -127,19 +123,28 @@ async def chat(request: Request):
             # Register active chat so heartbeat defers triage
             from services.heartbeat.heartbeat_service import register_active_chat, unregister_active_chat
             register_active_chat(conversation_id)
+            done_sent = False
             try:
-                async for event in stream_with_memory_events(
-                    message=message,
-                    conversation_id=conversation_id,
-                    system_prompt=settings.system_prompt,
-                    model=settings.model,
-                    temperature=settings.temperature,
-                    graph=graph,
-                    attachments=attachments if attachments else None,
-                ):
-                    # Stream the full event object
-                    yield f"data: {json.dumps(event)}\n\n"
+                try:
+                    async for event in stream_with_memory_events(
+                        message=message,
+                        conversation_id=conversation_id,
+                        system_prompt=settings.system_prompt,
+                        model=settings.model,
+                        temperature=settings.temperature,
+                        attachments=attachments if attachments else None,
+                    ):
+                        if event.get("type") == EventType.DONE:
+                            done_sent = True
+                        yield f"data: {json.dumps(event)}\n\n"
+                except Exception as e:
+                    if not done_sent:
+                        yield f"data: {json.dumps({'type': EventType.ERROR, 'conversation_id': conversation_id, 'error': str(e)})}\n\n"
+                        yield f"data: {json.dumps({'type': EventType.DONE, 'conversation_id': conversation_id})}\n\n"
+                        done_sent = True
             finally:
+                if not done_sent:
+                    yield f"data: {json.dumps({'type': EventType.DONE, 'conversation_id': conversation_id})}\n\n"
                 unregister_active_chat(conversation_id)
 
         return StreamingResponse(
@@ -148,6 +153,7 @@ async def chat(request: Request):
             headers={
                 "Cache-Control": "no-cache",
                 "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
             }
         )
 
@@ -170,7 +176,6 @@ async def chat_simple(request: Request):
             raise HTTPException(status_code=400, detail="Message or files required")
 
         settings = await get_settings()
-        graph = await get_graph()
 
         is_new_conversation = conversation_id is None
         conversation_id = conversation_id or str(uuid.uuid4())
@@ -191,7 +196,6 @@ async def chat_simple(request: Request):
             system_prompt=settings.system_prompt,
             model=settings.model,
             temperature=settings.temperature,
-            graph=graph,
             attachments=attachments if attachments else None,
         )
 
@@ -239,20 +243,16 @@ async def get_greeting():
             # Continue without memories
 
         # Use Haiku for speed and cost efficiency
-        llm = ChatAnthropic(model="claude-haiku-4-5-20251001", temperature=0.7, max_tokens=100)
+        from services.llm_client import haiku_call
 
         prompt = GREETING_PROMPT.format(context=context if context else "No specific context available.")
 
-        response = await llm.ainvoke([HumanMessage(content=prompt)])
-
-        # Handle both string and list content
-        if isinstance(response.content, list):
-            greeting = " ".join(
-                block.get("text", "") if isinstance(block, dict) else str(block)
-                for block in response.content
-            )
-        else:
-            greeting = response.content
+        greeting = await haiku_call(
+            system="",
+            message=prompt,
+            max_tokens=100,
+            temperature=0.7,
+        )
 
         return {"greeting": greeting.strip()}
 

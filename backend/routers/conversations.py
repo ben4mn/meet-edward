@@ -16,7 +16,8 @@ from services.conversation_service import (
     delete_conversation,
     search_conversations,
 )
-from services.graph import get_graph
+from services.checkpoint_store import get_messages
+from services.graph import get_legacy_graph
 
 router = APIRouter()
 
@@ -130,96 +131,107 @@ async def get_conversation_with_messages(conversation_id: str):
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    # Get messages from LangGraph checkpoint
+    # Get messages from checkpoint store (new format: dicts)
     messages = []
     try:
-        graph = await get_graph()
-        config = {"configurable": {"thread_id": conversation_id}}
-        try:
-            state = await asyncio.wait_for(graph.aget_state(config), timeout=10.0)
-        except asyncio.TimeoutError:
-            logger.warning(f"aget_state timed out for conversation {conversation_id}")
-            state = None
+        raw_messages = await get_messages(conversation_id)
 
-        if state and state.values and "messages" in state.values:
-            for msg in state.values["messages"]:
+        # If empty, try legacy LangGraph checkpoint for old conversations
+        if not raw_messages:
+            legacy_graph = await get_legacy_graph()
+            if legacy_graph:
                 try:
-                    # Skip system and tool messages
-                    if hasattr(msg, 'type') and msg.type in ('system', 'tool'):
-                        continue
-
-                    role = "user"
-                    if hasattr(msg, 'type'):
-                        if msg.type == "ai":
-                            role = "assistant"
-                        elif msg.type == "human":
+                    config = {"configurable": {"thread_id": conversation_id}}
+                    state = await asyncio.wait_for(legacy_graph.aget_state(config), timeout=10.0)
+                    if state and state.values and "messages" in state.values:
+                        for msg in state.values["messages"]:
                             role = "user"
-
-                    raw_content = msg.content if hasattr(msg, 'content') else str(msg)
-                    attachments: Optional[List[MessageAttachmentResponse]] = None
-
-                    # Read attachment metadata from additional_kwargs (new format)
-                    additional_kwargs = getattr(msg, 'additional_kwargs', {}) or {}
-                    kwargs_attachments = additional_kwargs.get("attachments", [])
-                    # Build index->metadata lookup for new-format messages
-                    meta_by_index = {
-                        m["block_index"]: m for m in kwargs_attachments
-                    } if kwargs_attachments else {}
-
-                    if isinstance(raw_content, list):
-                        text_parts = []
-                        attachment_list = []
-                        for block_idx, block in enumerate(raw_content):
-                            if isinstance(block, dict):
-                                block_type = block.get("type", "")
-                                if block_type == "text":
-                                    text_parts.append(block.get("text", ""))
-                                elif block_type == "image":
-                                    source = block.get("source", {})
-                                    meta = meta_by_index.get(block_idx, {})
-                                    attachment_list.append(MessageAttachmentResponse(
-                                        file_id=meta.get("file_id") or block.get("file_id"),
-                                        filename=meta.get("filename") or block.get("filename", "image"),
-                                        mime_type=meta.get("mime_type") or source.get("media_type", "image/png"),
-                                    ))
-                                elif block_type == "file":
-                                    source = block.get("source", {})
-                                    meta = meta_by_index.get(block_idx, {})
-                                    attachment_list.append(MessageAttachmentResponse(
-                                        file_id=meta.get("file_id") or block.get("file_id"),
-                                        filename=meta.get("filename") or block.get("filename", "file"),
-                                        mime_type=meta.get("mime_type") or source.get("media_type", "application/octet-stream"),
-                                    ))
-                            else:
-                                text_parts.append(str(block))
-                        content = "".join(text_parts)
-                        if attachment_list:
-                            attachments = attachment_list
-                    else:
-                        content = raw_content if isinstance(raw_content, str) else str(raw_content)
-
-                    # Detect trigger messages and flag them instead of filtering
-                    is_trigger = False
-                    trigger_type = None
-                    stripped = content.strip()
-                    if stripped.startswith("[SCHEDULED EVENT]"):
-                        is_trigger = True
-                        trigger_type = "scheduled_event"
-                    elif stripped.startswith("[HEARTBEAT EVENT]"):
-                        is_trigger = True
-                        trigger_type = "heartbeat"
-
-                    if content.strip() or attachments:
-                        messages.append(MessageResponse(
-                            role=role,
-                            content=content,
-                            attachments=attachments,
-                            is_trigger=is_trigger,
-                            trigger_type=trigger_type,
-                        ))
+                            if hasattr(msg, 'type'):
+                                if msg.type in ('system', 'tool'):
+                                    continue
+                                if msg.type == "ai":
+                                    role = "assistant"
+                            raw_messages.append({"role": role, "content": msg.content if hasattr(msg, 'content') else str(msg)})
+                except asyncio.TimeoutError:
+                    logger.warning(f"Legacy aget_state timed out for conversation {conversation_id}")
                 except Exception as e:
-                    print(f"Skipping message in checkpoint: {e}")
+                    logger.warning(f"Legacy graph fallback failed: {e}")
+
+        for msg in raw_messages:
+            try:
+                role = msg.get("role", "user")
+                # Skip system and tool_result messages
+                if role not in ("user", "assistant"):
                     continue
+
+                raw_content = msg.get("content", "")
+                attachments_out: Optional[List[MessageAttachmentResponse]] = None
+
+                # Read attachment metadata from message metadata (if present)
+                msg_meta = msg.get("metadata", {}) or {}
+                kwargs_attachments = msg_meta.get("attachments", [])
+                meta_by_index = {
+                    m["block_index"]: m for m in kwargs_attachments
+                } if kwargs_attachments else {}
+
+                if isinstance(raw_content, list):
+                    text_parts = []
+                    attachment_list = []
+                    for block_idx, block in enumerate(raw_content):
+                        if isinstance(block, dict):
+                            block_type = block.get("type", "")
+                            if block_type == "text":
+                                text_parts.append(block.get("text", ""))
+                            elif block_type == "tool_use":
+                                continue  # Skip tool_use blocks in display
+                            elif block_type == "tool_result":
+                                continue  # Skip tool_result blocks in display
+                            elif block_type == "image":
+                                source = block.get("source", {})
+                                meta = meta_by_index.get(block_idx, {})
+                                attachment_list.append(MessageAttachmentResponse(
+                                    file_id=meta.get("file_id") or block.get("file_id"),
+                                    filename=meta.get("filename") or block.get("filename", "image"),
+                                    mime_type=meta.get("mime_type") or source.get("media_type", "image/png"),
+                                ))
+                            elif block_type == "file":
+                                source = block.get("source", {})
+                                meta = meta_by_index.get(block_idx, {})
+                                attachment_list.append(MessageAttachmentResponse(
+                                    file_id=meta.get("file_id") or block.get("file_id"),
+                                    filename=meta.get("filename") or block.get("filename", "file"),
+                                    mime_type=meta.get("mime_type") or source.get("media_type", "application/octet-stream"),
+                                ))
+                        else:
+                            text_parts.append(str(block))
+                    content = "".join(text_parts)
+                    if attachment_list:
+                        attachments_out = attachment_list
+                else:
+                    content = raw_content if isinstance(raw_content, str) else str(raw_content)
+
+                # Detect trigger messages and flag them instead of filtering
+                is_trigger = False
+                trigger_type = None
+                stripped = content.strip()
+                if stripped.startswith("[SCHEDULED EVENT]"):
+                    is_trigger = True
+                    trigger_type = "scheduled_event"
+                elif stripped.startswith("[HEARTBEAT EVENT]"):
+                    is_trigger = True
+                    trigger_type = "heartbeat"
+
+                if content.strip() or attachments_out:
+                    messages.append(MessageResponse(
+                        role=role,
+                        content=content,
+                        attachments=attachments_out,
+                        is_trigger=is_trigger,
+                        trigger_type=trigger_type,
+                    ))
+            except Exception as e:
+                print(f"Skipping message in checkpoint: {e}")
+                continue
     except Exception as e:
         print(f"Error getting messages from checkpoint: {e}")
 

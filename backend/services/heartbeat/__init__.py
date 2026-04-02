@@ -1,6 +1,7 @@
 from services.heartbeat.heartbeat_service import start_heartbeat, stop_heartbeat
 from services.heartbeat.listener_calendar import start_calendar_listener, stop_calendar_listener
 from services.heartbeat.listener_email import start_email_listener, stop_email_listener
+from services.heartbeat.listener_whatsapp import start_whatsapp_listener, stop_whatsapp_listener
 
 __all__ = [
     "start_heartbeat",
@@ -9,4 +10,6 @@ __all__ = [
     "stop_calendar_listener",
     "start_email_listener",
     "stop_email_listener",
+    "start_whatsapp_listener",
+    "stop_whatsapp_listener",
 ]

@@ -1,0 +1,19 @@
+# Cloudflare Named Tunnel Configuration
+#
+# SETUP (run once in PowerShell):
+#   cloudflared tunnel login
+#   cloudflared tunnel create edward
+#
+# Then replace f76bcb77-9d24-4088-a53f-137f34f95f04 with the UUID printed by "tunnel create"
+# Example UUID format: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+#
+# Your permanent URL will be: https://f76bcb77-9d24-4088-a53f-137f34f95f04.cfargotunnel.com
+# Install this as your PWA on your phone — it never changes.
+
+tunnel: f76bcb77-9d24-4088-a53f-137f34f95f04
+credentials-file: C:\Users\cchen362\.cloudflared\f76bcb77-9d24-4088-a53f-137f34f95f04.json
+
+ingress:
+  - hostname: f76bcb77-9d24-4088-a53f-137f34f95f04.cfargotunnel.com
+    service: http://localhost:3001
+  - service: http_status:404

@@ -32,6 +32,14 @@ export interface Settings {
 export interface Model {
   id: string;
   name: string;
+  provider?: "anthropic" | "openai";
+  recommended?: boolean;
+}
+
+export interface OpenAIStatus {
+  has_api_key: boolean;
+  codex_connected: boolean;
+  codex_email: string | null;
 }
 
 // Auth API types
@@ -129,6 +137,30 @@ export async function getModels(): Promise<Model[]> {
   }
   const data = await response.json();
   return data.models;
+}
+
+export async function getOpenAIStatus(): Promise<OpenAIStatus> {
+  const response = await authFetch(`${API_URL}/api/settings/openai/status`);
+  if (!response.ok) {
+    return { has_api_key: false, codex_connected: false, codex_email: null };
+  }
+  return response.json();
+}
+
+export async function startCodexLogin(): Promise<{ auth_url: string }> {
+  const response = await authFetch(`${API_URL}/api/settings/openai/login`, {
+    method: "POST",
+  });
+  if (!response.ok) {
+    throw new Error("Failed to start OpenAI login");
+  }
+  return response.json();
+}
+
+export async function logoutCodex(): Promise<void> {
+  await authFetch(`${API_URL}/api/settings/openai/logout`, {
+    method: "POST",
+  });
 }
 
 export interface MemoryItem {
@@ -609,6 +641,7 @@ export type StreamEventType =
   | "execution_result"
   | "tool_end"
   | "content"
+  | "error"
   | "done"
   | "interrupted"
   | "plan_created"
@@ -643,6 +676,7 @@ export interface StreamEvent {
   conversation_id: string;
   // Type-specific fields
   content?: string;        // for thinking, content, interrupted
+  error?: string;          // for error (LLM failure message)
   tool_name?: string;      // for tool_start, tool_end, progress
   code?: string;           // for code
   language?: string;       // for code
@@ -800,6 +834,11 @@ export async function removeCustomMCPServer(serverId: string): Promise<{ status:
  * @param abortSignal - Optional AbortSignal for cancelling the request
  * @param files - Optional file attachments to include
  */
+
+// Yields control back to the browser event loop so React can flush state and paint
+// between SSE events that arrive batched in a single TCP packet (e.g. through ngrok).
+const yieldToEventLoop = () => new Promise<void>(resolve => setTimeout(resolve, 0));
+
 export async function* streamChatEvents(
   message: string,
   conversationId?: string,
@@ -854,6 +893,8 @@ export async function* streamChatEvents(
 
   const decoder = new TextDecoder();
   let buffer = "";
+  let doneReceived = false;
+  let lastConversationId = conversationId;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -867,12 +908,31 @@ export async function* streamChatEvents(
       if (line.startsWith("data: ")) {
         try {
           const data = JSON.parse(line.slice(6)) as StreamEvent;
+          if (data.conversation_id) {
+            lastConversationId = data.conversation_id;
+          }
+          if (data.type === "done") {
+            doneReceived = true;
+          }
           yield data;
+          await yieldToEventLoop();
         } catch {
           // Ignore parsing errors for non-JSON lines
         }
       }
     }
+  }
+
+  if (!doneReceived && !abortSignal?.aborted) {
+    yield {
+      type: "error",
+      conversation_id: lastConversationId || "",
+      error: "The response stream ended unexpectedly.",
+    };
+    yield {
+      type: "done",
+      conversation_id: lastConversationId || "",
+    };
   }
 }
 
@@ -964,6 +1024,8 @@ export interface HeartbeatStatus {
   calendar_lookahead_minutes: number;
   email_enabled: boolean;
   email_poll_seconds: number;
+  whatsapp_enabled: boolean;
+  whatsapp_poll_seconds: number;
 }
 
 export interface HeartbeatConfig {
@@ -978,6 +1040,8 @@ export interface HeartbeatConfig {
   calendar_lookahead_minutes: number;
   email_enabled: boolean;
   email_poll_seconds: number;
+  whatsapp_enabled: boolean;
+  whatsapp_poll_seconds: number;
 }
 
 export async function getHeartbeatStatus(): Promise<HeartbeatStatus> {
