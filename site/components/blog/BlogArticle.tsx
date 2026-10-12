@@ -36,7 +36,10 @@ export function BlogArticle({ post }: { post: BlogPost }) {
           </span>
         </div>
       </header>
-      <div className="docs-prose">{post.content()}</div>
+      <div className="docs-prose">
+        {post.editorsNote && <div className="note">{post.editorsNote()}</div>}
+        {post.content()}
+      </div>
       {post.relatedSlugs && post.relatedSlugs.length > 0 && (
         <div className="mt-16 pt-8 border-t border-white/10">
           <h3 className="text-lg font-semibold text-white mb-4">Related Posts</h3>

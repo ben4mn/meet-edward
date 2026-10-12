@@ -4,6 +4,7 @@ import { LandingNav } from "./LandingNav";
 import { HeroSection } from "./HeroSection";
 import { FeaturesGrid } from "./FeaturesGrid";
 import { HowItWorks } from "./HowItWorks";
+import { Showcase } from "./Showcase";
 import { GetStarted } from "./GetStarted";
 import { TechOverview } from "./TechOverview";
 import FAQSection from "./FAQSection";
@@ -16,6 +17,7 @@ export function LandingPage() {
       <HeroSection />
       <FeaturesGrid />
       <HowItWorks />
+      <Showcase />
       <GetStarted />
       <TechOverview />
       <FAQSection />

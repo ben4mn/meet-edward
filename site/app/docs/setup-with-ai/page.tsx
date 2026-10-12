@@ -1,152 +1,137 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { DocsContent } from "../../../components/docs/DocsContent";
+import { GITHUB_BLOB } from "../../../lib/docsNav";
 
 export const metadata: Metadata = {
-  title: "Setup with AI — Edward Docs",
-  description: "Set up Edward using an AI coding assistant like Claude Code, Cursor, or Windsurf. Paste one block and let the AI handle installation, configuration, and verification.",
+  title: "Set Up with AI — Edward Docs",
+  description:
+    "Let Claude Code, or another AI coding assistant, walk you through installing Edward. The repository's CLAUDE.md carries the setup steps for it to follow.",
   alternates: { canonical: "/docs/setup-with-ai" },
   openGraph: {
-    title: "Setup with AI — Edward Docs",
-    description: "Set up Edward using an AI coding assistant like Claude Code, Cursor, or Windsurf. Paste one block and go.",
+    title: "Set Up with AI — Edward Docs",
+    description:
+      "Let Claude Code, or another AI coding assistant, walk you through installing Edward.",
     url: "/docs/setup-with-ai",
   },
 };
 
+const PROMPT = `I want to set up Edward, an open-source personal AI assistant, on this Mac.
+
+1. Check that this Mac has Apple silicon, the Xcode command-line tools and Homebrew.
+2. Clone https://github.com/ben4mn/meet-edward.git into my home folder.
+3. Read the CLAUDE.md at the top of that checkout and follow its section
+   "Helping someone set up Edward", one step at a time. Explain each step
+   and confirm it with me before the next.
+
+Never ask me to paste my Anthropic API key, a password or the setup code
+into this chat: I will type them into ./setup.sh or .env myself.`;
+
 export default function SetupWithAIPage() {
   return (
     <DocsContent>
-      <h1>Setup with AI</h1>
+      <h1>Set up with AI</h1>
       <p className="subtitle">
-        Paste one block into your AI coding assistant and let it handle the
-        rest.
+        Let an AI coding assistant walk you through the install, one step at a
+        time.
       </p>
 
-      <h2>Why Use an AI Assistant?</h2>
+      <h2>Why it works</h2>
       <p>
-        If terms like git, Python virtual environments, or PostgreSQL feel
-        unfamiliar, let an AI assistant walk you through the setup. Tools like{" "}
-        <a
-          href="https://claude.com/claude-code"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Claude Code
-        </a>
-        ,{" "}
-        <a
-          href="https://cursor.com"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Cursor
-        </a>
-        , or similar can read the instructions, run the commands, and
-        troubleshoot errors — all from a single paste.
+        Edward’s repository carries its own operating guide,{" "}
+        <a href={`${GITHUB_BLOB}/CLAUDE.md`}>CLAUDE.md</a>, written for AI
+        assistants working in it. Its section “Helping someone set up
+        Edward”, lists the steps in order: prerequisites, the setup script,
+        your settings, the macOS permissions, starting him, choosing your
+        password, and the optional features. An assistant that can run
+        commands, such as{" "}
+        <a href="https://claude.com/claude-code">Claude Code</a>, can follow
+        it with you, explain each step and fix what goes wrong.
       </p>
 
-      <h2>What You Need</h2>
+      <h2>What you need</h2>
       <ul>
         <li>
-          <strong>A Mac</strong> — Edward requires macOS
+          <strong>A Mac with Apple silicon</strong> that can stay on
         </li>
         <li>
-          <strong>An AI coding assistant</strong> — Claude Code, Cursor, Windsurf,
-          or any tool that can run terminal commands
+          <strong>An AI coding assistant</strong> that can run terminal
+          commands on that Mac: Claude Code, or a similar tool
         </li>
         <li>
-          <strong>An Anthropic API key</strong> — get one at{" "}
-          <a
-            href="https://console.anthropic.com"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            console.anthropic.com
-          </a>{" "}
-          (the AI will help if you don&apos;t have one yet)
+          <strong>An Anthropic API key</strong> from{" "}
+          <a href="https://console.anthropic.com/">console.anthropic.com</a>{" "}
+          (your assistant can show you where to make one)
         </li>
       </ul>
 
-      <h2>Paste This to Your AI</h2>
+      <h2>Paste this to your assistant</h2>
       <p>
-        Copy the entire block below and paste it into your AI assistant:
+        Open your assistant in a terminal on the Mac that will run Edward
+        (for Claude Code, run <code>claude</code> in your home folder) and
+        paste:
       </p>
       <pre>
-        <code>{`I want to set up Edward, an open-source AI assistant, on my Mac.
-
-Here is the project documentation:
-https://raw.githubusercontent.com/ben4mn/meet-edward/main/CLAUDE.md
-
-Steps:
-1. Clone: git clone https://github.com/ben4mn/meet-edward.git
-2. Run ./setup.sh (installs PostgreSQL, pgvector, Python venv, Node deps)
-3. I need to add my ANTHROPIC_API_KEY to .env — ask me for it or help me get one from console.anthropic.com
-4. Run ./restart.sh to start frontend + backend
-5. Verify http://localhost:3000 loads and responds to a test message
-
-If anything fails, check:
-- brew services list (PostgreSQL should be running)
-- python3 --version (needs 3.11+)
-- node --version (needs 18+)
-- cat /tmp/edward-backend.log
-- cat /tmp/edward-frontend.log`}</code>
+        <code>{PROMPT}</code>
       </pre>
+      <p>
+        If you already cloned the repository, open the assistant inside the{" "}
+        <code>meet-edward</code> folder instead: Claude Code loads{" "}
+        <code>CLAUDE.md</code> by itself there, so “Help me set up Edward”
+        is enough.
+      </p>
 
-      <h2>What Happens Next</h2>
-      <p>Your AI assistant will:</p>
+      <h2>What to expect</h2>
       <ol>
         <li>
-          Clone the Edward repository to your computer
+          It checks the prerequisites and installs what is missing (it will
+          ask before it does).
         </li>
         <li>
-          Run the setup script, which installs PostgreSQL, Python dependencies,
-          and the frontend
+          It runs <code>./setup.sh</code>, which asks <em>you</em> for your
+          name, your API key and your time zone. Type them into the setup
+          script, not into the chat.
         </li>
         <li>
-          Ask you for your Anthropic API key (or help you create one)
+          It helps you grant only the macOS permissions you need, and starts
+          Edward, usually with{" "}
+          <code>bash scripts/install-launchagents.sh</code> so he stays on.
         </li>
         <li>
-          Start both the backend and frontend services
+          You open <code>http://localhost:3000</code> on the Mac and choose a
+          password. The first visit also asks for a one-time setup code: read
+          it yourself with <code>cat backend/.setup_code</code>.
         </li>
         <li>
-          Verify everything is working
+          It checks the time zone and what works, using the app’s health
+          report and the logs, then walks you through the optional features
+          you want.
         </li>
       </ol>
-      <p>
-        If anything goes wrong, the AI has the debugging commands built into the
-        prompt and can troubleshoot on the spot.
-      </p>
 
-      <h2>After Setup</h2>
-      <ol>
-        <li>
-          Open{" "}
-          <code>
-            <a href="http://localhost:3000">http://localhost:3000</a>
-          </code>{" "}
-          in your browser
-        </li>
-        <li>Set a password on first visit</li>
-        <li>Send a test message to make sure Edward responds</li>
-      </ol>
-      <p>
-        Your Mac needs to stay on for Edward to run. If you restart your Mac,
-        run <code>./restart.sh</code> from the project folder to start Edward
-        again.
-      </p>
-      <p>
-        Want to access Edward from your phone or set it up as a home screen app?
-        See the{" "}
-        <a href="/docs/beginner-guide#accessing-edward-from-your-phone">
-          phone access section
-        </a>{" "}
-        of the Beginner Guide.
-      </p>
+      <div className="note caution">
+        <p>
+          <strong>Keep your secrets out of the chat.</strong> What you paste
+          into an AI assistant is sent to its provider. Your API key belongs
+          in <code>./setup.sh</code> or <code>.env</code>, and your password
+          and setup code in Edward’s own sign-in page.
+        </p>
+      </div>
 
-      <hr />
+      <h2>After setup</h2>
       <p>
-        Once Edward is running, head to the{" "}
-        <a href="/docs/configuration">Configuration</a> guide to customize
-        your setup.
+        In the Edward tab, turn on the skills you want under{" "}
+        <strong>Mind → Skills</strong> (every skill starts off), and check{" "}
+        <strong>House → Locale</strong>. To reach Edward from your phone, see{" "}
+        <Link href="/docs/beginner-guide#using-edward-from-your-phone">
+          Using Edward from your phone
+        </Link>
+        .
+      </p>
+      <p>
+        The same assistant is a good partner for fitting Edward to your own
+        home later: <Link href="/docs/adapting">Adapting to your Mac</Link>{" "}
+        has prompts written for it.
       </p>
     </DocsContent>
   );

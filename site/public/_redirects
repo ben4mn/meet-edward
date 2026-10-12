@@ -1,2 +1,9 @@
 # Redirect www to non-www (301 permanent)
 https://www.meet-edward.com/* https://meet-edward.com/:splat 301
+
+# Docs pages renamed or retired with the October 2026 release
+/docs/heartbeat /docs/listening 301
+/docs/proactive /docs/mind 301
+/docs/widget /docs/surfaces 301
+/docs/file-storage /docs/computer 301
+/docs/orchestrator /docs/upgrading 301

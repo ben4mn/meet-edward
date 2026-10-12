@@ -1,6 +1,6 @@
 "use client";
 
-import { MessageCircle, Cpu, Zap } from "lucide-react";
+import { MessageCircle, Cpu, CalendarCheck } from "lucide-react";
 import { ScrollReveal, StaggerContainer, StaggerItem } from "./ScrollReveal";
 
 const steps = [
@@ -8,19 +8,22 @@ const steps = [
     number: "01",
     icon: MessageCircle,
     title: "You talk",
-    description: "Chat via text or messaging apps. Edward meets you wherever you are.",
+    description:
+      "In the app, by voice, or with @Edward in iMessage. The same Edward, with the same memory, everywhere.",
   },
   {
     number: "02",
     icon: Cpu,
-    title: "Edward thinks",
-    description: "Retrieves memories, searches the web, runs code — whatever the task demands.",
+    title: "Edward works",
+    description:
+      "He recalls what he knows, searches the web, works in his own shell, and shows you every step as he goes.",
   },
   {
     number: "03",
-    icon: Zap,
-    title: "Edward acts",
-    description: "Sends messages, schedules reminders, creates files, and remembers it all for next time.",
+    icon: CalendarCheck,
+    title: "Edward follows through",
+    description:
+      "He answers, files what he learned with where it came from, and comes back when he said he would.",
   },
 ];
 
@@ -34,7 +37,7 @@ export function HowItWorks() {
             How it works
           </p>
           <h2 className="font-mono text-3xl sm:text-4xl font-bold text-[#f1f5f9] tracking-tight">
-            Three steps. Zero friction.
+            Three steps. Nothing hidden.
           </h2>
         </ScrollReveal>
 

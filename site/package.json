@@ -6,6 +6,7 @@
     "dev": "next dev",
     "prebuild": "node scripts/generate-sitemap.mjs && node scripts/generate-feeds.mjs && node scripts/generate-og-images.mjs",
     "build": "next build",
+    "postbuild": "node scripts/generate-llms-full.mjs",
     "start": "next start",
     "lint": "next lint"
   },

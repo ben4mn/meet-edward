@@ -1,50 +1,44 @@
 "use client";
 
-import { Brain, Calendar, MessageSquare, Code2, Workflow, GitBranch, Sparkles } from "lucide-react";
+import { Brain, Terminal, CalendarCheck, Ear, MessageSquare, Shield } from "lucide-react";
 import { ScrollReveal, StaggerContainer, StaggerItem } from "./ScrollReveal";
 
 const features = [
   {
     icon: Brain,
-    title: "Long-term Memory",
+    title: "Memory with provenance",
     description:
-      "Edward remembers your preferences, past conversations, and important details. Every interaction makes him smarter.",
+      "Every memory records who said it, what it is about and how sure he is. Ask how he knows something and he shows you. Only your own words become his standing instructions.",
   },
   {
-    icon: Calendar,
-    title: "Smart Scheduling",
+    icon: Terminal,
+    title: "A computer of his own",
     description:
-      "Set reminders, schedule messages, and automate recurring tasks. Edward handles timing so you don't have to.",
+      "A persistent shell, a file editor and a headless browser, sandboxed on your Mac: he can’t touch his own running code, read his keys or reach your database.",
+  },
+  {
+    icon: CalendarCheck,
+    title: "Follow-through, with a journal",
+    description:
+      "When he says he’ll check back, he schedules it and comes back. Whatever he does on his own gets a journal entry you can mark right or wrong.",
+  },
+  {
+    icon: Ear,
+    title: "Speaks up once, or not at all",
+    description:
+      "Opt-in noticing reads your messages for what matters (a deadline closing, someone waiting on you) and says it once, through one door, outside your quiet hours.",
   },
   {
     icon: MessageSquare,
-    title: "Messaging Integration",
+    title: "@Edward in iMessage",
     description:
-      "Connects to iMessage, SMS, and WhatsApp. Edward can send messages on your behalf or monitor for important conversations.",
+      "Write @Edward in any chat and he answers there, from your own account. Friends can ask too, inside limits; unknown numbers wait for you.",
   },
   {
-    icon: Code2,
-    title: "Code Execution",
+    icon: Shield,
+    title: "Limits you set",
     description:
-      "Run Python, JavaScript, SQL, and shell commands in a sandboxed environment. Edward computes, analyzes, and builds.",
-  },
-  {
-    icon: Workflow,
-    title: "Multi-Agent Orchestration",
-    description:
-      "Spawns parallel worker agents that run autonomously with full tool access. Edward delegates, coordinates, and synthesizes.",
-  },
-  {
-    icon: GitBranch,
-    title: "Self-Evolution",
-    description:
-      "Edward can propose, test, and deploy improvements to his own codebase — with full rollback safety and review.",
-  },
-  {
-    icon: Sparkles,
-    title: "Proactive Intelligence",
-    description:
-      "Morning briefings, meeting prep, open loop tracking, and weekly pattern detection — Edward acts before you ask.",
+      "A daily spend cap in dollars, a cap per turn, a secret scan on everything that leaves, and approvals when you want them.",
   },
 ];
 

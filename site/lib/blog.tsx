@@ -9,10 +9,13 @@ export interface BlogPost {
   readingTime: string;
   tags: string[];
   relatedSlugs?: string[];
+  // A dated note shown above a post whose features have since changed or
+  // gone. The post's own text stays as it was published.
+  editorsNote?: () => ReactNode;
   content: () => ReactNode;
 }
 
-export type BlogPostMeta = Omit<BlogPost, "content">;
+export type BlogPostMeta = Omit<BlogPost, "content" | "editorsNote">;
 
 export const posts: BlogPost[] = [
   {
@@ -117,6 +120,17 @@ export const posts: BlogPost[] = [
     readingTime: "5 min read",
     tags: ["proactive AI", "AI monitoring", "heartbeat system", "AI automation"],
     relatedSlugs: ["why-your-ai-forgets-you", "agents-that-work-while-you-sleep"],
+    editorsNote: () => (
+      <p>
+        <strong>Editor’s note, October 2026:</strong> this post describes the
+        March 2026 release. The three-layer triage and the calendar listener
+        have been replaced: Edward’s listeners (iMessage, Mail and Gmail) now
+        only store what arrives, his mind decides what matters, and speaking
+        up unasked is opt-in and said once. See{" "}
+        <Link href="/docs/listening">Listening &amp; pings</Link> and{" "}
+        <Link href="/docs/mind">The mind</Link>.
+      </p>
+    ),
     content: () => (
       <>
         <p>
@@ -217,6 +231,16 @@ export const posts: BlogPost[] = [
       "Claude Code",
     ],
     relatedSlugs: ["agents-that-work-while-you-sleep", "why-i-built-edward"],
+    editorsNote: () => (
+      <p>
+        <strong>Editor’s note, October 2026:</strong> self-evolution was
+        removed in September 2026, after a stretch in which it merged
+        nothing, and the October release does not include it. Edward keeps a
+        wishlist for his owner instead, and never promises to build what he
+        wishes for. Any successor keeps the gate outside what the builder can
+        change. See <Link href="/docs/upgrading">Upgrading from March</Link>.
+      </p>
+    ),
     content: () => (
       <>
         <p>
@@ -429,6 +453,16 @@ export const posts: BlogPost[] = [
       "autonomous AI",
     ],
     relatedSlugs: ["self-evolving-ai", "the-heartbeat-system"],
+    editorsNote: () => (
+      <p>
+        <strong>Editor’s note, October 2026:</strong> the worker agents
+        described here are dormant in the October release: no tool starts
+        one. Long work is now a background job in Edward’s own shell plus a
+        scheduled wake to check on it, and his promises to come back are
+        kept by follow-through wakes. See <Link href="/docs/mind">The mind</Link>{" "}
+        and <Link href="/docs/computer">His computer</Link>.
+      </p>
+    ),
     content: () => (
       <>
         <p>
@@ -512,6 +546,17 @@ export const posts: BlogPost[] = [
       "self-hosted AI",
     ],
     relatedSlugs: ["why-your-ai-forgets-you", "self-evolving-ai"],
+    editorsNote: () => (
+      <p>
+        <strong>Editor’s note, October 2026:</strong> some of what this post
+        lists has changed. Self-evolution and the code sandboxes are gone, and
+        Edward has a sandboxed shell of his own instead; the tool loop runs up
+        to 60 rounds; and every model call goes to the Claude API, which sees
+        what each call sends, under a daily spend cap. See{" "}
+        <Link href="/docs/upgrading">Upgrading from March</Link> for the full
+        list.
+      </p>
+    ),
     content: () => (
       <>
         <p>

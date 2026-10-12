@@ -1,13 +1,17 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { DocsContent } from "../../../components/docs/DocsContent";
+import { GITHUB_BLOB } from "../../../lib/docsNav";
 
 export const metadata: Metadata = {
-  title: "Memory System — Edward Docs",
-  description: "How Edward remembers — hybrid vector + BM25 retrieval, memory types and confidence tiers, automatic extraction via Claude Haiku, deep retrieval, reflection, and consolidation.",
+  title: "Memory — Edward Docs",
+  description:
+    "How Edward remembers: hybrid vector and keyword search over pgvector, provenance on every memory (who said it, about whom, how sure), extraction after each turn, weekly upkeep that never deletes, contradiction questions, documents and a verified forget.",
   alternates: { canonical: "/docs/memory" },
   openGraph: {
-    title: "Memory System — Edward Docs",
-    description: "How Edward remembers — hybrid retrieval, memory types, automatic extraction, deep retrieval, and consolidation.",
+    title: "Memory — Edward Docs",
+    description:
+      "Hybrid retrieval, provenance on every memory, upkeep that never deletes, and a verified forget.",
     url: "/docs/memory",
   },
 };
@@ -15,237 +19,191 @@ export const metadata: Metadata = {
 export default function MemoryPage() {
   return (
     <DocsContent>
-      <h1>Memory System</h1>
+      <h1>Memory</h1>
       <p className="subtitle">
-        How Edward remembers everything — types, retrieval, extraction, and
-        background enrichment.
+        What he remembers, where he heard it, and who may change it.
       </p>
 
-      <h2>Overview</h2>
+      <h2>The store</h2>
       <p>
-        Edward&apos;s memory system is what makes him different from a stateless
-        chatbot. Every conversation is mined for memorable information — facts,
-        preferences, context, instructions — and stored in PostgreSQL with vector
-        embeddings. On future turns, relevant memories are retrieved and injected
-        into the LLM context so Edward can reference things you told him weeks
-        ago.
+        Every memory is a row in your PostgreSQL database with an embedding
+        from a small local model (<code>all-MiniLM-L6-v2</code>, 384
+        dimensions, run on your Mac). Retrieval blends{" "}
+        <strong>70 % vector similarity</strong> (pgvector) with{" "}
+        <strong>30 % BM25 keyword matching</strong>: the first finds “dog”
+        when you asked about pets, the second finds “Biscuit” when you named
+        her.
       </p>
-
-      <h2>Memory Types</h2>
-      <p>
-        Each memory is classified into one of four types during extraction:
-      </p>
+      <p>A memory has a type:</p>
       <table>
         <thead>
           <tr>
             <th>Type</th>
-            <th>Description</th>
             <th>Example</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <td><code>fact</code></td>
-            <td>Objective information about the user or world</td>
-            <td>&quot;User&apos;s dog is named Luna&quot;</td>
+            <td>“Biscuit is a beagle, born in 2019”</td>
           </tr>
           <tr>
             <td><code>preference</code></td>
-            <td>User likes, dislikes, or style preferences</td>
-            <td>&quot;Prefers dark mode in all apps&quot;</td>
+            <td>“Prefers window seats”</td>
           </tr>
           <tr>
             <td><code>context</code></td>
-            <td>Situational or temporal context</td>
-            <td>&quot;Starting a new job at Acme Corp next Monday&quot;</td>
+            <td>“Is in Springfield until Friday”</td>
           </tr>
           <tr>
             <td><code>instruction</code></td>
-            <td>Explicit directives from the user</td>
-            <td>&quot;Always respond in bullet points&quot;</td>
+            <td>“Don’t reply in the family chat without asking”</td>
+          </tr>
+          <tr>
+            <td><code>intention</code></td>
+            <td>Something Edward decided to do or watch, with a horizon</td>
           </tr>
         </tbody>
       </table>
 
-      <h2>Temporal Nature</h2>
+      <h2>Provenance: where he heard it</h2>
       <p>
-        Memories also carry a temporal nature that affects how they&apos;re
-        weighted over time:
-      </p>
-      <table>
-        <thead>
-          <tr>
-            <th>Temporal</th>
-            <th>Description</th>
-            <th>Behavior</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><code>timeless</code></td>
-            <td>Permanently relevant facts</td>
-            <td>No decay — always full weight</td>
-          </tr>
-          <tr>
-            <td><code>temporary</code></td>
-            <td>Short-lived context</td>
-            <td>Decays over time, eventually irrelevant</td>
-          </tr>
-          <tr>
-            <td><code>evolving</code></td>
-            <td>Facts that may change</td>
-            <td>Boosted when recently updated, decays otherwise</td>
-          </tr>
-        </tbody>
-      </table>
-
-      <h2>Memory Tiers</h2>
-      <p>
-        Each memory is assigned a confidence tier:
-      </p>
-      <table>
-        <thead>
-          <tr>
-            <th>Tier</th>
-            <th>Description</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><code>observation</code></td>
-            <td>Inferred from conversation — may not be explicitly stated</td>
-          </tr>
-          <tr>
-            <td><code>belief</code></td>
-            <td>Reasonably confident based on context</td>
-          </tr>
-          <tr>
-            <td><code>knowledge</code></td>
-            <td>Explicitly stated by the user — high confidence</td>
-          </tr>
-        </tbody>
-      </table>
-
-      <h2>Hybrid Retrieval</h2>
-      <p>
-        When Edward needs to recall memories, he uses a hybrid scoring approach:
+        Every row also records where it came from, so he can tell what you
+        said from what he read or concluded:
       </p>
       <ul>
-        <li><strong>70% vector similarity</strong> — pgvector cosine distance using <code>all-MiniLM-L6-v2</code> embeddings (384 dimensions)</li>
-        <li><strong>30% BM25 keyword matching</strong> — traditional text search for exact term hits</li>
+        <li>
+          <strong>Origin</strong>: <code>heard</code> (you said it),{" "}
+          <code>read</code> (he read it in a message, a page or a screen),{" "}
+          <code>thought</code> (he concluded or decided it) or{" "}
+          <code>did</code> (an action and its outcome).
+        </li>
+        <li>
+          <strong>About</strong>: you, a contact, Edward himself, or the
+          world.
+        </li>
+        <li>
+          <strong>Tier</strong>: observation → belief → knowledge, climbing as
+          it is confirmed. A dated episode (“the flight on 3 June 2026 was
+          late”) stops at belief.
+        </li>
+        <li>
+          <strong>Source</strong>: the conversation, turn, message or page it
+          came from.
+        </li>
       </ul>
       <p>
-        This combination catches both semantically similar memories and ones that
-        share specific keywords. The context budget is capped at 12,000 characters
-        with up to 10 memories per turn.
+        Ask “how do you know that?” and he answers from that record, and only
+        from it. The Memory room shows the same record for every row.
       </p>
 
-      <h2>Memory Extraction</h2>
+      <h2>Only your words are yours</h2>
       <p>
-        After every conversation turn, Edward runs a memory extraction step using
-        Claude Haiku 4.5. The extractor analyzes the conversation and identifies
-        any new memorable information. For each extracted memory, it assigns:
+        A memory counts as something you said only when it came from your own
+        turn: your chat, your voice, the widget, Alexa, your self-chat, or
+        your own words in an <code>@Edward</code> ping. A wake, a scheduled
+        reminder, someone else’s message or the household hub’s voice can’t
+        write a memory as yours. And only you can change or forget what you
+        said: from a turn that isn’t yours, his memory tools refuse to touch
+        it. An instruction you want kept for good can be pinned as confirmed,
+        and nothing retires or rewrites a pin.
       </p>
+      <p>
+        <strong>Standing instructions</strong> are your own instructions
+        about yourself. They ride along in every wake, ahead of everything
+        else.
+      </p>
+
+      <h2>After each turn</h2>
       <ul>
-        <li>Memory type (<code>fact</code>, <code>preference</code>, <code>context</code>, <code>instruction</code>)</li>
-        <li>Importance score (0-10)</li>
-        <li>Temporal nature (<code>timeless</code>, <code>temporary</code>, <code>evolving</code>)</li>
-        <li>Confidence tier (<code>observation</code>, <code>belief</code>, <code>knowledge</code>)</li>
+        <li>
+          <strong>Extraction.</strong> A small model (the{" "}
+          <code>background</code> route, Haiku 5.5) reads the turn and files
+          what is worth keeping with its type, importance, tier and source. A
+          near-duplicate reinforces the existing row instead of adding one.
+        </li>
+        <li>
+          <strong>Use is citation.</strong> A memory counts as used only when
+          the answer actually drew on it, not whenever it was retrieved, so
+          popular rows can’t entrench themselves.
+        </li>
+        <li>
+          <strong>Reflection</strong> looks for related memories in the
+          background and hands them to the next turn.
+        </li>
+        <li>
+          <strong>Search tags</strong> make the conversation findable later.
+        </li>
       </ul>
       <p>
-        Duplicate detection prevents the same information from being stored
-        multiple times. Existing memories are updated rather than duplicated.
+        Before a turn, <strong>deep retrieval</strong> runs a few rewritten
+        queries alongside yours when the message is short or the conversation
+        has run on, and memories linked to the people and places you mention
+        come along too.
       </p>
 
-      <h2>Deep Retrieval</h2>
+      <h2>Horizons</h2>
       <p>
-        For complex conversations, Edward activates deep retrieval — a pre-turn
-        gate that runs when the message is short or the conversation has reached
-        3+ turns. It fires 4 parallel memory queries:
-      </p>
-      <ol>
-        <li>The original user message</li>
-        <li>3 Haiku-rewritten query variations targeting different angles</li>
-      </ol>
-      <p>
-        Results are deduplicated and merged, giving the LLM a richer context
-        window than a single query would provide.
+        Some things are meant to lapse. A one-off preference (“no onions in
+        tonight’s order”) or a temporary instruction gets a 30-day horizon; an
+        intention from a wake gets 72 hours unless a scheduled follow-up holds
+        it. Telling him a taste is lasting takes the horizon off.
       </p>
 
-      <h2>Reflection</h2>
-      <p>
-        After each turn, a fire-and-forget reflection step generates 3-5
-        Haiku-crafted queries to find memories related to the current
-        conversation. The results are stored in the{" "}
-        <code>memory_enrichments</code> table and loaded on the <em>next</em>{" "}
-        turn to provide deeper context. This runs asynchronously and adds zero
-        latency to the current response.
-      </p>
-
-      <h2>Entity-Linked Memories</h2>
-      <p>
-        Edward tracks entities (people, projects, places, organizations, topics)
-        extracted from conversations. When entities are mentioned in a message,
-        their linked memories are automatically merged into the retrieval results.
-        This means mentioning &quot;Sarah&quot; pulls in not just semantically similar
-        memories but also all memories specifically linked to the Sarah entity —
-        even if they wouldn&apos;t match the query text.
-      </p>
-
-      <h2>Implication Service</h2>
-      <p>
-        After memory extraction, a fire-and-forget implication analysis step
-        looks for two things:
-      </p>
+      <h2>Upkeep that never deletes</h2>
       <ul>
-        <li><strong>Open loops</strong> — unresolved items, commitments, and follow-ups
-          (e.g., &quot;I need to call the dentist&quot;). Tracked separately for nudging.</li>
-        <li><strong>Implications</strong> — inferred facts not explicitly stated
-          (e.g., mentioning a client meeting implies an ongoing business relationship).
-          Stored as low-confidence memories.</li>
+        <li>
+          <strong>Weekly decay</strong> (Sunday’s nightly) retires stale rows
+          by stamping an end date. It never deletes, and one command undoes a
+          pass. It never retires anything sensitive (pets, health, family,
+          money, someone in distress, and the names in{" "}
+          <code>EDWARD_SENSITIVE_NAMES</code>), stated timeless facts, or
+          your own instructions.
+        </li>
+        <li>
+          <strong>Hourly consolidation</strong> links related memories and
+          merges true duplicates, never your own words.
+        </li>
+        <li>
+          <strong>Contradictions</strong>: at most five new flags an hour, one
+          per pair. If neither side is your own word, he keeps both. If one
+          is, he asks you, one “Which is right?” at a time, on Today.
+        </li>
       </ul>
 
-      <h2>Consolidation</h2>
+      <h2>Documents</h2>
       <p>
-        An hourly background loop clusters related memories via Haiku. It
-        creates:
-      </p>
-      <ul>
-        <li><strong>Memory connections</strong> — links between related memories</li>
-        <li><strong>Memory flags</strong> — quality and staleness markers</li>
-      </ul>
-      <p>
-        Consolidation is disabled by default and can be enabled via the REST
-        API or settings UI.
+        Beside memories he keeps whole documents: recipes, notes, lists,
+        reference pages, and his own <code>Edward: state</code> page, which
+        he rewrites on Sundays. Documents are searched the same way, and their
+        titles come up in conversation when relevant. Browse them in Memory →
+        Documents.
       </p>
 
-      <h2>Memory Tools</h2>
+      <h2>Forgetting</h2>
       <p>
-        Edward has direct access to memory management tools (always available,
-        not gated by skills):
+        Ask him to forget something and he first shows the plan: the memories
+        that match (whole words, linked entities, close meanings) and what
+        hangs off them. He deletes exactly that plan, checks, and logs only
+        the counts. Only you can ask, in your own conversation, and you can’t
+        forget yourself (that would take the whole store). The Memory room
+        has a “Forget…” sheet that does the same.
       </p>
-      <table>
-        <thead>
-          <tr>
-            <th>Tool</th>
-            <th>Description</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><code>remember_update</code></td>
-            <td>Create or update a memory</td>
-          </tr>
-          <tr>
-            <td><code>remember_forget</code></td>
-            <td>Delete a specific memory</td>
-          </tr>
-          <tr>
-            <td><code>remember_search</code></td>
-            <td>Search memories by query</td>
-          </tr>
-        </tbody>
-      </table>
+
+      <h2>The knowledge graph (optional)</h2>
+      <p>
+        Edward can also keep a graph of people, places and how they relate
+        (Graphiti on Kuzu), filled by its own worker. It is off by default
+        and takes two switches; see{" "}
+        <Link href="/docs/configuration#off-by-default">Configuration</Link>.
+        Each memory costs a few background model calls.
+      </p>
+
+      <hr />
+      <p>
+        The long form, with the reasons behind each rule, is{" "}
+        <a href={`${GITHUB_BLOB}/docs/architecture/memory.md`}>memory.md</a>.
+      </p>
     </DocsContent>
   );
 }

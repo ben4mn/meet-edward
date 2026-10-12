@@ -1,13 +1,17 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { DocsContent } from "../../../components/docs/DocsContent";
+import { GITHUB_BLOB } from "../../../lib/docsNav";
 
 export const metadata: Metadata = {
   title: "Platform Support — Edward Docs",
-  description: "Platform compatibility guide for Edward — what works on all platforms vs. macOS-only features, plus setup differences for Linux and Windows (WSL2).",
+  description:
+    "Edward runs on macOS with Apple silicon only. Why Intel Macs, Linux and Windows are not supported, what needs macOS 14, and where a port would start.",
   alternates: { canonical: "/docs/platform-support" },
   openGraph: {
     title: "Platform Support — Edward Docs",
-    description: "Platform compatibility guide — what works everywhere vs. macOS-only, plus Linux and Windows (WSL2) setup.",
+    description:
+      "macOS on Apple silicon only: why, what needs macOS 14, and where a port would start.",
     url: "/docs/platform-support",
   },
 };
@@ -15,279 +19,140 @@ export const metadata: Metadata = {
 export default function PlatformSupportPage() {
   return (
     <DocsContent>
-      <h1>Platform Support</h1>
-      <p className="subtitle">
-        Edward is built for macOS, but most of the stack runs on any platform.
-      </p>
+      <h1>Platform support</h1>
+      <p className="subtitle">macOS on Apple silicon, and nothing else, for now.</p>
 
-      <h2>What Works Everywhere</h2>
-      <p>
-        The core assistant — and the majority of Edward&apos;s capabilities —
-        is fully cross-platform. If you can run Python, Node.js, and PostgreSQL,
-        you can run Edward.
-      </p>
-      <table>
-        <thead>
-          <tr>
-            <th>Feature</th>
-            <th>macOS</th>
-            <th>Linux</th>
-            <th>Windows (WSL)</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>Core chat + LangGraph agent</td>
-            <td>✓</td>
-            <td>✓</td>
-            <td>✓</td>
-          </tr>
-          <tr>
-            <td>Long-term memory (pgvector)</td>
-            <td>✓</td>
-            <td>✓</td>
-            <td>✓</td>
-          </tr>
-          <tr>
-            <td>Document store</td>
-            <td>✓</td>
-            <td>✓</td>
-            <td>✓</td>
-          </tr>
-          <tr>
-            <td>Scheduled events / scheduler</td>
-            <td>✓</td>
-            <td>✓</td>
-            <td>✓</td>
-          </tr>
-          <tr>
-            <td>Code execution (Python, JS, SQL, Shell)</td>
-            <td>✓</td>
-            <td>✓</td>
-            <td>✓</td>
-          </tr>
-          <tr>
-            <td>Twilio SMS &amp; WhatsApp</td>
-            <td>✓</td>
-            <td>✓</td>
-            <td>✓</td>
-          </tr>
-          <tr>
-            <td>WhatsApp MCP</td>
-            <td>✓</td>
-            <td>✓</td>
-            <td>✓</td>
-          </tr>
-          <tr>
-            <td>Brave Search</td>
-            <td>✓</td>
-            <td>✓</td>
-            <td>✓</td>
-          </tr>
-          <tr>
-            <td>HTML Hosting</td>
-            <td>✓</td>
-            <td>✓</td>
-            <td>✓</td>
-          </tr>
-          <tr>
-            <td>File storage</td>
-            <td>✓</td>
-            <td>✓</td>
-            <td>✓</td>
-          </tr>
-          <tr>
-            <td>Persistent databases</td>
-            <td>✓</td>
-            <td>✓</td>
-            <td>✓</td>
-          </tr>
-          <tr>
-            <td>Push notifications</td>
-            <td>✓</td>
-            <td>✓</td>
-            <td>✓</td>
-          </tr>
-          <tr>
-            <td>Orchestrator (worker agents)</td>
-            <td>✓</td>
-            <td>✓</td>
-            <td>✓</td>
-          </tr>
-          <tr>
-            <td>Evolution (self-coding)</td>
-            <td>✓</td>
-            <td>✓</td>
-            <td>✓</td>
-          </tr>
-          <tr>
-            <td>Widget</td>
-            <td>✓</td>
-            <td>✓</td>
-            <td>✓</td>
-          </tr>
-          <tr>
-            <td>Custom MCP servers</td>
-            <td>✓</td>
-            <td>✓</td>
-            <td>✓</td>
-          </tr>
-        </tbody>
-      </table>
-
-      <h2>What You Lose on Windows / Linux</h2>
-      <p>
-        These features depend on macOS-specific APIs (AppleScript, system
-        databases, native apps) and have no cross-platform equivalent.
-      </p>
-      <table>
-        <thead>
-          <tr>
-            <th>Feature</th>
-            <th>Why macOS-only</th>
-            <th>Impact</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>iMessage</td>
-            <td>AppleScript + Messages.app chat.db</td>
-            <td>No iMessage send/receive</td>
-          </tr>
-          <tr>
-            <td>Apple Services</td>
-            <td>apple-mcp requires macOS apps</td>
-            <td>No Calendar, Reminders, Notes, Mail, Contacts, or Maps integration</td>
-          </tr>
-          <tr>
-            <td>Contacts lookup</td>
-            <td>AppleScript to Contacts.app</td>
-            <td>No local contact search</td>
-          </tr>
-          <tr>
-            <td>Heartbeat (iMessage)</td>
-            <td>Reads ~/Library/Messages/chat.db</td>
-            <td>No iMessage monitoring</td>
-          </tr>
-          <tr>
-            <td>Heartbeat (Email)</td>
-            <td>Reads Mail.app via MCP</td>
-            <td>No email monitoring</td>
-          </tr>
-          <tr>
-            <td>Heartbeat (Calendar)</td>
-            <td>Uses Apple Services MCP</td>
-            <td>No calendar monitoring</td>
-          </tr>
-        </tbody>
-      </table>
-
-      <h2>Setup Differences</h2>
-
-      <h3>PostgreSQL</h3>
-      <p>
-        On macOS, <code>setup.sh</code> installs PostgreSQL via Homebrew. On
-        other platforms:
-      </p>
-      <ul>
-        <li><strong>Linux (Debian/Ubuntu):</strong> <code>sudo apt install postgresql postgresql-contrib</code></li>
-        <li><strong>Linux (Fedora/RHEL):</strong> <code>sudo dnf install postgresql-server postgresql-contrib</code></li>
-        <li><strong>Windows:</strong> Install via <a href="https://www.postgresql.org/download/windows/" target="_blank" rel="noopener noreferrer">postgresql.org</a> or <code>winget install PostgreSQL.PostgreSQL</code></li>
-      </ul>
-      <p>
-        You&apos;ll also need the <strong>pgvector</strong> extension. On most Linux
-        distros: <code>sudo apt install postgresql-16-pgvector</code> (adjust
-        version as needed). On Windows, follow the{" "}
-        <a href="https://github.com/pgvector/pgvector" target="_blank" rel="noopener noreferrer">pgvector install guide</a>.
-      </p>
-
-      <h3>Python &amp; Node.js</h3>
-      <ul>
-        <li><strong>Python 3.11+:</strong> Install via <code>apt</code>, <code>pyenv</code>, or the <a href="https://www.python.org/downloads/" target="_blank" rel="noopener noreferrer">Python installer</a></li>
-        <li><strong>Node.js 18+:</strong> Install via <code>nvm</code>, <code>fnm</code>, or the <a href="https://nodejs.org" target="_blank" rel="noopener noreferrer">Node.js installer</a></li>
-      </ul>
-
-      <h3>Setup Scripts</h3>
-      <p>
-        The <code>setup.sh</code> and <code>restart.sh</code> scripts use
-        Homebrew and assume macOS. On other platforms:
-      </p>
-      <ul>
-        <li><strong>Linux:</strong> The bash scripts run natively — you just need to install PostgreSQL, Python, and Node.js manually first, then run <code>./setup.sh</code> (it will skip Homebrew steps gracefully)</li>
-        <li><strong>Windows:</strong> Use WSL2 (recommended) to get a Linux environment, or run the setup steps manually in PowerShell</li>
-      </ul>
-
-      <h2>Alternative Messaging via MCP</h2>
-      <p>
-        Edward&apos;s{" "}
-        <a href="/docs/skills">Custom MCP system</a> lets you add messaging
-        integrations at runtime — no code changes needed. Edward can discover
-        and install MCP servers himself via the <code>search_mcp_servers</code>{" "}
-        tool, or you can add them from the Settings page.
-      </p>
-      <p>Available messaging MCP servers include:</p>
       <table>
         <thead>
           <tr>
             <th>Platform</th>
-            <th>Description</th>
+            <th>Supported</th>
+            <th>What happens</th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <td><strong>Discord</strong></td>
-            <td>MCP servers for Discord bot integration</td>
+            <td>macOS 14 or later, Apple silicon</td>
+            <td>Yes</td>
+            <td>Everything works.</td>
           </tr>
           <tr>
-            <td><strong>Telegram</strong></td>
-            <td>MCP servers for the Telegram Bot API</td>
+            <td>An older macOS, Apple silicon</td>
+            <td>Without calendar changes</td>
+            <td>
+              The EventKit helper needs macOS 14, so <code>setup.sh</code>{" "}
+              warns and Edward runs without it: he can read Calendar and
+              Reminders but not change them.
+            </td>
           </tr>
           <tr>
-            <td><strong>Signal</strong></td>
-            <td>MCP servers for Signal messaging</td>
+            <td>Intel Macs, or a Rosetta (x86_64) shell</td>
+            <td>No</td>
+            <td><code>setup.sh</code> stops before installing anything.</td>
           </tr>
           <tr>
-            <td><strong>Slack</strong></td>
-            <td>MCP servers for Slack workspaces</td>
+            <td>Linux, Windows (WSL)</td>
+            <td>No</td>
+            <td><code>setup.sh</code> stops on anything but macOS.</td>
+          </tr>
+          <tr>
+            <td>Docker</td>
+            <td>No</td>
+            <td>The backend runs natively on macOS, never in a container.</td>
           </tr>
         </tbody>
       </table>
+
+      <div className="note">
+        <p>
+          The March 2026 release described Linux and WSL as mostly working.
+          This release does not: Edward’s own computer, his listeners and his
+          follow-through all lean on macOS now.
+        </p>
+      </div>
+
+      <h2>Why Apple silicon</h2>
       <p>
-        Just ask Edward to &quot;search for a Discord MCP server&quot; in chat,
-        or browse the{" "}
-        <strong>Edward&apos;s Servers</strong> panel in Settings to add one
-        manually.
+        Edward’s memory search uses a small local embedding model through
+        sentence-transformers, which pulls in PyTorch. The pinned PyTorch (in{" "}
+        <code>backend/constraints.txt</code>) publishes no x86_64 macOS wheel,
+        so <code>setup.sh</code> stops on an Intel Mac, in a Rosetta shell, or
+        with an x86_64 Python. That pin, not the Swift helpers, is what an
+        Intel port would have to change.
       </p>
 
-      <h2>Running in Docker</h2>
-      <p>
-        On Linux, the backend <em>can</em> run in Docker since you don&apos;t
-        have Apple features to lose. The frontend runs fine in Docker on any
-        platform. This is useful for server deployments or containerized
-        environments.
-      </p>
+      <h2>Why macOS</h2>
+      <ul>
+        <li>
+          <strong>His shell is sandboxed by Seatbelt</strong> (
+          <code>sandbox-exec</code>). Without it the <code>bash</code> tool
+          fails closed rather than running unsandboxed.
+        </li>
+        <li>
+          <strong>He reads Apple’s own databases</strong>: Messages’{" "}
+          <code>chat.db</code>, Mail’s Envelope Index, the Calendar and
+          Reminders stores, Contacts. He sends iMessages through AppleScript
+          and changes your calendar through EventKit.
+        </li>
+        <li>
+          <strong>launchd keeps him running</strong>, and the macOS privacy
+          grants (Full Disk Access, Automation, Calendars) decide what he may
+          read.
+        </li>
+        <li>
+          <strong>His media handling uses macOS tools</strong> (
+          <code>sips</code>, <code>afconvert</code>, <code>avconvert</code>)
+          and a Swift helper, not ffmpeg.
+        </li>
+      </ul>
 
-      <h2>Windows: WSL2 Recommended</h2>
+      <h2>What a port would take</h2>
       <p>
-        For Windows users, <strong>WSL2</strong> is the recommended approach. It
-        gives you a full Linux environment where everything except Apple
-        features works natively — PostgreSQL, Python, Node.js, and all bash
-        scripts run without modification.
+        A port is a project, not a setting. The macOS seams are marked{" "}
+        <code>ADAPT:</code> in the code and collected in{" "}
+        <Link href="/docs/adapting">Adapting to your Mac</Link>, which has
+        prompts for an AI assistant for the two pieces a Linux port would
+        start with:
       </p>
       <ol>
-        <li>Install WSL2: <code>wsl --install</code></li>
-        <li>Install Ubuntu (default) or your preferred distro</li>
-        <li>Follow the Linux setup steps inside WSL</li>
-        <li>Access Edward at <code>localhost:3000</code> from your Windows browser</li>
+        <li>
+          <strong>A sandbox for the <code>bash</code> tool first</strong>{" "}
+          (bubblewrap or firejail), rendered from the same rails table as the
+          macOS profile and failing closed in the same way.
+        </li>
+        <li>
+          <strong>systemd units</strong> in place of the LaunchAgents, with
+          the same options as <code>scripts/install-launchagents.sh</code>.
+        </li>
       </ol>
-
-      <hr />
       <p>
-        For full setup instructions, see the{" "}
-        <a href="/docs/getting-started">Getting Started</a> guide. For
-        integration details, see{" "}
-        <a href="/docs/skills">Skills &amp; Integrations</a>.
+        Everything that reads an Apple app (iMessage, Mail, Calendar,
+        Reminders, Contacts, the screen) already degrades with an honest
+        error when it can’t, so a port could leave those off.
       </p>
+
+      <h2>Where the other pieces run</h2>
+      <ul>
+        <li>
+          <strong>Your phone</strong>: the app is a PWA, so any modern phone
+          browser works, over HTTPS (see{" "}
+          <Link href="/docs/getting-started">Quick start</Link>).
+        </li>
+        <li>
+          <strong>The household hub</strong>: any browser in kiosk mode on{" "}
+          <code>/hub</code>; the reference install used a Raspberry Pi with a
+          7&Prime; touchscreen (
+          <a href={`${GITHUB_BLOB}/docs/pi-hub-setup.md`}>pi-hub-setup.md</a>
+          ).
+        </li>
+        <li>
+          <strong>The iPhone widget</strong>: the Scriptable app.
+        </li>
+        <li>
+          <strong>Hands in your browser</strong>: Google Chrome with the
+          unpacked Edward extension, on the same Mac.
+        </li>
+      </ul>
     </DocsContent>
   );
 }

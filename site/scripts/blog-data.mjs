@@ -49,10 +49,12 @@ export const BLOG_POSTS = [
   },
 ];
 
+// Keep in sync with site/lib/docsNav.ts (the sidebar's list).
 export const DOC_PAGES = [
   'introduction', 'beginner-guide', 'setup-with-ai', 'getting-started',
-  'configuration', 'platform-support', 'architecture', 'skills',
-  'memory', 'heartbeat', 'widget', 'file-storage', 'orchestrator', 'proactive',
+  'configuration', 'platform-support', 'upgrading',
+  'app', 'memory', 'mind', 'listening', 'computer', 'surfaces',
+  'guard-rails', 'skills', 'adapting', 'architecture',
 ];
 
 export function getPublishedPosts() {

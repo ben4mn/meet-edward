@@ -30,7 +30,7 @@ const rss = `<?xml version="1.0" encoding="UTF-8"?>
   <channel>
     <title>Edward Blog</title>
     <link>${SITE_URL}/blog</link>
-    <description>Articles about building a self-hosted AI assistant with long-term memory, self-evolution, and proactive monitoring.</description>
+    <description>Notes on building Edward, an open-source AI assistant that remembers, follows through and runs on your Mac.</description>
     <language>en-us</language>
     <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
     <atom:link href="${SITE_URL}/feed.xml" rel="self" type="application/rss+xml"/>
@@ -45,7 +45,7 @@ const jsonFeed = {
   title: 'Edward Blog',
   home_page_url: `${SITE_URL}/blog`,
   feed_url: `${SITE_URL}/feed.json`,
-  description: 'Articles about building a self-hosted AI assistant with long-term memory, self-evolution, and proactive monitoring.',
+  description: 'Notes on building Edward, an open-source AI assistant that remembers, follows through and runs on your Mac.',
   authors: [{ name: 'Ben Foreman', url: SITE_URL }],
   items: published.map(post => ({
     id: `${SITE_URL}/blog/${post.slug}`,

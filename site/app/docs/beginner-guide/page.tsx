@@ -1,13 +1,17 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { DocsContent } from "../../../components/docs/DocsContent";
+import { GITHUB_BLOB } from "../../../lib/docsNav";
 
 export const metadata: Metadata = {
   title: "Beginner Guide — Edward Docs",
-  description: "Step-by-step walkthrough to install and run Edward from scratch — no coding experience required. Covers Terminal basics, Homebrew, Python, Node.js, and first launch.",
+  description:
+    "Install Edward on your Mac step by step, with no coding experience: Terminal, Homebrew, an Anthropic API key, the setup script, your password and first conversation.",
   alternates: { canonical: "/docs/beginner-guide" },
   openGraph: {
     title: "Beginner Guide — Edward Docs",
-    description: "Step-by-step walkthrough to install and run Edward from scratch — no coding experience required.",
+    description:
+      "Install Edward on your Mac step by step, with no coding experience required.",
     url: "/docs/beginner-guide",
   },
 };
@@ -15,345 +19,320 @@ export const metadata: Metadata = {
 export default function BeginnerGuidePage() {
   return (
     <DocsContent>
-      <h1>Beginner Guide</h1>
+      <h1>Beginner guide</h1>
       <p className="subtitle">
-        A complete walkthrough from zero to a running Edward — no experience
-        required.
+        From a Mac to a running Edward, one step at a time. No experience
+        needed.
       </p>
 
-      <h2>What You Will Need</h2>
+      <h2>What you will need</h2>
       <ul>
         <li>
-          <strong>A Mac</strong> — Edward relies on macOS for iMessage, Apple
-          Calendar, and other integrations. Windows and Linux are not supported.
+          <strong>A Mac with Apple silicon</strong> (an M1 or later) that can
+          stay on and stay logged in. Edward runs on this Mac, so when it
+          sleeps, he does too. A Mac mini makes a good always-on host. Intel
+          Macs are not supported.
         </li>
         <li>
-          <strong>An internet connection</strong> — to download software and
-          talk to the Claude AI API.
+          <strong>An Anthropic API key</strong>, which is how Edward talks to
+          Claude. You pay Anthropic for what he uses, and Edward stops himself
+          at a daily cap ($5 by default; you can change it).
         </li>
         <li>
-          <strong>About 20 minutes</strong> — most of that is waiting for things
-          to install.
-        </li>
-        <li>
-          <strong>An Anthropic API key</strong> — this is how Edward connects to
-          Claude. We&apos;ll walk you through getting one in Step 6. It costs a
-          few cents per conversation (typically under $0.10/day for casual use).
+          <strong>About 30 minutes</strong>, most of it waiting for things to
+          download and install.
         </li>
       </ul>
 
       <h2>Step 1: Open Terminal</h2>
       <p>
-        Terminal is a built-in app on your Mac that lets you type commands. You
-        don&apos;t need to know how it works in detail — just type (or paste)
-        exactly what this guide shows you.
+        Terminal is the Mac app for typing commands. You don’t need to know
+        how it works: paste exactly what this guide shows and press Return.
       </p>
-      <p>To open it:</p>
       <ol>
         <li>
-          Press <code>Cmd + Space</code> to open Spotlight search
+          Press <code>Cmd + Space</code> to open Spotlight
         </li>
         <li>
-          Type <strong>Terminal</strong> and press Enter
+          Type <strong>Terminal</strong> and press Return
         </li>
       </ol>
+
+      <h2>Step 2: Install Apple’s command-line tools</h2>
+      <pre>
+        <code>xcode-select --install</code>
+      </pre>
       <p>
-        A window with a blinking cursor will appear. This is where you&apos;ll
-        paste commands for the rest of this guide.
+        A window asks to install the tools. Click <strong>Install</strong>{" "}
+        and wait for it to finish. If Terminal says they are already
+        installed, move on.
       </p>
 
-      <h2>Step 2: Install Homebrew</h2>
+      <h2>Step 3: Install Homebrew</h2>
       <p>
-        Homebrew is a package manager for macOS — it makes installing developer
-        tools easy. Paste this command into Terminal and press Enter:
+        Homebrew installs the software Edward is built on (Python, PostgreSQL
+        and Node). Paste this and press Return:
       </p>
       <pre>
         <code>{`/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"`}</code>
       </pre>
       <p>
-        It will ask for your Mac password (the one you use to log in). When you
-        type it, nothing will appear on screen — that&apos;s normal. Just type
-        it and press Enter.
+        It asks for your Mac password. Nothing appears while you type it;
+        that is normal. When it finishes, it prints <strong>Next steps</strong>{" "}
+        with two or three commands that add Homebrew to your path: paste
+        those too. Then check:
       </p>
-      <p>
-        This can take 5–10 minutes. When it finishes, it may show instructions
-        to add Homebrew to your PATH. If so, copy and paste those commands too.
-      </p>
-      <p>Verify it worked:</p>
       <pre>
         <code>brew --version</code>
       </pre>
-      <p>
-        You should see something like <code>Homebrew 4.x.x</code>.
-      </p>
 
-      <h2>Step 3: Install Git, Node.js, and Python</h2>
-      <p>Edward needs these three tools. Install them all at once:</p>
-      <pre>
-        <code>brew install git node python@3.11</code>
-      </pre>
-      <p>This takes a few minutes. When it finishes, verify each one:</p>
-      <pre>
-        <code>{`git --version      # Should show git version 2.x+
-node --version     # Should show v18+ or v20+
-python3 --version  # Should show Python 3.11+`}</code>
-      </pre>
+      <h2>Step 4: Get an Anthropic API key</h2>
+      <ol>
+        <li>
+          Go to{" "}
+          <a href="https://console.anthropic.com/">console.anthropic.com</a>{" "}
+          and sign in or create an account
+        </li>
+        <li>Add a payment method or credits under Billing</li>
+        <li>
+          Open <strong>API Keys</strong> and click <strong>Create Key</strong>
+        </li>
+        <li>
+          Copy the key (it starts with <code>sk-ant-</code>). The setup script
+          asks for it in the next steps. Treat it like a password: don’t paste
+          it into a chat or an email.
+        </li>
+      </ol>
 
-      <h2>Step 4: Get the Edward Code</h2>
-      <p>
-        &quot;Cloning&quot; a repository means downloading a copy of the code to
-        your computer. Run these commands to clone Edward to your Desktop:
-      </p>
+      <h2>Step 5: Get the Edward code</h2>
       <pre>
-        <code>{`cd ~/Desktop
+        <code>{`cd ~
 git clone https://github.com/ben4mn/meet-edward.git
 cd meet-edward`}</code>
       </pre>
       <p>
-        You should now have a <code>meet-edward</code> folder on your Desktop.
+        This puts Edward in a <code>meet-edward</code> folder in your home
+        folder. Keep it there rather than on the Desktop or in Documents,
+        which macOS guards from background programs like Edward’s services.
       </p>
 
-      <h2>Step 5: Run the Setup Script</h2>
-      <p>
-        Edward comes with a setup script that installs everything it needs —
-        PostgreSQL (the database), Python packages, and frontend dependencies.
-      </p>
+      <h2>Step 6: Run the setup script</h2>
       <pre>
         <code>./setup.sh</code>
       </pre>
+      <p>It asks three things:</p>
+      <ul>
+        <li>
+          <strong>Your name</strong>, which Edward calls you by
+        </li>
+        <li>
+          <strong>Your Anthropic API key</strong> from step 4
+        </li>
+        <li>
+          <strong>Your time zone</strong>, which reminders, quiet hours and
+          “today” follow
+        </li>
+      </ul>
       <p>
-        This will take a few minutes. You&apos;ll see a lot of output scrolling
-        by — that&apos;s normal. Wait until you see a message indicating setup
-        is complete.
+        Then it installs Python 3.12, PostgreSQL 16 and Node, builds the
+        memory search extension, creates Edward’s database, downloads his
+        Python and web packages and his headless browser, and builds two small
+        helpers. It takes a while, and a lot of text scrolls past. It is safe
+        to run again if anything stops it.
       </p>
       <p>
-        <strong>If you see &quot;Permission denied&quot;:</strong>
+        At the end it prints the path of a <code>python3.12</code>. Copy it
+        somewhere: you need it if you want Edward to read your messages or
+        calendar (step 10).
+      </p>
+
+      <h2>Step 7: Start Edward</h2>
+      <pre>
+        <code>bash scripts/install-launchagents.sh</code>
+      </pre>
+      <p>
+        This keeps Edward running: macOS starts him now and every time you log
+        in, and restarts him if he stops. It also sets up a health check every
+        five minutes and a nightly backup to <code>~/edward-backups</code>.
+      </p>
+      <p>
+        The first start takes a few minutes: the backend downloads its small
+        memory model and the app builds itself. To watch it, run{" "}
+        <code>tail -f /tmp/edward-backend.log</code> (press{" "}
+        <code>Ctrl + C</code> to stop watching).
+      </p>
+
+      <h2>Step 8: Choose your password</h2>
+      <p>
+        On the Mac that runs Edward, open your browser and go to{" "}
+        <code>http://localhost:3000</code>. The first visit asks for a
+        password and a <strong>one-time setup code</strong>. Get the code in
+        Terminal:
       </p>
       <pre>
-        <code>{`chmod +x setup.sh
-./setup.sh`}</code>
+        <code>cat backend/.setup_code</code>
       </pre>
-
-      <h2>Step 6: Get an Anthropic API Key</h2>
       <p>
-        Edward uses Claude (made by Anthropic) as his brain. You need an API key
-        to connect them.
+        Type it in (capitals and dashes don’t matter) and choose your
+        password. The code is deleted once the password is set. It exists so
+        nobody else on your network can claim your Edward first, which is also
+        why the first password can only be set on this Mac.
+      </p>
+
+      <h2>Step 9: Turn on what he may use</h2>
+      <p>
+        On a fresh install Edward can use none of his skills until you turn
+        them on. Open the <strong>Edward</strong> tab, then:
       </p>
       <ol>
         <li>
-          Go to{" "}
-          <a
-            href="https://console.anthropic.com"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            console.anthropic.com
-          </a>
-        </li>
-        <li>Create an account or sign in</li>
-        <li>
-          Go to <strong>API Keys</strong> in the left sidebar
+          <strong>Mind → Skills</strong>: turn on what you want him to have.
+          Shell/Bash is his own computer (a shell and a file editor), Web
+          Search lets him search and read pages, iMessage lets him read and
+          send messages, Push Notifications lets him reach your phone, and
+          iOS Widget lets him fill the iPhone widget.
         </li>
         <li>
-          Click <strong>Create Key</strong>
-        </li>
-        <li>
-          Copy the key — it starts with <code>sk-ant-</code>
+          <strong>House → Locale</strong>: check the time zone.
         </li>
       </ol>
       <p>
-        You&apos;ll need to add a payment method. Typical personal usage costs a
-        few cents per conversation — well under $5/month for most people.
+        Then go to <strong>Chat</strong> and say hello. If he answers, Edward
+        is running.
       </p>
 
-      <h2>Step 7: Add Your API Key</h2>
+      <h2>Step 10 (optional): Let him read your Mac’s apps</h2>
       <p>
-        Edward stores its settings in a file called <code>.env</code> (short for
-        &quot;environment&quot;). Open it in TextEdit:
+        Edward reads Messages, Mail, Calendar, Reminders and Contacts from
+        their own databases, which macOS protects. Grant access only for what
+        you will use:
       </p>
-      <pre>
-        <code>open -e backend/.env</code>
-      </pre>
-      <p>
-        Find the line that says <code>ANTHROPIC_API_KEY=</code> and paste your
-        key after the equals sign:
-      </p>
-      <pre>
-        <code>ANTHROPIC_API_KEY=sk-ant-your-key-here</code>
-      </pre>
-      <p>Save the file (Cmd + S) and close TextEdit.</p>
-
-      <h2>Step 8: Start Edward</h2>
-      <p>Back in Terminal, make sure you&apos;re in the meet-edward folder, then run:</p>
-      <pre>
-        <code>./restart.sh</code>
-      </pre>
-      <p>
-        You should see output indicating both the backend and frontend are
-        starting. Wait about 10 seconds for everything to initialize.
-      </p>
-
-      <h2>Step 9: Open in Browser</h2>
-      <p>
-        Open your web browser (Safari, Chrome, etc.) and go to:
-      </p>
-      <pre>
-        <code>http://localhost:3000</code>
-      </pre>
-      <p>
-        <code>localhost</code> means &quot;this computer&quot; — Edward is
-        running right here on your Mac, not on someone else&apos;s server.
-      </p>
-      <ol>
+      <ul>
         <li>
-          You&apos;ll be asked to <strong>set a password</strong> — this
-          protects your Edward instance
+          <strong>Full Disk Access</strong>: System Settings → Privacy &amp;
+          Security → Full Disk Access → <strong>+</strong>, press{" "}
+          <code>Cmd + Shift + G</code>, paste the python path from step 6, and
+          turn it on.
         </li>
         <li>
-          After logging in, type a message like{" "}
-          <strong>&quot;Hi, who are you?&quot;</strong>
+          <strong>Calendars and Reminders</strong> (so he can add and change
+          events when you ask): sitting at the Mac, run{" "}
+          <code>bash backend/scripts/eventkit_request_access.sh</code> and
+          click Allow.
         </li>
         <li>
-          Edward should respond. If he does, you&apos;re all set!
+          <strong>Automation</strong>: macOS asks the first time Edward sends
+          a message. Answer it at the Mac.
         </li>
-      </ol>
+      </ul>
+      <p>
+        Reading your messages is still off until you turn on{" "}
+        <strong>Attention → Listening → Configuration → Messages</strong> in the
+        Edward tab.
+        Read <Link href="/docs/listening">Listening &amp; pings</Link> first:
+        with it on, anyone can write <code>@Edward</code> in a chat with you
+        and he answers from your own iMessage account.
+      </p>
 
       <hr />
 
-      <h2>Why Does My Mac Need to Stay On?</h2>
+      <h2>Keeping the Mac awake</h2>
       <p>
-        Edward runs on your Mac. When your Mac sleeps or shuts down, Edward
-        stops too. This is normal — he&apos;ll pick up right where he left off
-        when you restart.
+        Edward runs as your user, so the Mac must be on and you must be logged
+        in. In System Settings → Energy, turn on “Prevent automatic sleeping
+        when the display is off” (on a laptop, keep it plugged in). After a
+        restart, log in and Edward starts by himself.
       </p>
-      <p>To start Edward again after a reboot:</p>
-      <pre>
-        <code>{`cd ~/Desktop/meet-edward
-./restart.sh`}</code>
-      </pre>
 
-      <h2>Accessing Edward from Your Phone</h2>
+      <h2 id="using-edward-from-your-phone">Using Edward from your phone</h2>
       <p>
-        If your phone is on the same Wi-Fi network as your Mac, you can access
-        Edward from your phone&apos;s browser.
+        Installing the app on your phone, push notifications and the
+        microphone all need an <code>https://</code> address. The usual way is
+        a tunnel to port 3000 on your Mac:
       </p>
-      <p>First, find your Mac&apos;s local IP address:</p>
-      <pre>
-        <code>ipconfig getifaddr en0</code>
-      </pre>
-      <p>
-        This will print something like <code>192.168.1.42</code>. On your
-        phone, open a browser and go to:
-      </p>
-      <pre>
-        <code>http://192.168.1.42:3000</code>
-      </pre>
-      <p>(Use the actual number your Mac showed, not the example above.)</p>
-
-      <h2>Save as Home Screen App (PWA)</h2>
-      <p>
-        Edward works as a Progressive Web App — you can save it to your
-        phone&apos;s home screen for an app-like experience.
-      </p>
-      <h3>iPhone (Safari)</h3>
-      <ol>
-        <li>Open Edward in Safari</li>
+      <ul>
         <li>
-          Tap the <strong>Share</strong> button (square with arrow)
+          <a href="https://tailscale.com/">Tailscale</a> keeps Edward private
+          to your own devices.
         </li>
         <li>
-          Scroll down and tap <strong>Add to Home Screen</strong>
+          <a href="https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/">
+            Cloudflare Tunnel
+          </a>{" "}
+          gives him a public address. To try it:{" "}
+          <code>brew install cloudflared</code>, then{" "}
+          <code>cloudflared tunnel --url http://localhost:3000</code>, which
+          prints a temporary <code>https://…trycloudflare.com</code> address.
+          For a lasting one, set up a named tunnel and run it as a LaunchAgent.
         </li>
-      </ol>
-      <h3>Android (Chrome)</h3>
-      <ol>
-        <li>Open Edward in Chrome</li>
-        <li>
-          Tap the <strong>three-dot menu</strong> (top right)
-        </li>
-        <li>
-          Tap <strong>Add to Home screen</strong>
-        </li>
-      </ol>
-
-      <h2>Accessing Edward from Anywhere</h2>
+      </ul>
       <p>
-        By default, Edward is only accessible on your local network. To access
-        him from anywhere (outside your home), you can use a tunnel service.
+        Then tell Edward where he lives: add{" "}
+        <code>EDWARD_PUBLIC_BASE_URL=https://your-address</code> to the{" "}
+        <code>.env</code> file in the <code>meet-edward</code> folder (links in
+        his pushes use it), and the tunnel’s LaunchAgent label as{" "}
+        <code>EDWARD_TUNNEL_LABEL</code> so the health check watches it. Run{" "}
+        <code>./restart.sh</code> to apply.
       </p>
-      <h3>Cloudflare Tunnel (recommended, free)</h3>
-      <pre>
-        <code>{`brew install cloudflared
-cloudflared tunnel --url http://localhost:3000`}</code>
-      </pre>
       <p>
-        This gives you a public URL like{" "}
-        <code>https://random-name.trycloudflare.com</code> that works from
-        anywhere. The tunnel runs as long as your Terminal window is open.
-      </p>
-      <h3>ngrok (alternative)</h3>
-      <pre>
-        <code>{`brew install ngrok
-ngrok http 3000`}</code>
-      </pre>
-
-      <h2>Common Issues</h2>
-
-      <h3>&quot;brew: command not found&quot;</h3>
-      <p>
-        Homebrew wasn&apos;t added to your PATH. Close Terminal, open a new one,
-        and try again. If it still doesn&apos;t work, re-run the Homebrew
-        install command from Step 2.
+        Open the address on your phone and sign in. On iPhone, tap Share →{" "}
+        <strong>Add to Home Screen</strong>; on Android, the ⋮ menu →{" "}
+        <strong>Add to Home screen</strong>.
       </p>
 
-      <h3>&quot;Permission denied&quot;</h3>
-      <p>The script needs to be marked as executable:</p>
-      <pre>
-        <code>{`chmod +x setup.sh restart.sh
-./setup.sh`}</code>
-      </pre>
+      <h2>Common problems</h2>
 
-      <h3>Port already in use</h3>
+      <h3>“brew: command not found”</h3>
       <p>
-        Something else is using port 3000 or 8000. Find and stop it:
-      </p>
-      <pre>
-        <code>{`lsof -i :3000
-lsof -i :8000`}</code>
-      </pre>
-      <p>
-        The output will show a PID number. Stop the process with{" "}
-        <code>kill &lt;PID&gt;</code>.
+        The Homebrew installer’s “Next steps” weren’t run. Close Terminal,
+        open a new window and try again; if it still fails, run the commands
+        Homebrew printed at the end of step 3.
       </p>
 
-      <h3>API key errors</h3>
+      <h3>Setup stops with an Intel or Rosetta message</h3>
       <p>
-        Double-check that your <code>backend/.env</code> file has the correct
-        key with no extra spaces or quotes. The line should look exactly like:
+        Edward needs Apple silicon. If your Mac is Apple silicon, your
+        Terminal is running under Rosetta: quit it, then in Finder →
+        Applications → Utilities, select Terminal, press{" "}
+        <code>Cmd + I</code> and untick “Open using Rosetta”.
       </p>
-      <pre>
-        <code>ANTHROPIC_API_KEY=sk-ant-your-actual-key</code>
-      </pre>
 
-      <h3>PostgreSQL not running</h3>
-      <p>If Edward can&apos;t connect to the database:</p>
-      <pre>
-        <code>{`brew services list          # Check if postgresql is running
-brew services start postgresql@16  # Start it`}</code>
-      </pre>
+      <h3>The page says “still starting”, or won’t load</h3>
+      <p>
+        The first start can take several minutes. Watch{" "}
+        <code>tail -f /tmp/edward-backend.log</code> and{" "}
+        <code>tail -f /tmp/edward-frontend.log</code>, then try again.{" "}
+        <code>./restart.sh</code> restarts both.
+      </p>
 
-      <h3>Checking logs</h3>
-      <p>If something isn&apos;t working, check the logs for error messages:</p>
-      <pre>
-        <code>{`cat /tmp/edward-backend.log
-cat /tmp/edward-frontend.log`}</code>
-      </pre>
+      <h3>I signed in but keep landing back on the login page</h3>
+      <p>
+        You are probably on a plain <code>http://</code> address other than{" "}
+        <code>localhost</code>. Use the Mac itself, or an{" "}
+        <code>https://</code> tunnel (above). On a home network you trust,{" "}
+        <code>EDWARD_COOKIE_SECURE=off</code> in <code>.env</code> also works.
+      </p>
+
+      <h3>He says he can’t read my messages or calendar</h3>
+      <p>
+        Full Disk Access is missing, or went to a different python. The path
+        changes when Homebrew upgrades Python, so grant the new one (setup and
+        the LaunchAgent installer both print it) and run{" "}
+        <code>bash scripts/install-launchagents.sh</code> again.
+      </p>
+
+      <h3>Is everything working?</h3>
+      <p>
+        Open <code>http://localhost:3000/api/health/report</code> while signed
+        in: it lists what works and what doesn’t.
+      </p>
 
       <hr />
       <p>
-        Once Edward is running, head to the{" "}
-        <a href="/docs/configuration">Configuration</a> guide to customize
-        your setup.
+        Next: <Link href="/docs/configuration">Configuration</Link> lists the
+        settings, and what ships switched off. The repository’s{" "}
+        <a href={`${GITHUB_BLOB}/README.md#quick-start`}>README</a> has the
+        same steps in brief.
       </p>
     </DocsContent>
   );
