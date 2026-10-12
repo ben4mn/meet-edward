@@ -1,313 +1,181 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+// Settings → House → Skills (2026-09-26, Jarvis polish).
+//
+// What Edward can do, grouped by what it lets him do and said in plain
+// words (lib/skillView.ts). Each skill is a row with a real switch (spring
+// knob), a status dot and, when something is wrong, what is wrong. Toggling
+// is optimistic and undone if the server refuses. "Check again" reconnects
+// everything.
+
+import React, { useCallback, useEffect, useState } from "react";
 import {
-  ChevronDown,
-  ChevronRight,
-  Zap,
-  RefreshCw,
-  AlertCircle,
-  MessageSquare,
-  Phone,
-  Search,
+  Bell,
   Code,
   Database,
-  Terminal,
   Globe,
+  MessageSquare,
+  Mic,
+  Phone,
+  Search,
   Smartphone,
+  Speaker,
+  Terminal,
+  Users,
+  Workflow,
+  Zap,
 } from "lucide-react";
-import {
-  getSkills,
-  setSkillEnabled,
-  reloadSkills,
-  Skill,
-  SkillStatusType,
-} from "@/lib/api";
-import { cn } from "@/lib/utils";
+import { getSkills, reloadSkills, setSkillEnabled, type Skill } from "@/lib/api";
+import { groupSkills, skillCopy, skillStatus, skillsSummary } from "@/lib/skillView";
+import { formatClock } from "@/lib/time";
+import { useUserTimezone } from "@/lib/useTimezone";
+import { Button, Card, EmptyState, Notice, SectionLabel, Skeleton, Switch, cn, useToast } from "@/components/ui";
+import { StatusDot } from "./panelBits";
 
-interface SkillsPanelProps {
+export interface SkillsPanelProps {
   isExpanded?: boolean;
   hideHeader?: boolean;
 }
 
-// Status indicator component
-function StatusIndicator({ status }: { status: SkillStatusType }) {
-  const config = {
-    connected: {
-      icon: "\u25CF",
-      color: "text-green-400",
-      bgColor: "bg-green-400/10",
-    },
-    connecting: {
-      icon: "\u25D0",
-      color: "text-yellow-400",
-      bgColor: "bg-yellow-400/10",
-    },
-    error: {
-      icon: "\u2717",
-      color: "text-red-400",
-      bgColor: "bg-red-400/10",
-    },
-    disabled: {
-      icon: "\u25CB",
-      color: "text-text-muted",
-      bgColor: "bg-surface",
-    },
-  };
-
-  const { icon, color, bgColor } = config[status];
-
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center justify-center w-5 h-5 rounded-full text-xs",
-        bgColor,
-        color
-      )}
-    >
-      {icon}
-    </span>
-  );
+function skillIcon(id: string) {
+  if (id.includes("imessage") || id.includes("whatsapp")) return <MessageSquare />;
+  if (id.includes("twilio") || id.includes("sms")) return <Phone />;
+  if (id.includes("search") || id.includes("brave")) return <Search />;
+  if (id.includes("javascript") || id === "code_interpreter") return <Code />;
+  if (id.includes("sql")) return <Database />;
+  if (id.includes("shell") || id.includes("claude")) return <Terminal />;
+  if (id.includes("html")) return <Globe />;
+  if (id.includes("widget")) return <Smartphone />;
+  if (id.includes("push")) return <Bell />;
+  if (id.includes("voice")) return <Mic />;
+  if (id.includes("alexa")) return <Speaker />;
+  if (id.includes("contacts")) return <Users />;
+  if (id.includes("orchestrator")) return <Workflow />;
+  return <Zap />;
 }
 
-// Toggle switch component
-function Toggle({
-  enabled,
-  onChange,
-  disabled,
-}: {
-  enabled: boolean;
-  onChange: (enabled: boolean) => void;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      onClick={() => !disabled && onChange(!enabled)}
-      disabled={disabled}
-      className={cn(
-        "relative w-10 h-6 rounded-full transition-colors duration-200",
-        enabled ? "bg-terminal" : "bg-input-border",
-        disabled && "opacity-50 cursor-not-allowed"
-      )}
-    >
-      <span
-        className={cn(
-          "absolute top-1 left-1 w-4 h-4 rounded-full bg-white transition-transform duration-200",
-          enabled && "translate-x-4"
-        )}
-      />
-    </button>
-  );
-}
-
-// Get icon for skill type
-function getSkillIcon(skillId: string) {
-  if (skillId.includes("imessage")) {
-    return <MessageSquare className="w-4 h-4" />;
-  }
-  if (skillId.includes("twilio") || skillId.includes("sms")) {
-    return <Phone className="w-4 h-4" />;
-  }
-  if (skillId.includes("search") || skillId.includes("brave")) {
-    return <Search className="w-4 h-4" />;
-  }
-  if (skillId.includes("javascript")) {
-    return <Code className="w-4 h-4" />;
-  }
-  if (skillId.includes("sql")) {
-    return <Database className="w-4 h-4" />;
-  }
-  if (skillId.includes("shell")) {
-    return <Terminal className="w-4 h-4" />;
-  }
-  if (skillId.includes("html_hosting")) {
-    return <Globe className="w-4 h-4" />;
-  }
-  if (skillId.includes("widget")) {
-    return <Smartphone className="w-4 h-4" />;
-  }
-  return <Zap className="w-4 h-4" />;
-}
-
-export function SkillsPanel({ isExpanded: initialExpanded = false, hideHeader = false }: SkillsPanelProps) {
-  const [isExpanded, setIsExpanded] = useState(initialExpanded);
-  const [skills, setSkills] = useState<Skill[]>([]);
+export function SkillsPanel(_props: SkillsPanelProps = {}) {
+  const tz = useUserTimezone();
+  const { toast } = useToast();
+  const [skills, setSkills] = useState<Skill[] | null>(null);
   const [lastReload, setLastReload] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isReloading, setIsReloading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [updatingSkill, setUpdatingSkill] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [reloading, setReloading] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
 
-  const loadSkills = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
+  const load = useCallback(async () => {
+    setFailed(false);
     try {
-      const result = await getSkills();
-      setSkills(result.skills);
-      setLastReload(result.last_reload);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load skills");
-    } finally {
-      setIsLoading(false);
+      const res = await getSkills();
+      setSkills(res.skills);
+      setLastReload(res.last_reload);
+    } catch {
+      setFailed(true);
     }
   }, []);
 
   useEffect(() => {
-    if (isExpanded) {
-      loadSkills();
-    }
-  }, [isExpanded, loadSkills]);
+    load();
+  }, [load]);
 
-  const handleToggle = async (skillId: string, enabled: boolean) => {
-    setUpdatingSkill(skillId);
-    setError(null);
+  const toggle = async (s: Skill, on: boolean) => {
+    const before = s;
+    setBusy(s.id);
+    setSkills((prev) =>
+      prev ? prev.map((x) => (x.id === s.id ? { ...x, enabled: on, status: on ? "connecting" : "disabled" } : x)) : prev,
+    );
     try {
-      const updatedSkill = await setSkillEnabled(skillId, enabled);
-      setSkills((prev) =>
-        prev.map((s) => (s.id === skillId ? updatedSkill : s))
-      );
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update skill");
+      const updated = await setSkillEnabled(s.id, on);
+      setSkills((prev) => (prev ? prev.map((x) => (x.id === s.id ? updated : x)) : prev));
+    } catch {
+      setSkills((prev) => (prev ? prev.map((x) => (x.id === s.id ? before : x)) : prev));
+      toast({ title: `I couldn't turn ${skillCopy(s).name} ${on ? "on" : "off"}.`, tone: "bad" });
     } finally {
-      setUpdatingSkill(null);
+      setBusy(null);
     }
   };
 
-  const handleReload = async () => {
-    setIsReloading(true);
-    setError(null);
+  const reload = async () => {
+    setReloading(true);
     try {
-      const result = await reloadSkills();
-      setSkills(result.skills);
-      setLastReload(result.last_reload);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to reload skills");
+      const res = await reloadSkills();
+      setSkills(res.skills);
+      setLastReload(res.last_reload);
+    } catch {
+      toast({ title: "I couldn't check my connections just now.", tone: "bad" });
     } finally {
-      setIsReloading(false);
+      setReloading(false);
     }
   };
 
-  const formatStatus = (status: SkillStatusType) => {
-    const labels: Record<SkillStatusType, string> = {
-      connected: "Connected",
-      connecting: "Connecting...",
-      error: "Error",
-      disabled: "Disabled",
-    };
-    return labels[status];
-  };
-
-  const connectedCount = skills.filter((s) => s.status === "connected").length;
-  const enabledCount = skills.filter((s) => s.enabled).length;
+  if (failed && !skills) {
+    return (
+      <Notice tone="bad" action={<Button size="sm" variant="secondary" onClick={load}>Try again</Button>}>
+        I can&apos;t read my skills right now.
+      </Notice>
+    );
+  }
+  if (!skills) {
+    return (
+      <Card className="p-4">
+        <Skeleton lines={5} />
+      </Card>
+    );
+  }
+  if (skills.length === 0) {
+    return <EmptyState title="No skills yet.">When I can do more, it will show up here.</EmptyState>;
+  }
 
   return (
-    <div className={cn("border border-input-border rounded-lg overflow-hidden", !hideHeader && "mt-8")}>
-      {!hideHeader && (
-        <button
-          onClick={() => setIsExpanded(!isExpanded)}
-          className="w-full px-4 py-3 flex items-center justify-between bg-surface hover:bg-surface/80 transition-colors"
-        >
-          <div className="flex items-center gap-2 text-text-primary">
-            <Zap className="w-4 h-4 text-terminal" />
-            <span className="font-medium text-sm">Skills</span>
-            {skills.length > 0 && (
-              <span className="text-xs text-text-muted">
-                ({connectedCount}/{enabledCount} connected)
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            {isExpanded && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleReload();
-                }}
-                disabled={isReloading}
-                className="p-1.5 rounded-lg border border-input-border bg-input-bg text-text-muted hover:text-text-primary transition-colors disabled:opacity-50"
-                title="Reload skills"
-              >
-                <RefreshCw className={cn("w-3.5 h-3.5", isReloading && "animate-spin")} />
-              </button>
-            )}
-            {isExpanded ? (
-              <ChevronDown className="w-4 h-4 text-text-muted" />
-            ) : (
-              <ChevronRight className="w-4 h-4 text-text-muted" />
-            )}
-          </div>
-        </button>
-      )}
-
-      {(isExpanded || hideHeader) && (
-        <div className="p-4 space-y-3 bg-primary-bg border-t border-input-border">
-          {error && (
-            <div className="flex items-center gap-2 text-red-500 text-sm p-3 bg-red-500/10 rounded-lg">
-              <AlertCircle className="w-4 h-4" />
-              {error}
-            </div>
-          )}
-
-          {isLoading && skills.length === 0 ? (
-            <div className="text-center py-8 text-text-muted">Loading skills...</div>
-          ) : skills.length === 0 ? (
-            <div className="text-center py-8 text-text-muted">No skills available</div>
-          ) : (
-            skills.map((skill) => (
-              <div
-                key={skill.id}
-                className="p-4 bg-surface rounded-lg border border-input-border"
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-terminal">{getSkillIcon(skill.id)}</span>
-                      <span className="font-medium text-sm text-text-primary">
-                        {skill.name}
-                      </span>
-                    </div>
-                    <p className="text-xs text-text-muted mb-2">{skill.description}</p>
-                    <div className="flex items-center gap-2">
-                      <StatusIndicator status={skill.status} />
-                      <span
-                        className={cn(
-                          "text-xs",
-                          skill.status === "connected" && "text-green-400",
-                          skill.status === "connecting" && "text-yellow-400",
-                          skill.status === "error" && "text-red-400",
-                          skill.status === "disabled" && "text-text-muted"
-                        )}
-                      >
-                        {formatStatus(skill.status)}
-                        {skill.status_message && skill.status !== "disabled" && (
-                          <span className="text-text-muted ml-1">
-                            - {skill.status_message}
-                          </span>
-                        )}
-                      </span>
-                    </div>
-                  </div>
-                  <Toggle
-                    enabled={skill.enabled}
-                    onChange={(enabled) => handleToggle(skill.id, enabled)}
-                    disabled={updatingSkill === skill.id}
-                  />
-                </div>
-              </div>
-            ))
-          )}
-
-          {lastReload && (
-            <div className="text-xs text-text-muted text-right pt-2">
-              Last checked:{" "}
-              {new Date(lastReload).toLocaleTimeString(undefined, {
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
-            </div>
-          )}
+    <div className="space-y-5">
+      <div className="flex items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-callout text-text-primary">{skillsSummary(skills)}</p>
+          {lastReload ? <p className="text-caption text-text-muted">Checked at {formatClock(lastReload, { tz })}</p> : null}
         </div>
-      )}
+        <Button variant="secondary" size="sm" onClick={reload} loading={reloading}>
+          Check again
+        </Button>
+      </div>
+
+      {groupSkills(skills).map((g) => (
+        <section key={g.key} aria-label={g.label} className="space-y-2">
+          <SectionLabel>{g.label}</SectionLabel>
+          <Card className="px-3 py-0">
+            {g.skills.map((s) => (
+              <SkillRow key={s.id} skill={s} busy={busy === s.id} onToggle={(on) => toggle(s, on)} />
+            ))}
+          </Card>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function SkillRow({ skill, busy, onToggle }: { skill: Skill; busy: boolean; onToggle: (on: boolean) => void }) {
+  const copy = skillCopy(skill);
+  const status = skillStatus(skill);
+  return (
+    <div className="flex min-h-[56px] items-center gap-3 border-b border-border py-3 last:border-b-0">
+      <span
+        className={cn(
+          "flex h-8 w-8 flex-none items-center justify-center self-start rounded-sm [&_svg]:h-4 [&_svg]:w-4",
+          skill.enabled ? "bg-surface-3 text-text-secondary" : "bg-surface-3/60 text-text-muted",
+        )}
+      >
+        {skillIcon(skill.id)}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className={cn("text-callout", skill.enabled ? "text-text-primary" : "text-text-secondary")}>{copy.name}</p>
+        <p className="mt-0.5 text-footnote text-text-muted">{copy.description}</p>
+        {skill.enabled ? (
+          <p className={cn("mt-1 flex items-center gap-1.5 text-caption", status.tone === "bad" ? "text-bad" : "text-text-muted")}>
+            <StatusDot tone={status.tone} />
+            <span className="min-w-0 [overflow-wrap:anywhere]">{status.text}</span>
+          </p>
+        ) : null}
+      </div>
+      <Switch checked={skill.enabled} onChange={onToggle} label={copy.name} disabled={busy} />
     </div>
   );
 }

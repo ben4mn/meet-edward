@@ -7,20 +7,25 @@ multi-turn conversation).
 """
 
 import asyncio
-import json
-import re
+import logging
 from typing import List
 
-from langchain_core.messages import HumanMessage
-from services.llm_utils import build_background_llm
+from langchain_core.messages import HumanMessage, SystemMessage
+
+from services.llm_utils import build_background_llm, make_background_system_message
+from services.json_parsing import extract_json_payload
 
 from services.memory_service import retrieve_memories, Memory
 from services.database import async_session, MemoryEnrichmentModel
 
+logger = logging.getLogger(__name__)
 
-DEEP_QUERY_PROMPT = """Given this conversation, generate exactly 3 search queries to find relevant memories. The user's latest message may be short or ambiguous — use conversation context to infer what memories would be useful.
 
-Return ONLY a JSON array of 3 query strings.
+DEEP_QUERY_PROMPT = """Given this conversation, generate exactly 5 search queries to find relevant memories. The user's latest message may be short or ambiguous — use conversation context to infer what memories would be useful.
+
+Include diverse query strategies: direct topic, related context, names/entities, synonyms/rephrases, and broader themes.
+
+Return ONLY a JSON array of 5 query strings.
 
 Last 5 messages:
 {conversation}"""
@@ -60,85 +65,59 @@ async def should_deep_retrieve(message: str, conversation_id: str, turn_count: i
     return False
 
 
-async def generate_search_queries(messages: list, model: str = "claude-haiku-4-5-20251001") -> List[str]:
-    """Use Haiku to generate search queries from recent conversation context."""
-    conversation_text = "\n".join([
-        f"{msg.get('role', 'unknown').upper()}: {msg.get('content', '')}"
-        for msg in messages[-5:]
-        if isinstance(msg, dict)
-    ])
+async def generate_search_queries(
+    messages: list,
+    conversation_id: str | None = None,
+) -> List[str]:
+    """Generate search queries via the shared DreamContext cache.
 
-    if not conversation_text.strip():
-        return []
+    See ``services.reflection_service.generate_reflection_queries`` for the
+    caching contract — both call the same helper so one LLM call per turn
+    serves both subsystems.
+    """
+    from services.dream.context import DEEP_RETRIEVAL_TIMEOUT_SECONDS, generate_search_queries as dream_gen
 
-    llm = build_background_llm(max_tokens=256)
-    prompt = DEEP_QUERY_PROMPT.format(conversation=conversation_text)
-
-    try:
-        response = await asyncio.wait_for(
-            llm.ainvoke([HumanMessage(content=prompt)]),
-            timeout=3.0,
-        )
-
-        response_text = response.content
-        if isinstance(response_text, list):
-            response_text = " ".join(
-                block.get("text", "") if isinstance(block, dict) else str(block)
-                for block in response_text
-            )
-        response_text = response_text.strip()
-
-        # Extract JSON array
-        if "```json" in response_text:
-            response_text = response_text.split("```json")[1].split("```")[0].strip()
-        elif "```" in response_text:
-            parts = response_text.split("```")
-            if len(parts) >= 2:
-                response_text = parts[1].strip()
-
-        json_match = re.search(r'\[[\s\S]*?\]', response_text)
-        if json_match:
-            response_text = json_match.group()
-
-        queries = json.loads(response_text)
-        if isinstance(queries, list):
-            return [q for q in queries if isinstance(q, str) and q.strip()][:3]
-
-    except asyncio.TimeoutError:
-        print("[DEEP RETRIEVAL] Query generation timed out (3s)")
-    except Exception as e:
-        print(f"[DEEP RETRIEVAL] Query generation failed: {e}")
-
-    return []
+    # Pre-turn: the owner is waiting on first-token latency; a slow answer is
+    # left running for reflection to pick up rather than cancelled.
+    return await dream_gen(
+        conversation_id or "deep_retrieval:anon",
+        messages,
+        n=5,
+        window=10,
+        timeout=DEEP_RETRIEVAL_TIMEOUT_SECONDS,
+    )
 
 
 async def deep_retrieve_memories(
     message: str,
     messages: list,
     limit: int = 10,
+    conversation_id: str | None = None,
 ) -> List[Memory]:
     """Run multiple search queries in parallel and merge results.
 
     Args:
         message: The original user message (used as one query)
-        messages: Recent messages for Haiku query generation
+        messages: Recent messages for LLM query generation
         limit: Maximum memories to return
+        conversation_id: Used for the DreamContext cache key so reflection
+            and deep retrieval for the same turn share one LLM call.
 
     Returns:
         Deduplicated, re-ranked list of Memory objects
     """
-    # Generate additional queries from conversation context
-    extra_queries = await generate_search_queries(messages)
+    # Generate additional queries via shared DreamContext cache.
+    extra_queries = await generate_search_queries(messages, conversation_id=conversation_id)
 
-    # Run all queries in parallel: original + Haiku-generated
+    # Run all queries in parallel: original + background-LLM-generated
     async def _search(query: str, track_access: bool) -> List[Memory]:
         try:
-            return await retrieve_memories(query, limit=5, update_access=track_access)
+            return await retrieve_memories(query, limit=8, update_access=track_access)
         except Exception as e:
-            print(f"[DEEP RETRIEVAL] Query failed: {e}")
+            logger.warning("deep retrieval query failed: %s", e)
             return []
 
-    # Original query tracks access, Haiku queries don't
+    # Original query tracks access, background-LLM-generated queries don't
     tasks = [_search(message, True)]
     for q in extra_queries:
         tasks.append(_search(q, False))
@@ -154,5 +133,12 @@ async def deep_retrieve_memories(
 
     # Sort by score and return top results
     ranked = sorted(best_memories.values(), key=lambda m: m.score, reverse=True)
-    print(f"[DEEP RETRIEVAL] Found {len(ranked)} unique memories from {1 + len(extra_queries)} queries")
+    logger.info(
+        "deep retrieval completed",
+        extra={
+            "subsystem": "deep_retrieval",
+            "unique_memories": len(ranked),
+            "query_count": 1 + len(extra_queries),
+        },
+    )
     return ranked[:limit]

@@ -2,7 +2,10 @@
 Session briefing service for Edward.
 
 Generates a brief summary of what happened between conversations so Edward
-has continuity when a new session starts.
+has continuity when a new session starts: memories stored and updated,
+scheduled events that fired, worker tasks finished, and memory
+consolidation. (The old triage counts and coordination cases read tables
+nothing writes since the triage slim, so they are gone.)
 """
 
 import logging
@@ -33,7 +36,7 @@ async def get_last_conversation_end(exclude_conversation_id: str) -> Optional[da
         )
         row = result.scalar_one_or_none()
         if row:
-            return row if row.tzinfo else row.replace(tzinfo=timezone.utc)
+            return row.replace(tzinfo=None) if row.tzinfo else row
         return None
 
 
@@ -44,7 +47,6 @@ async def gather_briefing_data(since: datetime) -> dict:
         "updated_memories": 0,
         "fired_events": [],
         "completed_tasks": 0,
-        "triage_summary": None,
         "consolidation_summary": None,
     }
 
@@ -91,26 +93,6 @@ async def gather_briefing_data(since: datetime) -> dict:
                 )
             )
             data["completed_tasks"] = task_result.scalar() or 0
-        except Exception:
-            pass
-
-        # Triage activity
-        try:
-            from services.database import TriageResultModel
-            triage_result = await session.execute(
-                select(
-                    func.sum(TriageResultModel.events_acted),
-                    func.sum(TriageResultModel.events_dismissed),
-                    func.sum(TriageResultModel.events_noted),
-                ).where(TriageResultModel.created_at >= since)
-            )
-            row = triage_result.fetchone()
-            if row and any(v for v in row if v):
-                data["triage_summary"] = {
-                    "acted": row[0] or 0,
-                    "dismissed": row[1] or 0,
-                    "noted": row[2] or 0,
-                }
         except Exception:
             pass
 
@@ -167,7 +149,6 @@ async def generate_briefing(conversation_id: str) -> Optional[str]:
         or data["updated_memories"] > 0
         or data["fired_events"]
         or data["completed_tasks"] > 0
-        or data["triage_summary"]
         or data["consolidation_summary"]
     )
     if not has_activity:
@@ -188,18 +169,6 @@ async def generate_briefing(conversation_id: str) -> Optional[str]:
 
     if data["completed_tasks"]:
         bullets.append(f"- {data['completed_tasks']} orchestrator task(s) completed")
-
-    if data["triage_summary"]:
-        t = data["triage_summary"]
-        parts = []
-        if t["acted"]:
-            parts.append(f"{t['acted']} acted on")
-        if t["noted"]:
-            parts.append(f"{t['noted']} noted")
-        if t["dismissed"]:
-            parts.append(f"{t['dismissed']} dismissed")
-        if parts:
-            bullets.append(f"- Heartbeat triaged messages: {', '.join(parts)}")
 
     if data["consolidation_summary"]:
         c = data["consolidation_summary"]

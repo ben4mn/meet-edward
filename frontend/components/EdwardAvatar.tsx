@@ -1,90 +1,122 @@
 "use client";
 
-import { cn } from "@/lib/utils";
+// Edward, sized for the app: the presence bar, the dock, chat, login, the
+// voice view. Internally the shared Pane character (components/pane).
+//
+// Defaults follow the design system (§4):
+//   * ≤36px is a bust (head and shoulders) and still — a dock icon or a
+//     message avatar never blinks at you from a scrolling list;
+//   * bigger is the full figure, alive (blinks, glances, beats);
+//   * only `live` breathes — one live Edward per screen, so `animated`
+//     never makes a second one.
+// Old call sites (`size`, `animated`, `className`) keep working.
 
-interface EdwardAvatarProps {
-  size?: "sm" | "md" | "lg" | "xl" | number;
+import React, { type CSSProperties, type MutableRefObject } from "react";
+
+import type { Beat, Gaze, Mood } from "@/lib/edwardMood";
+import type { EdwardLife } from "@/lib/useEdwardLife";
+import { usePresenceHandsDown, usePresenceProvided } from "@/lib/presenceContext";
+import { cn } from "@/lib/utils";
+import { PaneSvg, type PaneVariant } from "./pane/PaneSvg";
+
+export type EdwardAvatarSize = "sm" | "md" | "lg" | "xl" | number;
+
+export interface EdwardAvatarProps {
+  /** A keyword (sm 32 · md 64 · lg 96 · xl 120) or px. Default md. */
+  size?: EdwardAvatarSize;
+  /** What he is doing (lib/edwardMood deriveMood). Default idle. */
+  mood?: Mood;
+  /** A one-shot reaction; plays when it (or beatKey) changes. */
+  beat?: Beat | null;
+  /** Change to replay the same beat. */
+  beatKey?: string | number;
+  /** Where he looks; suppresses idle glances while set. */
+  gaze?: Gaze | null;
+  /** "bust" (default ≤36px) or "full". */
+  variant?: PaneVariant;
+  /** The one Edward per screen who breathes and runs mood loops. */
+  live?: boolean;
+  /** false = fully still. Default: true when live or bigger than 36px. */
   animated?: boolean;
+  /** Perk on his own when the app returns to the foreground. Default: when
+   *  live and no presence provider is feeding beats (inside the app shell
+   *  the provider sends the one perk as a beat; /login and the hub perk on
+   *  their own). An avatar under the provider whose beats come from
+   *  elsewhere (the voice view) passes it explicitly. */
+  perkOnReturn?: boolean;
+  /** Mouth follows the `--mouth` CSS variable (TTS level) while speaking. */
+  lipsync?: boolean;
+  /** His hands in Chrome are down: the antenna tip (his trust light) goes
+   *  amber. Default: the presence provider's signal; false outside it. */
+  handsDown?: boolean;
   className?: string;
+  /** Tooltip; also the accessible name when `aria-label` is absent. */
+  title?: string;
+  "aria-label"?: string;
+  onClick?: () => void;
+  /** e.g. `{"--level": 0.4, "--mouth": 0.7}` from the voice view. */
+  style?: CSSProperties;
+  /** Imperative handle (fire / glance / blink). */
+  lifeRef?: MutableRefObject<EdwardLife | null>;
 }
 
-const sizeMap = {
+export const EDWARD_AVATAR_PX: Readonly<Record<"sm" | "md" | "lg" | "xl", number>> = {
   sm: 32,
   md: 64,
-  lg: 120,
-  xl: 96,
+  lg: 96,
+  xl: 120,
 };
 
-export function EdwardAvatar({ size = "md", animated = false, className }: EdwardAvatarProps) {
-  const px = typeof size === "number" ? size : sizeMap[size];
+/** At or below this he is a still bust by default. */
+export const SMALL_AVATAR_PX = 36;
+
+export function avatarPx(size: EdwardAvatarSize): number {
+  return typeof size === "number" ? size : EDWARD_AVATAR_PX[size];
+}
+
+export function EdwardAvatar({
+  size = "md",
+  mood,
+  beat,
+  beatKey,
+  gaze,
+  variant,
+  live = false,
+  animated,
+  perkOnReturn,
+  lipsync,
+  handsDown,
+  className,
+  title,
+  "aria-label": ariaLabel,
+  onClick,
+  style,
+  lifeRef,
+}: EdwardAvatarProps) {
+  const px = avatarPx(size);
+  const small = px <= SMALL_AVATAR_PX;
+  const provided = usePresenceProvided();
+  const providedHandsDown = usePresenceHandsDown();
 
   return (
-    <div
-      className={cn(
-        "inline-flex items-center justify-center",
-        className
-      )}
-      style={{ width: px, height: px }}
-    >
-      <svg
-        width={px}
-        height={px}
-        viewBox="0 0 100 100"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        {/* Body circle — static */}
-        <circle cx="50" cy="50" r="50" fill="#52b788" />
-
-        {/* Face group — scaled down + floats inside the circle */}
-        <g transform={animated ? "translate(50,50) scale(0.82) translate(-50,-50)" : undefined}>
-          <g className={animated ? "edward-float" : undefined}>
-            {/* Screen bezel (white) */}
-            <rect x="25" y="32" width="50" height="40" rx="8" fill="#FFFFFF" />
-
-            {/* Screen (dark) */}
-            <rect x="28" y="35" width="44" height="34" rx="6" fill="#0d1117" className={animated ? "edward-screen-flicker" : undefined} />
-
-            {/* Eyes */}
-            <g className={animated ? "edward-eye-glow" : undefined}>
-              <circle
-                cx="40"
-                cy="52"
-                r="4"
-                fill="#52b788"
-                className={animated ? "edward-blink" : undefined}
-              />
-              <circle
-                cx="60"
-                cy="52"
-                r="4"
-                fill="#52b788"
-                className={animated ? "edward-blink" : undefined}
-              />
-            </g>
-
-            {/* Antenna group */}
-            <g className={animated ? "edward-antenna" : undefined}>
-              {/* Antenna stick */}
-              <rect x="48" y="20" width="4" height="14" rx="1" fill="#FFFFFF" />
-              {/* Antenna ball */}
-              <circle cx="50" cy="18" r="4" fill="#52b788" stroke="#FFFFFF" strokeWidth="1.5" className={animated ? "edward-antenna-glow" : undefined} />
-            </g>
-
-            {/* Mouth */}
-            <rect
-              x="42"
-              y="62"
-              width="16"
-              height="2"
-              rx="1"
-              fill="#52b788"
-              fillOpacity="0.8"
-              className={animated ? "edward-mouth" : undefined}
-            />
-          </g>
-        </g>
-      </svg>
-    </div>
+    <PaneSvg
+      size={px}
+      mood={mood ?? "idle"}
+      beat={beat}
+      beatKey={beatKey}
+      gaze={gaze}
+      variant={variant ?? (small ? "bust" : "full")}
+      live={live}
+      animated={animated ?? (live || !small)}
+      perkOnReturn={perkOnReturn ?? (live && !provided)}
+      lipsync={lipsync}
+      handsDown={handsDown ?? providedHandsDown}
+      className={cn(className)}
+      title={title}
+      ariaLabel={ariaLabel}
+      onClick={onClick}
+      style={style}
+      lifeRef={lifeRef}
+    />
   );
 }

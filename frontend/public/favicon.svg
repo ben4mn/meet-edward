@@ -1,17 +1,16 @@
-<svg width="100" height="100" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <!-- Body circle -->
-  <circle cx="50" cy="50" r="50" fill="#52b788" />
-  <!-- Screen bezel (white) -->
-  <rect x="25" y="32" width="50" height="40" rx="8" fill="#FFFFFF" />
-  <!-- Screen (dark) -->
-  <rect x="28" y="35" width="44" height="34" rx="6" fill="#0d1117" />
-  <!-- Eyes -->
-  <circle cx="40" cy="52" r="4" fill="#52b788" />
-  <circle cx="60" cy="52" r="4" fill="#52b788" />
-  <!-- Antenna stick -->
-  <rect x="48" y="20" width="4" height="14" rx="1" fill="#FFFFFF" />
-  <!-- Antenna ball -->
-  <circle cx="50" cy="18" r="4" fill="#52b788" stroke="#FFFFFF" stroke-width="1.5" />
-  <!-- Mouth -->
-  <rect x="42" y="62" width="16" height="2" rx="1" fill="#52b788" fill-opacity="0.8" />
+<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" rx="96" fill="#1b2230"/>
+  <rect x="244" y="60" width="24" height="60" rx="12" fill="#d9d4c7"/>
+  <circle cx="256" cy="52" r="30" fill="#2fb98a"/>
+  <rect x="52" y="196" width="48" height="110" rx="24" fill="#c9c3b4"/>
+  <rect x="412" y="196" width="48" height="110" rx="24" fill="#c9c3b4"/>
+  <rect x="84" y="112" width="344" height="270" rx="92" fill="#c9c3b4"/>
+  <rect x="84" y="112" width="344" height="250" rx="92" fill="#e9e4d8"/>
+  <rect x="128" y="156" width="256" height="166" rx="66" fill="#20262f"/>
+  <rect x="172" y="200" width="60" height="74" rx="30" fill="#2fb98a"/>
+  <rect x="280" y="200" width="60" height="74" rx="30" fill="#2fb98a"/>
+  <rect x="186" y="212" width="16" height="22" rx="8" fill="#7fe0bf"/>
+  <rect x="294" y="212" width="16" height="22" rx="8" fill="#7fe0bf"/>
+  <path d="M222 292 Q256 314 290 292" stroke="#2fb98a" stroke-width="14" stroke-linecap="round" fill="none"/>
+  <rect x="160" y="404" width="192" height="60" rx="30" fill="#e9e4d8"/>
 </svg>

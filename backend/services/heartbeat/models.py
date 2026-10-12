@@ -49,31 +49,42 @@ class HeartbeatConfigSchema(BaseModel):
     allowed_senders: list[AllowedSender] = []
     imessage_enabled: bool = True
     imessage_poll_seconds: int = 10
+    imessage_thread_limit_direct: int = 30
+    imessage_thread_limit_group: int = 75
     calendar_enabled: bool = False
     calendar_poll_seconds: int = 300
     calendar_lookahead_minutes: int = 30
     email_enabled: bool = False
     email_poll_seconds: int = 300
+    gmail_enabled: bool = False
+    gmail_poll_seconds: int = 120
 
 
 class HeartbeatConfigUpdate(BaseModel):
     enabled: Optional[bool] = None
     triage_interval_seconds: Optional[int] = None
+    # Stored for compatibility; the mind path is the only path now.
+    mind_enabled: Optional[bool] = None
     digest_token_cap: Optional[int] = None
     allowed_senders: Optional[list[AllowedSender]] = None
     imessage_enabled: Optional[bool] = None
     imessage_poll_seconds: Optional[int] = None
+    imessage_thread_limit_direct: Optional[int] = None
+    imessage_thread_limit_group: Optional[int] = None
     calendar_enabled: Optional[bool] = None
     calendar_poll_seconds: Optional[int] = None
     calendar_lookahead_minutes: Optional[int] = None
     email_enabled: Optional[bool] = None
     email_poll_seconds: Optional[int] = None
+    gmail_enabled: Optional[bool] = None
+    gmail_poll_seconds: Optional[int] = None
 
 
 class HeartbeatStatusSchema(BaseModel):
     running: bool = False
     enabled: bool = True
     triage_interval_seconds: int = 900
+    mind_enabled: bool = True
     pending_count: int = 0
     last_triage_at: Optional[str] = None
     next_triage_at: Optional[str] = None

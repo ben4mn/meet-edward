@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>com.meet-edward.eventkit</string>
+	<key>CFBundleName</key>
+	<string>edward-eventkit</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Edward adds and changes events and reminders when you ask.</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>Edward adds and changes events and reminders when you ask.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>Edward adds and changes events and reminders when you ask.</string>
+	<key>NSRemindersUsageDescription</key>
+	<string>Edward adds and changes events and reminders when you ask.</string>
+</dict>
+</plist>

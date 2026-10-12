@@ -88,6 +88,13 @@ async def get_document_by_id(document_id: str) -> Optional[Document]:
         if not row:
             return None
 
+        # Copy the row *before* the access-tracking UPDATE: the ORM-enabled
+        # update expires the attributes it touches on the loaded row, and
+        # reading them after commit() would lazy-refresh — implicit IO in an
+        # async session ("greenlet_spawn has not been called"). Every
+        # read_document call failed that way on 2026-09-21.
+        doc = _model_to_document(row)
+
         # Update access tracking
         await session.execute(
             update(DocumentModel)
@@ -99,7 +106,7 @@ async def get_document_by_id(document_id: str) -> Optional[Document]:
         )
         await session.commit()
 
-        return _model_to_document(row)
+        return doc
 
 
 async def update_document(
@@ -322,19 +329,29 @@ async def retrieve_relevant_documents(query: str, limit: int = 3) -> List[Docume
         ]
 
 
-async def get_state_documents(limit: int = 5) -> List[Document]:
-    """Get documents tagged as 'state' — living reference docs that should be
-    injected into the LLM context for every conversation.
+async def get_document_by_title(title: str) -> Optional[Document]:
+    """One document by exact title, case-insensitive (the newest if several)."""
+    async with async_session() as session:
+        row = (await session.execute(
+            select(DocumentModel)
+            .where(func.lower(DocumentModel.title) == (title or "").strip().lower())
+            .order_by(DocumentModel.updated_at.desc())
+            .limit(1)
+        )).scalar_one_or_none()
+        return _model_to_document(row) if row is not None else None
 
-    State documents are things like "current goals", "weekly plan",
-    "project status", etc. that the user wants Edward to always be aware of.
+
+async def get_state_documents() -> List[Document]:
+    """Retrieve all documents tagged with 'state' (projects, people, goals).
+
+    Returns full content for injection into system prompt.
     """
     async with async_session() as session:
         result = await session.execute(
             select(DocumentModel)
             .where(DocumentModel.tags.ilike("%state%"))
             .order_by(DocumentModel.updated_at.desc())
-            .limit(limit)
+            .limit(10)
         )
         rows = result.scalars().all()
         return [

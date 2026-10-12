@@ -78,6 +78,10 @@ async def list_memories(
                     "temporal_nature": m.temporal_nature,
                     "tier": getattr(m, 'tier', 'observation') or 'observation',
                     "reinforcement_count": getattr(m, 'reinforcement_count', 0) or 0,
+                    "source_type": getattr(m, 'source_type', 'inferred') or 'inferred',
+                    "confidence": getattr(m, 'confidence', 0.5) or 0.5,
+                    "origin": getattr(m, 'origin', 'heard') or 'heard',
+                    "about": getattr(m, 'about', 'owner') or 'owner',
                     "source_conversation_id": m.source_conversation_id,
                     "created_at": (m.created_at.isoformat() + "Z") if m.created_at else None,
                     "updated_at": (m.updated_at.isoformat() + "Z") if m.updated_at else None,
@@ -97,6 +101,23 @@ async def list_memories(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/memories/context")
+async def memories_context(chat_id: str, limit: int = 2):
+    """Compose-time memory peek for a heartbeat-sourced conversation.
+
+    Returns up to ``limit`` highest-relevance memories about the
+    chat's contact, plus the chat's display name. The frontend renders
+    this above the chat input on iMessage-sourced conversations.
+    """
+    from services.memory_context_service import context_for_chat
+
+    if not chat_id:
+        raise HTTPException(status_code=400, detail="chat_id required")
+    if limit <= 0 or limit > 10:
+        raise HTTPException(status_code=400, detail="limit must be 1..10")
+    return await context_for_chat(chat_id, limit=limit)
 
 
 @router.get("/memories/{memory_id}")
@@ -122,6 +143,10 @@ async def get_memory(memory_id: str):
         "temporal_nature": memory.temporal_nature,
         "tier": getattr(memory, 'tier', 'observation') or 'observation',
         "reinforcement_count": getattr(memory, 'reinforcement_count', 0) or 0,
+        "source_type": getattr(memory, 'source_type', 'inferred') or 'inferred',
+        "confidence": getattr(memory, 'confidence', 0.5) or 0.5,
+        "origin": getattr(memory, 'origin', 'heard') or 'heard',
+        "about": getattr(memory, 'about', 'owner') or 'owner',
         "source_conversation_id": memory.source_conversation_id,
         "created_at": (memory.created_at.isoformat() + "Z") if memory.created_at else None,
         "updated_at": (memory.updated_at.isoformat() + "Z") if memory.updated_at else None,
@@ -129,6 +154,54 @@ async def get_memory(memory_id: str):
         "access_count": memory.access_count,
         "user_id": memory.user_id
     }
+
+
+@router.get("/memories/{memory_id}/provenance")
+async def memory_provenance(memory_id: str):
+    """Where a memory came from, from the records only (provenance,
+    docs/architecture/memory.md):
+    the memory's own fields, its source conversation (and the iMessage
+    chat or SMS contact it maps to), and ``source_ref``."""
+    from services.provenance_service import provenance_for
+
+    record = await provenance_for(memory_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Memory not found")
+    return record
+
+
+class ForgetRequest(BaseModel):
+    subject: str
+    confirm: bool = False
+    include_documents: bool = False
+    plan_id: Optional[str] = None
+
+
+@router.post("/memories/forget")
+async def forget(request: ForgetRequest):
+    """A verified forget (docs/architecture/memory.md). ``confirm=false`` previews what
+    matches ``subject``; ``confirm=true`` deletes exactly the previewed
+    plan (``plan_id``) — or plans again from ``subject`` — and returns the
+    counts. Documents go only with ``include_documents``."""
+    from services import forget_service
+
+    subject = (request.subject or "").strip()
+    if not subject and not request.plan_id:
+        raise HTTPException(status_code=400, detail="subject required")
+    if not request.confirm:
+        try:
+            plan = await forget_service.plan_forget(subject)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        return {"status": "preview", "plan": forget_service.plan_dict(plan)}
+    try:
+        result = await forget_service.apply_forget(
+            plan_id=request.plan_id, subject=subject or None,
+            include_documents=request.include_documents, source="api",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"status": "forgotten", "result": result}
 
 
 @router.patch("/memories/{memory_id}")
@@ -164,6 +237,10 @@ async def patch_memory(memory_id: str, request: MemoryUpdateRequest):
         "temporal_nature": memory.temporal_nature,
         "tier": getattr(memory, 'tier', 'observation') or 'observation',
         "reinforcement_count": getattr(memory, 'reinforcement_count', 0) or 0,
+        "source_type": getattr(memory, 'source_type', 'inferred') or 'inferred',
+        "confidence": getattr(memory, 'confidence', 0.5) or 0.5,
+        "origin": getattr(memory, 'origin', 'heard') or 'heard',
+        "about": getattr(memory, 'about', 'owner') or 'owner',
         "source_conversation_id": memory.source_conversation_id,
         "created_at": (memory.created_at.isoformat() + "Z") if memory.created_at else None,
         "updated_at": (memory.updated_at.isoformat() + "Z") if memory.updated_at else None,

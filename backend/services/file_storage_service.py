@@ -45,6 +45,10 @@ ALLOWED_MIME_TYPES = {
     "text/tab-separated-values",
     # Archives (for download, not execution)
     "application/zip",
+    # Audio (voice memos from the chat recorder; Safari records audio/mp4,
+    # Chrome audio/webm)
+    "audio/webm", "audio/mp4", "audio/mpeg", "audio/wav", "audio/ogg",
+    "audio/flac", "audio/aac",
 }
 
 # Text-readable MIME types

@@ -1,4 +1,9 @@
-"""REST API endpoints for the proactive intelligence system."""
+"""REST API endpoints for what is left of the proactive system.
+
+Since mind rebuild Phase 7 the five templated jobs are wakes
+(``/proactive/status`` lists them); the owner's data — open loops, entities —
+and the dossier thresholds stay here.
+"""
 
 from typing import Optional
 from datetime import datetime
@@ -11,6 +16,7 @@ from services.proactive_models import (
     ProactiveStatusSchema,
     OpenLoopSchema,
     OpenLoopUpdate,
+    WakeSchema,
 )
 
 router = APIRouter()
@@ -39,9 +45,20 @@ def _loop_to_schema(loop) -> OpenLoopSchema:
     )
 
 
+def _config_schema(config) -> ProactiveConfigSchema:
+    if not config:
+        return ProactiveConfigSchema()
+    return ProactiveConfigSchema(
+        dossier_enabled=getattr(config, "dossier_enabled", True),
+        dossier_min_acted_pushes=getattr(config, "dossier_min_acted_pushes", 2) or 2,
+        dossier_min_inbound_threads=getattr(config, "dossier_min_inbound_threads", 3) or 3,
+        dossier_window_days=getattr(config, "dossier_window_days", 7) or 7,
+    )
+
+
 @router.get("/proactive/config")
 async def get_config():
-    """Get proactive intelligence configuration."""
+    """The dossier thresholds — the only proactive knobs left."""
     from sqlalchemy import select
     from services.database import async_session, ProactiveConfigModel
 
@@ -50,26 +67,12 @@ async def get_config():
             select(ProactiveConfigModel).where(ProactiveConfigModel.id == "default")
         )
         config = result.scalar_one_or_none()
-
-    if not config:
-        return ProactiveConfigSchema().model_dump()
-
-    return ProactiveConfigSchema(
-        morning_briefing_enabled=config.morning_briefing_enabled,
-        morning_briefing_time=config.morning_briefing_time or "08:00",
-        morning_briefing_channel=config.morning_briefing_channel or "push",
-        meeting_prep_enabled=config.meeting_prep_enabled,
-        meeting_prep_advance_minutes=config.meeting_prep_advance_minutes or 30,
-        pattern_detection_enabled=config.pattern_detection_enabled,
-        open_loop_nudge_enabled=config.open_loop_nudge_enabled,
-        open_loop_nudge_days=config.open_loop_nudge_days or 7,
-        extraction_depth=config.extraction_depth or "standard",
-    ).model_dump()
+    return _config_schema(config).model_dump()
 
 
 @router.patch("/proactive/config")
 async def update_config(body: ProactiveConfigUpdate):
-    """Update proactive intelligence configuration."""
+    """Update the dossier thresholds."""
     from sqlalchemy import select
     from services.database import async_session, ProactiveConfigModel
 
@@ -83,56 +86,34 @@ async def update_config(body: ProactiveConfigUpdate):
             config = ProactiveConfigModel(id="default")
             session.add(config)
 
-        if body.morning_briefing_enabled is not None:
-            config.morning_briefing_enabled = body.morning_briefing_enabled
-        if body.morning_briefing_time is not None:
-            config.morning_briefing_time = body.morning_briefing_time
-        if body.morning_briefing_channel is not None:
-            if body.morning_briefing_channel not in ("push", "imessage", "chat"):
-                raise HTTPException(400, "Channel must be push, imessage, or chat")
-            config.morning_briefing_channel = body.morning_briefing_channel
-        if body.meeting_prep_enabled is not None:
-            config.meeting_prep_enabled = body.meeting_prep_enabled
-        if body.meeting_prep_advance_minutes is not None:
-            if body.meeting_prep_advance_minutes < 5:
-                raise HTTPException(400, "Advance minutes must be at least 5")
-            config.meeting_prep_advance_minutes = body.meeting_prep_advance_minutes
-        if body.pattern_detection_enabled is not None:
-            config.pattern_detection_enabled = body.pattern_detection_enabled
-        if body.open_loop_nudge_enabled is not None:
-            config.open_loop_nudge_enabled = body.open_loop_nudge_enabled
-        if body.open_loop_nudge_days is not None:
-            if body.open_loop_nudge_days < 1:
-                raise HTTPException(400, "Nudge days must be at least 1")
-            config.open_loop_nudge_days = body.open_loop_nudge_days
-        if body.extraction_depth is not None:
-            if body.extraction_depth not in ("light", "standard", "deep"):
-                raise HTTPException(400, "Extraction depth must be light, standard, or deep")
-            config.extraction_depth = body.extraction_depth
+        if body.dossier_enabled is not None:
+            config.dossier_enabled = body.dossier_enabled
+        if body.dossier_min_acted_pushes is not None:
+            if body.dossier_min_acted_pushes < 1:
+                raise HTTPException(400, "Dossier acted-push threshold must be at least 1")
+            config.dossier_min_acted_pushes = body.dossier_min_acted_pushes
+        if body.dossier_min_inbound_threads is not None:
+            if body.dossier_min_inbound_threads < 1:
+                raise HTTPException(400, "Dossier inbound-thread threshold must be at least 1")
+            config.dossier_min_inbound_threads = body.dossier_min_inbound_threads
+        if body.dossier_window_days is not None:
+            if body.dossier_window_days < 1:
+                raise HTTPException(400, "Dossier window must be at least 1 day")
+            config.dossier_window_days = body.dossier_window_days
 
         await session.commit()
         await session.refresh(config)
-
-        return ProactiveConfigSchema(
-            morning_briefing_enabled=config.morning_briefing_enabled,
-            morning_briefing_time=config.morning_briefing_time or "08:00",
-            morning_briefing_channel=config.morning_briefing_channel or "push",
-            meeting_prep_enabled=config.meeting_prep_enabled,
-            meeting_prep_advance_minutes=config.meeting_prep_advance_minutes or 30,
-            pattern_detection_enabled=config.pattern_detection_enabled,
-            open_loop_nudge_enabled=config.open_loop_nudge_enabled,
-            open_loop_nudge_days=config.open_loop_nudge_days or 7,
-            extraction_depth=config.extraction_depth or "standard",
-        ).model_dump()
+        return _config_schema(config).model_dump()
 
 
 @router.get("/proactive/status")
 async def get_status():
-    """Get status of all proactive services."""
+    """Counts, the dossier config, and the wakes Edward takes on his own."""
     from sqlalchemy import select
     from services.database import async_session, ProactiveConfigModel
     from services.entity_service import get_entity_count
     from services.open_loop_service import get_open_loop_count
+    from services.scheduler_service import WAKEUP_TICKS
 
     async with async_session() as session:
         result = await session.execute(
@@ -143,35 +124,11 @@ async def get_status():
     entity_count = await get_entity_count()
     open_loop_count = await get_open_loop_count()
 
-    from services.proactive import (
-        is_morning_briefing_running,
-        is_meeting_prep_running,
-        is_pattern_detection_running,
-        is_open_loop_nudge_running,
-    )
-
-    config_schema = ProactiveConfigSchema()
-    if config:
-        config_schema = ProactiveConfigSchema(
-            morning_briefing_enabled=config.morning_briefing_enabled,
-            morning_briefing_time=config.morning_briefing_time or "08:00",
-            morning_briefing_channel=config.morning_briefing_channel or "push",
-            meeting_prep_enabled=config.meeting_prep_enabled,
-            meeting_prep_advance_minutes=config.meeting_prep_advance_minutes or 30,
-            pattern_detection_enabled=config.pattern_detection_enabled,
-            open_loop_nudge_enabled=config.open_loop_nudge_enabled,
-            open_loop_nudge_days=config.open_loop_nudge_days or 7,
-            extraction_depth=config.extraction_depth or "standard",
-        )
-
     return ProactiveStatusSchema(
-        config=config_schema,
+        config=_config_schema(config),
         entity_count=entity_count,
         open_loop_count=open_loop_count,
-        morning_briefing_running=is_morning_briefing_running(),
-        meeting_prep_running=is_meeting_prep_running(),
-        pattern_detection_running=is_pattern_detection_running(),
-        open_loop_nudge_running=is_open_loop_nudge_running(),
+        wakes=[WakeSchema(kind=kind, cron=cron) for kind, cron in WAKEUP_TICKS],
     ).model_dump()
 
 

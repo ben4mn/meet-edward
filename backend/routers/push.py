@@ -24,6 +24,22 @@ class PushSubscription(BaseModel):
     """Push subscription data from the browser."""
     endpoint: str
     keys: dict  # Contains p256dh and auth
+    device_id: Optional[str] = None
+    device_name: Optional[str] = None
+    kind: Optional[str] = None
+
+
+class AckRequest(BaseModel):
+    delivery_id: Optional[str] = None
+    conversation_id: Optional[str] = None
+    ledger_id: Optional[str] = None
+    source: str = "click"
+
+
+class SnoozeRequest(BaseModel):
+    ledger_id: str
+    delivery_id: Optional[str] = None
+    minutes: int = 60
 
 
 class UnsubscribeRequest(BaseModel):
@@ -89,6 +105,9 @@ async def subscribe(subscription: PushSubscription, request: Request):
             p256dh_key=keys["p256dh"],
             auth_key=keys["auth"],
             user_agent=user_agent,
+            device_id=subscription.device_id,
+            device_name=subscription.device_name,
+            kind=subscription.kind,
         )
         print(f"[Push] Subscription saved successfully: id={saved.id}")
     except Exception as e:
@@ -125,20 +144,28 @@ async def push_status():
     """
     Get push notification configuration status.
 
-    Returns whether push is configured and subscription count.
+    Returns whether push is configured, active subscription count,
+    and the number of dead (auto-deactivated) subscriptions so the
+    UI can surface "N device(s) lost their push" when nonzero.
     """
     configured = is_configured()
-    count = await get_subscription_count() if configured else 0
+    # Counts are independent of VAPID configuration — even an un-configured
+    # service can have subscription rows lingering, and the user needs to
+    # see them so they can clean up or re-enable.
+    from services.push_service import get_dead_subscription_count
+    count = await get_subscription_count()
+    dead = await get_dead_subscription_count()
 
     return {
         "configured": configured,
         "subscriptionCount": count,
+        "dead_count": dead,
         "vapidPublicKey": get_vapid_public_key() if configured else None,
     }
 
 
 @router.post("/push/test")
-async def test_notification(request: TestNotificationRequest):
+async def test_notification(request: Optional[TestNotificationRequest] = None):
     """
     Send a test push notification.
 
@@ -150,6 +177,7 @@ async def test_notification(request: TestNotificationRequest):
             detail="Push notifications not configured"
         )
 
+    request = request or TestNotificationRequest()
     result = await send_push_notification(
         title=request.title,
         body=request.body,
@@ -158,3 +186,40 @@ async def test_notification(request: TestNotificationRequest):
     )
 
     return result
+
+
+@router.post("/push/ack")
+async def ack_delivery(req: AckRequest):
+    """The user saw it: a notification click, or opening the landing
+    conversation. Stamps the push ledger (``opened``). The interrupt ladder
+    this also stopped is gone (2026-10-11); ``acked`` says the same as
+    ``opened`` for old clients."""
+    from services import push_ledger
+
+    if req.delivery_id:
+        opened = await push_ledger.mark_opened(source=req.source, delivery_id=req.delivery_id)
+    elif req.ledger_id:
+        opened = await push_ledger.mark_opened(source=req.source, ledger_id=req.ledger_id)
+    elif req.conversation_id:
+        opened = await push_ledger.mark_opened(source=req.source, conversation_id=req.conversation_id)
+    else:
+        raise HTTPException(status_code=400, detail="delivery_id or conversation_id required")
+    return {"acked": bool(opened), "opened": opened}
+
+
+@router.post("/push/snooze")
+async def snooze_push(req: SnoozeRequest):
+    """"Snooze 1h" on the notification: bring the push back later."""
+    from services import push_ledger
+
+    ok = await push_ledger.snooze(req.ledger_id, minutes=max(1, min(req.minutes, 24 * 60)))
+    return {"snoozed": ok, "minutes": req.minutes}
+
+
+@router.get("/push/log")
+async def push_log(hours: float = 24, limit: int = 50):
+    """The push ledger: what reached the owner's phone, from whom, and whether they opened it."""
+    from services import push_ledger
+
+    rows = await push_ledger.recent(hours=hours, limit=min(max(limit, 1), 200))
+    return {"hours": hours, "pushes": [push_ledger.serialize(r) for r in rows]}

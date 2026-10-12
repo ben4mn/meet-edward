@@ -35,6 +35,11 @@ async def widget_chat(req: WidgetChatRequest):
     """Send a message to Edward from the Scriptable widget.
 
     Authenticated via widget token. Returns conversation_id + response text.
+    The turn is the owner's (``widget`` is an owner source,
+    services/toolset/policy.py: every read, sends, pushes), so the widget
+    token is owner-equivalent for chat: whoever holds it can talk to Edward
+    as the owner. Keep it private; ``POST /api/widget/token/regenerate``
+    replaces a leaked one.
     """
     if not await verify_token(req.token):
         raise HTTPException(status_code=401, detail="Invalid or expired token")
@@ -53,12 +58,14 @@ async def widget_chat(req: WidgetChatRequest):
     await create_conversation(conversation_id, title)
 
     response = await chat_with_memory(
+        turn_source="widget",
         message=req.message,
         conversation_id=conversation_id,
         system_prompt=settings.system_prompt,
         model=settings.model,
         temperature=settings.temperature,
         graph=graph,
+        provider=settings.provider,
     )
 
     return {
@@ -79,3 +86,21 @@ async def regenerate_widget_token():
     """Regenerate the widget token (cookie-authenticated via middleware)."""
     token = await regenerate_token()
     return {"token": token}
+
+
+@router.post("/widget/refresh")
+async def refresh_widget():
+    """Recompose the widget now from the hub board (Settings button / debugging).
+    Forces past the custom-content hold and drops any stale script."""
+    from services.widget_expression_service import refresh_widget_expression
+
+    out = await refresh_widget_expression("manual", force=True)
+    return {"refreshed": out is not None, "subtitle": (out or {}).get("subtitle")}
+
+
+@router.post("/widget/pulse")
+async def pulse_widget():
+    """Ask Edward to look at his surfaces now (Settings button / debugging)."""
+    from services.expression_service import run_expression_pulse
+
+    return await run_expression_pulse("manual")

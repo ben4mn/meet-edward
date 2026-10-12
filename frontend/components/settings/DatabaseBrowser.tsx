@@ -1,341 +1,252 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import {
-  ChevronDown,
-  ChevronRight,
-  Database,
-  Trash2,
-  RefreshCw,
-  AlertCircle,
-  X,
-  Table2,
-} from "lucide-react";
-import {
-  listDatabases,
-  getDatabaseTables,
-  getDatabaseColumns,
-  deleteDatabase,
-  PersistentDatabase,
-  DatabaseTable,
-  DatabaseColumn,
-} from "@/lib/api";
-import { cn } from "@/lib/utils";
+// Settings → Memory → Databases (2026-09-26, Jarvis polish).
+//
+// The named databases Edward keeps (a PostgreSQL schema each): a database
+// expands to its tables, a table to its columns. Names and types are data,
+// so they are set in mono. Deleting drops every table and row, so it asks
+// once in a ConfirmSheet. ?name= (a hit in "What does he have on…") opens
+// that database.
 
-interface DatabaseBrowserProps {
+import React, { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Database, Table2, Trash2 } from "lucide-react";
+import {
+  deleteDatabase,
+  getDatabaseColumns,
+  getDatabaseTables,
+  listDatabases,
+  type DatabaseColumn,
+  type DatabaseTable,
+  type PersistentDatabase,
+} from "@/lib/api";
+import { clearUrlParams, readParam } from "@/lib/deepLink";
+import { formatRelative } from "@/lib/time";
+import { Button, Card, ConfirmSheet, EmptyState, Notice, Pill, Row, Skeleton, useToast } from "@/components/ui";
+
+export interface DatabaseBrowserProps {
   isExpanded?: boolean;
   hideHeader?: boolean;
+  /** Tests: the ?name= deep link without a router. */
+  initialName?: string | null;
 }
 
-export function DatabaseBrowser({ isExpanded: initialExpanded = false, hideHeader = false }: DatabaseBrowserProps) {
-  const [isExpanded, setIsExpanded] = useState(initialExpanded);
-  const [databases, setDatabases] = useState<PersistentDatabase[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+type Loaded<T> = T | "loading" | "failed";
 
-  // Inline expansion for tables
-  const [expandedDb, setExpandedDb] = useState<string | null>(null);
-  const [tables, setTables] = useState<DatabaseTable[]>([]);
-  const [loadingTables, setLoadingTables] = useState(false);
+export function DatabaseBrowser(props: DatabaseBrowserProps = {}) {
+  return (
+    <Suspense
+      fallback={
+        <Card className="p-4">
+          <Skeleton lines={3} />
+        </Card>
+      }
+    >
+      <DatabasesBody initialName={props.initialName} />
+    </Suspense>
+  );
+}
 
-  // Inline expansion for columns
-  const [expandedTable, setExpandedTable] = useState<string | null>(null);
-  const [columns, setColumns] = useState<DatabaseColumn[]>([]);
-  const [loadingColumns, setLoadingColumns] = useState(false);
+function DatabasesBody({ initialName }: { initialName?: string | null }) {
+  const params = useSearchParams();
+  const deepName = initialName ?? readParam(params, "name");
+  const { toast } = useToast();
+  const [dbs, setDbs] = useState<PersistentDatabase[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [openDb, setOpenDb] = useState<string | null>(null);
+  const [tables, setTables] = useState<Record<string, Loaded<DatabaseTable[]>>>({});
+  const [openTable, setOpenTable] = useState<string | null>(null);
+  const [columns, setColumns] = useState<Record<string, Loaded<DatabaseColumn[]>>>({});
+  const [deleting, setDeleting] = useState<PersistentDatabase | null>(null);
 
-  // Delete confirmation
-  const [deleteTarget, setDeleteTarget] = useState<PersistentDatabase | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-
-  const loadDatabases = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
+  const load = useCallback(async () => {
+    setFailed(false);
     try {
-      const result = await listDatabases();
-      setDatabases(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load databases");
-    } finally {
-      setIsLoading(false);
+      setDbs(await listDatabases());
+    } catch {
+      setFailed(true);
     }
   }, []);
 
   useEffect(() => {
-    if (isExpanded) {
-      loadDatabases();
-    }
-  }, [isExpanded, loadDatabases]);
+    load();
+  }, [load]);
 
-  const handleExpandDb = async (dbName: string) => {
-    if (expandedDb === dbName) {
-      setExpandedDb(null);
-      setExpandedTable(null);
+  const toggleDb = async (name: string) => {
+    if (openDb === name) {
+      setOpenDb(null);
       return;
     }
-    setExpandedDb(dbName);
-    setExpandedTable(null);
-    setLoadingTables(true);
+    setOpenDb(name);
+    setOpenTable(null);
+    if (Array.isArray(tables[name])) return;
+    setTables((t) => ({ ...t, [name]: "loading" }));
     try {
-      const result = await getDatabaseTables(dbName);
-      setTables(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load tables");
-    } finally {
-      setLoadingTables(false);
+      const rows = await getDatabaseTables(name);
+      setTables((t) => ({ ...t, [name]: rows }));
+    } catch {
+      setTables((t) => ({ ...t, [name]: "failed" }));
     }
   };
 
-  const handleExpandTable = async (tableName: string) => {
-    if (!expandedDb) return;
-    if (expandedTable === tableName) {
-      setExpandedTable(null);
+  // ?name= opens that database once.
+  const openedDeep = useRef<string | null>(null);
+  useEffect(() => {
+    if (!deepName || !dbs || openedDeep.current === deepName) return;
+    openedDeep.current = deepName;
+    clearUrlParams(["name"]);
+    if (dbs.some((d) => d.name === deepName)) void toggleDb(deepName);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deepName, dbs]);
+
+  const toggleTable = async (db: string, table: string) => {
+    const key = `${db}.${table}`;
+    if (openTable === key) {
+      setOpenTable(null);
       return;
     }
-    setExpandedTable(tableName);
-    setLoadingColumns(true);
+    setOpenTable(key);
+    if (Array.isArray(columns[key])) return;
+    setColumns((c) => ({ ...c, [key]: "loading" }));
     try {
-      const result = await getDatabaseColumns(expandedDb, tableName);
-      setColumns(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load columns");
-    } finally {
-      setLoadingColumns(false);
+      const rows = await getDatabaseColumns(db, table);
+      setColumns((c) => ({ ...c, [key]: rows }));
+    } catch {
+      setColumns((c) => ({ ...c, [key]: "failed" }));
     }
   };
 
-  const handleDelete = async () => {
-    if (!deleteTarget) return;
-    setIsDeleting(true);
+  const remove = async () => {
+    if (!deleting) return;
+    const db = deleting;
     try {
-      await deleteDatabase(deleteTarget.name);
-      setDeleteTarget(null);
-      if (expandedDb === deleteTarget.name) setExpandedDb(null);
-      loadDatabases();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete database");
+      await deleteDatabase(db.name);
+      setDbs((prev) => (prev ? prev.filter((d) => d.name !== db.name) : prev));
+      if (openDb === db.name) setOpenDb(null);
+      toast({ title: `Deleted ${db.name}` });
+    } catch {
+      toast({ title: `I couldn't delete ${db.name}.`, tone: "bad" });
     } finally {
-      setIsDeleting(false);
+      setDeleting(null);
     }
   };
 
-  const formatDate = (dateStr: string | null) => {
-    if (!dateStr) return "N/A";
-    const date = new Date(dateStr);
-    return date.toLocaleDateString(undefined, {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-  };
+  if (failed && !dbs) {
+    return (
+      <Notice tone="bad" action={<Button size="sm" variant="secondary" onClick={load}>Try again</Button>}>
+        I can&apos;t read my databases right now.
+      </Notice>
+    );
+  }
+  if (!dbs) {
+    return (
+      <Card className="p-4">
+        <Skeleton lines={3} />
+      </Card>
+    );
+  }
+  if (dbs.length === 0) {
+    return (
+      <EmptyState icon={<Database />} title="No databases yet.">
+        When something is best kept in tables — a training log, monthly weights — I make one and it shows up here.
+      </EmptyState>
+    );
+  }
 
   return (
-    <div className={cn("border border-input-border rounded-lg overflow-hidden", !hideHeader && "mt-8")}>
-      {!hideHeader && (
-        <button
-          onClick={() => setIsExpanded(!isExpanded)}
-          className="w-full px-4 py-3 flex items-center justify-between bg-surface hover:bg-surface/80 transition-colors"
-        >
-          <div className="flex items-center gap-2 text-text-primary">
-            <Database className="w-4 h-4 text-terminal" />
-            <span className="font-medium text-sm">Persistent Databases</span>
-            {databases.length > 0 && (
-              <span className="text-xs text-text-muted">({databases.length})</span>
-            )}
-          </div>
-          {isExpanded ? (
-            <ChevronDown className="w-4 h-4 text-text-muted" />
-          ) : (
-            <ChevronRight className="w-4 h-4 text-text-muted" />
-          )}
-        </button>
-      )}
-
-      {(isExpanded || hideHeader) && (
-        <div className="p-4 space-y-4 bg-primary-bg border-t border-input-border">
-          {/* Header */}
-          <div className="flex justify-end">
-            <button
-              onClick={loadDatabases}
-              disabled={isLoading}
-              className="p-2 rounded-lg border border-input-border bg-input-bg text-text-muted hover:text-text-primary transition-colors disabled:opacity-50"
-              title="Refresh"
-            >
-              <RefreshCw className={cn("w-4 h-4", isLoading && "animate-spin")} />
-            </button>
-          </div>
-
-          {error && (
-            <div className="flex items-center gap-2 text-red-500 text-sm p-3 bg-red-500/10 rounded-lg">
-              <AlertCircle className="w-4 h-4" />
-              {error}
-            </div>
-          )}
-
-          {/* Database list */}
-          <div className="space-y-2">
-            {isLoading && databases.length === 0 ? (
-              <div className="text-center py-8 text-text-muted">Loading databases...</div>
-            ) : databases.length === 0 ? (
-              <div className="text-center py-8 text-text-muted">
-                No persistent databases created yet
+    <div className="space-y-4">
+      <Card className="px-3 py-0">
+        {dbs.map((db) => {
+          const open = openDb === db.name;
+          const t = tables[db.name];
+          return (
+            <div key={db.id} className="border-b border-border last:border-b-0">
+              <div className="flex items-center gap-1">
+                <Row
+                  className="min-w-0 flex-1 border-b-0"
+                  icon={<Database />}
+                  title={<span className="font-mono text-[15px]">{db.name}</span>}
+                  detail={[db.description, db.created_at ? `made ${formatRelative(db.created_at)}` : null].filter(Boolean).join(" · ")}
+                  expanded={open}
+                  onClick={() => toggleDb(db.name)}
+                />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={`Delete ${db.name}`}
+                  className="flex-none text-text-muted hover:text-bad"
+                  onClick={() => setDeleting(db)}
+                >
+                  <Trash2 aria-hidden />
+                </Button>
               </div>
-            ) : (
-              databases.map((db) => (
-                <div key={db.id}>
-                  <div
-                    onClick={() => handleExpandDb(db.name)}
-                    className="p-4 bg-surface rounded-lg border border-input-border hover:border-terminal/30 transition-colors cursor-pointer"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          {expandedDb === db.name ? (
-                            <ChevronDown className="w-4 h-4 text-terminal flex-shrink-0" />
-                          ) : (
-                            <ChevronRight className="w-4 h-4 text-terminal flex-shrink-0" />
-                          )}
-                          <span className="text-sm font-mono font-medium text-text-primary">
-                            {db.name}
-                          </span>
-                        </div>
-                        {db.description && (
-                          <p className="text-xs text-text-muted ml-6 mb-1">{db.description}</p>
-                        )}
-                        <div className="mt-2 ml-6 flex gap-3 text-xs text-text-muted">
-                          <span>Created: {formatDate(db.created_at)}</span>
-                          {db.last_accessed && (
-                            <span>Last accessed: {formatDate(db.last_accessed)}</span>
-                          )}
-                        </div>
-                      </div>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setDeleteTarget(db);
-                        }}
-                        className="p-2 text-text-muted hover:text-red-500 transition-colors rounded-lg hover:bg-red-500/10"
-                        title="Delete database"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Inline table list */}
-                  {expandedDb === db.name && (
-                    <div className="ml-6 mt-1 mb-2 p-3 bg-surface/50 rounded-lg border border-input-border/50">
-                      {loadingTables ? (
-                        <p className="text-xs text-text-muted">Loading tables...</p>
-                      ) : tables.length === 0 ? (
-                        <p className="text-xs text-text-muted">No tables in this database</p>
-                      ) : (
-                        <div className="space-y-1">
-                          <p className="text-xs text-text-muted mb-2">
-                            {tables.length} table{tables.length !== 1 ? "s" : ""}
-                          </p>
-                          {tables.map((table) => (
-                            <div key={table.name}>
-                              <div
-                                onClick={() => handleExpandTable(table.name)}
-                                className="flex items-center gap-2 px-2 py-1.5 rounded bg-primary-bg hover:bg-primary-bg/80 cursor-pointer transition-colors"
-                              >
-                                {expandedTable === table.name ? (
-                                  <ChevronDown className="w-3 h-3 text-terminal flex-shrink-0" />
+              {open ? (
+                <div className="pb-3 pl-11">
+                  {t === "loading" || t === undefined ? (
+                    <Skeleton lines={2} className="py-2" />
+                  ) : t === "failed" ? (
+                    <Notice tone="bad">I couldn&apos;t read its tables.</Notice>
+                  ) : t.length === 0 ? (
+                    <p className="py-2 text-footnote text-text-muted">No tables yet.</p>
+                  ) : (
+                    <div className="rounded-md border border-border bg-primary-bg/40 px-2">
+                      {t.map((table) => {
+                        const key = `${db.name}.${table.name}`;
+                        const cols = columns[key];
+                        return (
+                          <div key={table.name} className="border-b border-border last:border-b-0">
+                            <Row
+                              className="border-b-0"
+                              icon={<Table2 />}
+                              title={<span className="font-mono text-[15px]">{table.name}</span>}
+                              detail={`${table.column_count} ${table.column_count === 1 ? "column" : "columns"}`}
+                              expanded={openTable === key}
+                              onClick={() => toggleTable(db.name, table.name)}
+                            />
+                            {openTable === key ? (
+                              <div className="pb-2 pl-11">
+                                {cols === "loading" || cols === undefined ? (
+                                  <Skeleton lines={2} className="py-1" />
+                                ) : cols === "failed" ? (
+                                  <p className="py-1 text-footnote text-bad">I couldn&apos;t read its columns.</p>
                                 ) : (
-                                  <ChevronRight className="w-3 h-3 text-terminal flex-shrink-0" />
-                                )}
-                                <Table2 className="w-3 h-3 text-terminal flex-shrink-0" />
-                                <span className="text-xs font-mono text-text-primary flex-1">
-                                  {table.name}
-                                </span>
-                                <span className="text-xs text-text-muted">
-                                  {table.column_count} col{table.column_count !== 1 ? "s" : ""}
-                                </span>
-                              </div>
-                              {expandedTable === table.name && (
-                                <div className="ml-8 mt-1 mb-2 space-y-0.5">
-                                  {loadingColumns ? (
-                                    <p className="text-xs text-text-muted py-1">Loading columns...</p>
-                                  ) : columns.length === 0 ? (
-                                    <p className="text-xs text-text-muted py-1">No columns</p>
-                                  ) : (
-                                    columns.map((col) => (
-                                      <div
-                                        key={col.name}
-                                        className="flex items-center gap-2 px-2 py-1 rounded bg-surface/50 text-xs"
-                                      >
-                                        <span className="font-mono text-text-primary">{col.name}</span>
-                                        <span className="px-1.5 py-0.5 rounded bg-terminal/10 text-terminal font-mono text-[10px]">
-                                          {col.data_type}
-                                        </span>
-                                        {col.is_nullable === "YES" && (
-                                          <span className="text-text-muted/60 text-[10px]">nullable</span>
-                                        )}
-                                        {col.column_default && (
-                                          <span className="text-text-muted/60 text-[10px] truncate max-w-[120px]" title={col.column_default}>
-                                            = {col.column_default}
+                                  <ul className="space-y-1.5 py-1">
+                                    {cols.map((c) => (
+                                      <li key={c.name} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-footnote">
+                                        <span className="font-mono text-text-primary">{c.name}</span>
+                                        <Pill className="font-mono">{c.data_type}</Pill>
+                                        {c.is_nullable === "YES" ? <span className="text-caption text-text-muted">optional</span> : null}
+                                        {c.column_default ? (
+                                          <span className="max-w-[12rem] truncate font-mono text-caption text-text-muted" title={c.column_default}>
+                                            = {c.column_default}
                                           </span>
-                                        )}
-                                      </div>
-                                    ))
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                                        ) : null}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
-              ))
-            )}
-          </div>
-        </div>
-      )}
+              ) : null}
+            </div>
+          );
+        })}
+      </Card>
 
-      {/* Delete confirmation modal */}
-      {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-primary-bg border border-input-border rounded-lg p-6 max-w-md mx-4 shadow-xl">
-            <div className="flex items-start justify-between mb-4">
-              <h3 className="text-lg font-medium text-text-primary">Delete Database</h3>
-              <button
-                onClick={() => setDeleteTarget(null)}
-                className="p-1 text-text-muted hover:text-text-primary transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <p className="text-sm text-text-muted mb-2">
-              Are you sure you want to delete this database? This will permanently drop the
-              PostgreSQL schema and <strong className="text-red-400">all tables and data within it</strong>.
-              This action cannot be undone.
-            </p>
-            <div className="p-3 bg-surface rounded-lg mb-4">
-              <p className="text-sm font-mono font-medium text-text-primary">{deleteTarget.name}</p>
-              {deleteTarget.description && (
-                <p className="text-xs text-text-muted mt-1">{deleteTarget.description}</p>
-              )}
-            </div>
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => setDeleteTarget(null)}
-                className="px-4 py-2 rounded-lg border border-input-border text-sm text-text-primary hover:bg-surface transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDelete}
-                disabled={isDeleting}
-                className="px-4 py-2 rounded-lg bg-red-500 text-white text-sm hover:bg-red-600 disabled:opacity-50 transition-colors"
-              >
-                {isDeleting ? "Deleting..." : "Delete Database"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmSheet
+        open={Boolean(deleting)}
+        onClose={() => setDeleting(null)}
+        onConfirm={remove}
+        title={`Delete “${deleting?.name ?? ""}”?`}
+        body="This drops the database and every table and row in it. It can't be undone."
+        confirmLabel="Delete"
+      />
     </div>
   );
 }

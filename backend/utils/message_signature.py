@@ -2,7 +2,7 @@
 Message signature enforcement for Edward's outgoing messages.
 
 Ensures every outgoing message is signed with "- Edward 🤖" so recipients
-know the message came from the AI assistant, not from Ben directly.
+know the message came from the AI assistant, not from the owner directly.
 """
 
 import re

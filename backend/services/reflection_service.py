@@ -7,29 +7,33 @@ for the next turn.
 """
 
 import asyncio
-import json
-import re
+import logging
 import uuid
 from typing import List, Optional
 from datetime import datetime, timedelta
 
-from langchain_core.messages import HumanMessage
-from services.llm_utils import build_background_llm
+from langchain_core.messages import HumanMessage, SystemMessage
 
-from services.database import async_session, MemoryEnrichmentModel
+from services.llm_utils import build_background_llm, make_background_system_message
+from services.json_parsing import extract_json_payload
+
+from services.database import async_session, MemoryEnrichmentModel, MemoryModel
 from services.memory_service import retrieve_memories, Memory
+from services.owner import owner_text
+
+logger = logging.getLogger(__name__)
 
 
-REFLECTION_QUERY_PROMPT = """Analyze this conversation and generate 3-5 search queries that would find relevant context from long-term memory. Focus on:
+REFLECTION_QUERY_PROMPT = owner_text("""Analyze this conversation and generate 3-5 search queries that would find relevant context from long-term memory. Focus on:
 
 1. People, places, or topics mentioned or implied
 2. Related context the user might expect you to remember
 3. Background information that would improve your next response
 
-Return ONLY a JSON array of query strings. Example: ["Ben's work projects", "previous discussions about Python", "Ben's preferences for code style"]
+Return ONLY a JSON array of query strings. Example: ["{OWNER}'s work projects", "previous discussions about Python", "{OWNER}'s preferences for code style"]
 
 Conversation (last 10 messages):
-{conversation}"""
+{conversation}""")
 
 
 def should_reflect(messages: list, turn_count: int) -> bool:
@@ -62,57 +66,28 @@ def should_reflect(messages: list, turn_count: int) -> bool:
     return True
 
 
-async def generate_reflection_queries(messages: list, model: str = "claude-haiku-4-5-20251001") -> List[str]:
-    """Use background LLM to generate search queries from recent conversation context."""
-    # Format last 10 messages
-    conversation_text = "\n".join([
-        f"{msg.get('role', 'unknown').upper()}: {msg.get('content', '')}"
-        for msg in messages[-10:]
-        if isinstance(msg, dict)
-    ])
+async def generate_reflection_queries(
+    messages: list,
+    conversation_id: str | None = None,
+) -> List[str]:
+    """Generate search queries via the shared DreamContext cache.
 
-    if not conversation_text.strip():
-        return []
+    When ``conversation_id`` is provided, back-to-back callers for the same
+    turn (e.g. reflection + deep retrieval) share one underlying LLM call
+    for 60 s. When it's None, a per-call fallback ID is used and caching
+    essentially disabled — retained for legacy callers that don't have a
+    conversation scope.
+    """
+    from services.dream.context import REFLECTION_TIMEOUT_SECONDS, generate_search_queries
 
-    llm = build_background_llm(max_tokens=512)
-    prompt = REFLECTION_QUERY_PROMPT.format(conversation=conversation_text)
-
-    try:
-        response = await asyncio.wait_for(
-            llm.ainvoke([HumanMessage(content=prompt)]),
-            timeout=5.0,
-        )
-
-        response_text = response.content
-        if isinstance(response_text, list):
-            response_text = " ".join(
-                block.get("text", "") if isinstance(block, dict) else str(block)
-                for block in response_text
-            )
-        response_text = response_text.strip()
-
-        # Extract JSON array
-        if "```json" in response_text:
-            response_text = response_text.split("```json")[1].split("```")[0].strip()
-        elif "```" in response_text:
-            parts = response_text.split("```")
-            if len(parts) >= 2:
-                response_text = parts[1].strip()
-
-        json_match = re.search(r'\[[\s\S]*?\]', response_text)
-        if json_match:
-            response_text = json_match.group()
-
-        queries = json.loads(response_text)
-        if isinstance(queries, list):
-            return [q for q in queries if isinstance(q, str) and q.strip()][:5]
-
-    except asyncio.TimeoutError:
-        print("[REFLECTION] Query generation timed out (5s)")
-    except Exception as e:
-        print(f"[REFLECTION] Query generation failed: {e}")
-
-    return []
+    # Post-turn: nobody is waiting, so give the model the time it needs.
+    return await generate_search_queries(
+        conversation_id or "reflection:anon",
+        messages,
+        n=5,
+        window=10,
+        timeout=REFLECTION_TIMEOUT_SECONDS,
+    )
 
 
 async def run_reflection(
@@ -130,7 +105,7 @@ async def run_reflection(
     Returns:
         Number of enrichments stored
     """
-    queries = await generate_reflection_queries(messages)
+    queries = await generate_reflection_queries(messages, conversation_id=conversation_id)
     if not queries:
         return 0
 
@@ -148,9 +123,9 @@ async def run_reflection(
                     seen_ids.add(memory.id)
                     enrichments_to_store.append((memory, query))
         except asyncio.TimeoutError:
-            print(f"[REFLECTION] Query timed out: {query[:50]}")
+            logger.warning("reflection query timed out: %s", query[:50])
         except Exception as e:
-            print(f"[REFLECTION] Query failed: {e}")
+            logger.warning("reflection query failed: %s", e)
 
     if not enrichments_to_store:
         return 0
@@ -174,8 +149,27 @@ async def run_reflection(
         await session.commit()
 
     count = len(enrichments_to_store)
-    print(f"[REFLECTION] Stored {count} enrichments for conversation {conversation_id}")
+    logger.info(
+        "reflection stored enrichments",
+        extra={"subsystem": "reflection", "conversation_id": conversation_id, "count": count},
+    )
     return count
+
+
+# What the whole reflection may take beyond its query budget: the memory
+# searches (3 s each) and the enrichment write.
+REFLECTION_OUTER_MARGIN_SECONDS = 15.0
+
+
+def reflection_outer_timeout() -> float:
+    """The bound on one whole reflection: the query budget
+    (``dream.context.REFLECTION_TIMEOUT_SECONDS``, read per call) plus
+    ``REFLECTION_OUTER_MARGIN_SECONDS``. It was a hard-coded 10 s under a
+    20 s query budget (2026-09-25 audit), so a reflection whose queries
+    took 11-20 s was cancelled after the model had answered."""
+    from services.dream import context
+
+    return float(context.REFLECTION_TIMEOUT_SECONDS) + REFLECTION_OUTER_MARGIN_SECONDS
 
 
 async def run_reflection_safe(
@@ -184,15 +178,16 @@ async def run_reflection_safe(
     already_retrieved_ids: List[str],
 ) -> None:
     """Fire-and-forget wrapper that never raises."""
+    bound = reflection_outer_timeout()
     try:
         await asyncio.wait_for(
             run_reflection(conversation_id, messages, already_retrieved_ids),
-            timeout=10.0,
+            timeout=bound,
         )
     except asyncio.TimeoutError:
-        print(f"[REFLECTION] Full reflection timed out (10s) for {conversation_id}")
+        logger.warning("full reflection timed out (%.0fs) for %s", bound, conversation_id)
     except Exception as e:
-        print(f"[REFLECTION] Reflection failed safely: {e}")
+        logger.warning("reflection failed safely: %s", e)
 
 
 async def load_enrichments(conversation_id: str, limit: int = 5) -> List[Memory]:
@@ -206,7 +201,7 @@ async def load_enrichments(conversation_id: str, limit: int = 5) -> List[Memory]
     cutoff = datetime.now() - timedelta(hours=24)
 
     async with async_session() as session:
-        from sqlalchemy import select, update
+        from sqlalchemy import or_, select, update
 
         result = await session.execute(
             select(MemoryEnrichmentModel)
@@ -222,6 +217,15 @@ async def load_enrichments(conversation_id: str, limit: int = 5) -> List[Memory]
 
         if not rows:
             return []
+
+        # A row retired since it was found (valid_until passed) is consumed
+        # but not replayed: recall is live-only (memory audit, 2026-09-27).
+        live_ids = set((await session.execute(
+            select(MemoryModel.id).where(
+                MemoryModel.id.in_([row.memory_id for row in rows]),
+                or_(MemoryModel.valid_until.is_(None), MemoryModel.valid_until > datetime.utcnow()),
+            )
+        )).scalars().all())
 
         # Mark as consumed
         ids = [row.id for row in rows]
@@ -242,4 +246,5 @@ async def load_enrichments(conversation_id: str, limit: int = 5) -> List[Memory]
                 score=row.score,
             )
             for row in rows
+            if row.memory_id in live_ids
         ]

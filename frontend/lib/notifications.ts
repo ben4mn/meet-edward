@@ -5,6 +5,8 @@
  * communication with the backend push service.
  */
 
+import { detectKind, stableDeviceId } from "./presenceBeacon";
+
 // API URL (empty for relative URLs in browser)
 const API_URL = typeof window !== "undefined" ? "" : (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000");
 
@@ -15,6 +17,8 @@ const NOTIFICATION_DISMISSED_KEY = "edward-notification-dismissed";
 /**
  * Check if push notifications are supported in this browser.
  */
+import { describeSubscribeError } from "./pushPanelModel";
+
 export function isPushSupported(): boolean {
   if (typeof window === "undefined") return false;
 
@@ -94,18 +98,51 @@ export async function getPushStatus(): Promise<{
   configured: boolean;
   subscriptionCount: number;
   vapidPublicKey: string | null;
+  reachable: boolean;
 }> {
+  // `reachable: false` means the request failed — never "not configured".
   try {
     const response = await fetch(`${API_URL}/api/push/status`, {
       credentials: "include",
     });
     if (!response.ok) {
-      return { configured: false, subscriptionCount: 0, vapidPublicKey: null };
+      return { configured: false, subscriptionCount: 0, vapidPublicKey: null, reachable: false };
     }
-    return response.json();
+    const body = await response.json();
+    return { ...body, reachable: true };
   } catch {
-    return { configured: false, subscriptionCount: 0, vapidPublicKey: null };
+    return { configured: false, subscriptionCount: 0, vapidPublicKey: null, reachable: false };
   }
+}
+
+/** Resolve with `fallback` if `promise` has not settled within `ms`. */
+function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise((resolve) => {
+    const t = setTimeout(() => resolve(fallback), ms);
+    promise.then((v) => { clearTimeout(t); resolve(v); }, () => { clearTimeout(t); resolve(fallback); });
+  });
+}
+
+/**
+ * The service worker registration, registering `/sw.js` ourselves when
+ * nothing is registered yet (a freshly added iOS Home Screen app taps
+ * Subscribe before the layout's delayed registration has run). Returns
+ * null when no worker becomes active within `waitMs`.
+ */
+async function ensureServiceWorker(waitMs = 10000): Promise<ServiceWorkerRegistration | null> {
+  if (!("serviceWorker" in navigator)) return null;
+  let registration = await navigator.serviceWorker.getRegistration();
+  if (!registration) {
+    console.log("[Push] No registration yet — registering /sw.js");
+    try {
+      registration = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+    } catch (e) {
+      console.log("[Push] Registration failed:", e);
+      return null;
+    }
+  }
+  if (registration.active) return registration;
+  return withTimeout(navigator.serviceWorker.ready, waitMs, null as ServiceWorkerRegistration | null);
 }
 
 /**
@@ -200,42 +237,28 @@ export async function subscribeToPush(): Promise<{
     }
     console.log("[Push] Got VAPID key:", vapidPublicKey.substring(0, 20) + "...");
 
-    // Get service worker registration with timeout
+    // Get (or create) the service worker registration, bounded.
     console.log("[Push] Waiting for service worker...");
-
-    // Check if service worker is supported and has a controller
-    if (!navigator.serviceWorker.controller) {
-      console.log("[Push] No service worker controller, checking registration...");
-      const registrations = await navigator.serviceWorker.getRegistrations();
-      console.log("[Push] Found registrations:", registrations.length);
-      if (registrations.length === 0) {
-        return { success: false, error: "Service worker not registered. Try refreshing the app." };
-      }
+    const registration = await ensureServiceWorker();
+    if (!registration) {
+      return { success: false, error: "Service worker did not become active (10 s). Close and reopen the app, then retry." };
     }
+    console.log("[Push] Service worker ready, scope:", registration.scope);
 
-    // Wait for service worker with timeout
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("Service worker timeout")), 10000)
-    );
-
-    let registration;
-    try {
-      registration = await Promise.race([
-        navigator.serviceWorker.ready,
-        timeoutPromise
-      ]);
-      console.log("[Push] Service worker ready, scope:", registration.scope);
-    } catch (e) {
-      console.log("[Push] Service worker wait failed:", e);
-      return { success: false, error: "Service worker not ready. Make sure you're using HTTPS." };
-    }
-
-    // Subscribe to push
+    // Subscribe to push. A subscription made with a different server key
+    // makes the browser refuse; drop it and try once more.
     console.log("[Push] Subscribing to push manager...");
-    const subscription = await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
-    });
+    const options = { userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(vapidPublicKey) };
+    let subscription: PushSubscription;
+    try {
+      subscription = await registration.pushManager.subscribe(options);
+    } catch (e) {
+      const existing = await registration.pushManager.getSubscription().catch(() => null);
+      if (!existing) throw e;
+      console.log("[Push] Subscribe refused with an existing subscription; replacing it:", e);
+      await existing.unsubscribe().catch(() => undefined);
+      subscription = await registration.pushManager.subscribe(options);
+    }
     console.log("[Push] Got subscription, endpoint:", subscription.endpoint.substring(0, 50) + "...");
 
     // Helper to convert ArrayBuffer to base64url
@@ -270,6 +293,10 @@ export async function subscribeToPush(): Promise<{
           p256dh: p256dhKey,
           auth: authKey,
         },
+        // Device identity so Edward can target this device (Session E).
+        device_id: stableDeviceId(detectKind(navigator.userAgent, (navigator as { standalone?: boolean }).standalone), localStorage),
+        device_name: `${detectKind(navigator.userAgent, (navigator as { standalone?: boolean }).standalone)} · ${navigator.platform || "browser"}`,
+        kind: detectKind(navigator.userAgent, (navigator as { standalone?: boolean }).standalone),
       }),
     });
 
@@ -289,7 +316,7 @@ export async function subscribeToPush(): Promise<{
     console.error("[Push] Subscription error:", error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : "Unknown error",
+      error: describeSubscribeError(error),
     };
   }
 }
@@ -345,8 +372,15 @@ export async function isSubscribed(): Promise<boolean> {
   if (!isPushSupported()) return false;
 
   try {
-    const registration = await navigator.serviceWorker.ready;
-    const subscription = await registration.pushManager.getSubscription();
+    // Never await `ready` unbounded: with no active worker it never settles
+    // and the panel used to hang here before asking the server anything.
+    const registration = await navigator.serviceWorker.getRegistration();
+    if (!registration) return false;
+    const active = registration.active
+      ? registration
+      : await withTimeout(navigator.serviceWorker.ready, 3000, null as ServiceWorkerRegistration | null);
+    if (!active) return false;
+    const subscription = await active.pushManager.getSubscription();
     return subscription !== null;
   } catch {
     return false;

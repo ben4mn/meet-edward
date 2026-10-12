@@ -1,7 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import { usePathname } from "next/navigation";
 import { Bell, X } from "lucide-react";
+import { Button } from "@/components/ui";
+import { cn } from "@/lib/utils";
+import { promptPlacement } from "@/lib/chrome";
+import { useComposing } from "@/lib/useComposing";
 import {
   shouldShowPrompt,
   subscribeToPush,
@@ -9,6 +14,16 @@ import {
   getPushStatus,
   getNotificationPermission,
 } from "@/lib/notifications";
+
+/** The CSS variable the toast viewport adds to its bottom offset (globals.css). */
+const PROMPT_H = "--prompt-h";
+/** The prompt's own gap above the dock (its bottom calc below). */
+const PROMPT_GAP_PX = 10;
+
+function setPromptHeight(value: string) {
+  if (typeof document === "undefined") return;
+  document.documentElement.style.setProperty(PROMPT_H, value);
+}
 
 /**
  * A prompt component that asks users to enable push notifications.
@@ -20,9 +35,14 @@ import {
  * - Backend has push configured (VAPID keys set)
  */
 export function NotificationPrompt() {
+  const pathname = usePathname() ?? "/today";
+  const composing = useComposing();
+  // Never over the dock or the composer (lib/chrome.ts promptPlacement).
+  const placement = promptPlacement(pathname, composing);
   const [visible, setVisible] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
 
   // Check and complete subscription if permission was granted (e.g., returning from iOS settings)
   const checkAndSubscribe = useCallback(async () => {
@@ -37,12 +57,12 @@ export function NotificationPrompt() {
       if (result.success) {
         setVisible(false);
       } else {
-        setError(result.error || "Failed to complete subscription");
+        setError(result.error || "I couldn't finish turning them on. Try once more?");
       }
     } else if (permission === "denied") {
       // Permission denied
       setLoading(false);
-      setError("Notifications were denied. You can enable them in your browser/device settings.");
+      setError("Notifications are blocked. You can turn them on in Settings → Notifications → Edward.");
     }
     // If still "default", keep waiting
   }, []);
@@ -114,9 +134,9 @@ export function NotificationPrompt() {
           setVisible(false);
           return;
         }
-        setError(retry.error || "Failed to complete subscription");
+        setError(retry.error || "I couldn't finish turning them on. Try once more?");
       } else {
-        setError(result.error || "Failed to enable notifications");
+        setError(result.error || "I couldn't turn notifications on. Try once more?");
       }
     }
   };
@@ -126,52 +146,79 @@ export function NotificationPrompt() {
     setVisible(false);
   };
 
-  if (!visible) return null;
+  // Above the dock the prompt and the toasts share the same spot: while it
+  // shows there it tells the toast viewport its height (plus its gap), so a
+  // "Logged · Undo" stacks above it instead of covering its buttons.
+  const liftsToasts = visible && placement === "above-dock";
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!liftsToasts || !el) {
+      setPromptHeight("0px");
+      return;
+    }
+    const measure = () => setPromptHeight(`${Math.ceil(el.getBoundingClientRect().height) + PROMPT_GAP_PX}px`);
+    measure();
+    const RO = (globalThis as { ResizeObserver?: typeof ResizeObserver }).ResizeObserver;
+    const ro = RO ? new RO(measure) : null;
+    ro?.observe(el);
+    return () => {
+      ro?.disconnect();
+      setPromptHeight("0px");
+    };
+  }, [liftsToasts, error]);
+
+  if (!visible || placement === "hidden") return null;
 
   return (
-    <div className="fixed bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-96 z-50">
-      <div className="bg-surface border border-border rounded-lg shadow-lg p-4">
+    <div
+      ref={boxRef}
+      role="dialog"
+      aria-labelledby="notif-prompt-title"
+      className={cn(
+        "fixed inset-x-3 z-40 md:inset-x-auto md:right-4 md:top-[68px] md:bottom-auto md:w-[360px]",
+        "motion-safe:animate-fade-rise",
+        placement === "top"
+          ? "top-[calc(env(safe-area-inset-top)+56px)]"
+          : "bottom-[calc(max(env(safe-area-inset-bottom),8px)+var(--dock-h,56px)+10px)]",
+      )}
+    >
+      <div className="rounded-lg border border-border bg-surface-elevated p-4 shadow-e2">
         <div className="flex items-start gap-3">
-          <div className="flex-shrink-0 w-10 h-10 rounded-full bg-terminal/10 flex items-center justify-center">
-            <Bell className="w-5 h-5 text-terminal" />
+          <div className="flex h-10 w-10 flex-none items-center justify-center rounded-full bg-surface-3">
+            <Bell className="h-5 w-5 text-text-secondary" aria-hidden />
           </div>
 
-          <div className="flex-1 min-w-0">
-            <h3 className="text-sm font-medium text-text-primary">
-              Enable notifications
+          <div className="min-w-0 flex-1">
+            <h3 id="notif-prompt-title" className="text-callout text-text-primary">
+              Let me reach you
             </h3>
-            <p className="mt-1 text-xs text-text-secondary">
-              Get notified about scheduled reminders, incoming messages, and when Edward needs your attention.
+            <p className="mt-0.5 text-footnote text-text-secondary">
+              I&apos;ll only buzz you for what can&apos;t wait — a late dose, someone who needs an answer.
             </p>
 
             {error && (
-              <p className="mt-2 text-xs text-red-400">{error}</p>
+              <p role="alert" className="mt-2 text-footnote text-bad">
+                {error}
+              </p>
             )}
 
             <div className="mt-3 flex gap-2">
-              <button
-                onClick={handleEnable}
-                disabled={loading}
-                className="px-3 py-1.5 text-xs font-medium rounded bg-terminal text-white hover:bg-terminal/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {loading ? "Enabling..." : "Enable"}
-              </button>
-              <button
-                onClick={handleDismiss}
-                disabled={loading}
-                className="px-3 py-1.5 text-xs font-medium rounded text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"
-              >
+              <Button size="sm" variant="primary" onClick={handleEnable} loading={loading} className="h-11 md:h-9">
+                {loading ? "Turning on…" : "Allow notifications"}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={handleDismiss} disabled={loading} className="h-11 md:h-9">
                 Not now
-              </button>
+              </Button>
             </div>
           </div>
 
           <button
+            type="button"
             onClick={handleDismiss}
-            className="flex-shrink-0 p-1 rounded hover:bg-surface-hover transition-colors"
+            className="-mr-2 -mt-2 inline-flex h-11 w-11 flex-none items-center justify-center rounded-full text-text-muted transition-colors hover:bg-surface-3 hover:text-text-primary"
             aria-label="Dismiss"
           >
-            <X className="w-4 h-4 text-text-secondary" />
+            <X className="h-4 w-4" aria-hidden />
           </button>
         </div>
       </div>

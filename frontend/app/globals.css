@@ -2,153 +2,194 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Light theme (default in :root, overridden by .dark) */
+/* Edward's design tokens — docs/design-system-2026-09-25.md ("calm presence").
+ *
+ * Every colour has a raw value (`--terminal`, read directly by login,
+ * AuthGuard and the pane buddy) and an `-rgb` channel twin that Tailwind
+ * reads so alpha modifiers compile (`bg-terminal/20`). Translucent tokens
+ * (the hairline, soft fills, the glow) carry their resting alpha in an
+ * `-alpha` variable; `/NN` scales it (tailwind.config.ts `scaled`).
+ *
+ * :root is light; `.dark` (the default, set on <html> before paint) is dark.
+ * Status colours never borrow Edward's emerald. Text tokens keep ≥ 4.5:1 on
+ * every surface and on their own soft pills (pinned by
+ * __tests__/tokenContrast.test.ts; 2026-09-26 darkened light ok/warn/bad and
+ * lifted dark muted, which missed it by a hair). */
+
 :root {
-  --primary-bg: #ffffff;
-  --surface: #f1f5f9;
-  --text-primary: #0f172a;
-  --text-muted: #64748b;
-  --border: #e2e8f0;
-  --terminal: #6366f1;
-  --input-bg: #ffffff;
-  --input-border: #e2e8f0;
+  color-scheme: light;
+
+  --primary-bg: #f5f6f8;          --primary-bg-rgb: 245 246 248;
+  --surface: #ffffff;             --surface-rgb: 255 255 255;
+  --surface-elevated: #ffffff;    --surface-elevated-rgb: 255 255 255;
+  --surface-3: #eef1f4;           --surface-3-rgb: 238 241 244;
+  --border: rgba(13, 20, 31, 0.1); --border-rgb: 13 20 31; --border-alpha: 0.1;
+  --text-primary: #0d141f;        --text-primary-rgb: 13 20 31;
+  --text-secondary: #3b4758;      --text-secondary-rgb: 59 71 88;
+  --text-muted: #5c6878;          --text-muted-rgb: 92 104 120;
+  --terminal: #047857;            --terminal-rgb: 4 120 87;
+  --terminal-ink: #ffffff;        --terminal-ink-rgb: 255 255 255;
+  --terminal-strong: #047857;     --terminal-strong-rgb: 4 120 87;
+  --terminal-soft: rgba(4, 120, 87, 0.1); --terminal-soft-alpha: 0.1;
+  --glow: rgba(4, 120, 87, 0.3);  --glow-alpha: 0.3;
+  --input-bg: #ffffff;            --input-bg-rgb: 255 255 255;
+  --input-border: rgba(13, 20, 31, 0.16); --input-border-rgb: 13 20 31; --input-border-alpha: 0.16;
+
+  --ok: #276c2c;                  --ok-rgb: 39 108 44;
+  --warn: #8f5500;                --warn-rgb: 143 85 0;
+  --bad: #b23514;                 --bad-rgb: 178 53 20;
+  --info: #2459c4;                --info-rgb: 36 89 196;
+  --soft-alpha: 0.12;
+  --ok-soft: rgba(39, 108, 44, 0.12);
+  --warn-soft: rgba(143, 85, 0, 0.12);
+  --bad-soft: rgba(178, 53, 20, 0.12);
+  --info-soft: rgba(36, 89, 196, 0.12);
+
+  --shadow-e1: 0 1px 2px rgba(13, 20, 31, 0.05), 0 2px 8px -2px rgba(13, 20, 31, 0.06);
+  --shadow-e2: 0 8px 24px -6px rgba(13, 20, 31, 0.14);
+  --shadow-e3: 0 -12px 40px -12px rgba(13, 20, 31, 0.18);
+  --shadow-glow: 0 0 0 1px rgba(4, 120, 87, 0.3), 0 0 24px -4px rgba(62, 207, 158, 0.45);
+
+  /* Motion (theme-independent). Exits run at 0.7x. */
+  --dur-press: 90ms;
+  --dur-fast: 160ms;
+  --dur-base: 240ms;
+  --dur-slow: 360ms;
+  --ease-out: cubic-bezier(.22, 1, .36, 1);
+  --ease-in-out: cubic-bezier(.65, 0, .35, 1);
+  --ease-in: cubic-bezier(.4, 0, 1, 1);
+
+  /* Safe-area insets for iOS notch / home indicator — populated by the
+     browser when <meta viewport-fit=cover> is set (already in app/layout). */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
 }
 
-/* Dark theme (ZYROI style) */
 .dark {
-  --primary-bg: #0f172a;
-  --surface: #1e293b;
-  --text-primary: #f1f5f9;
-  --text-muted: #94a3b8;
-  --border: #334155;
-  --terminal: #10b981;
-  --input-bg: #1e293b;
-  --input-border: #334155;
-}
-
-body {
-  color: var(--text-primary);
-  background: var(--primary-bg);
-  font-family: var(--font-inter), system-ui, sans-serif;
-}
-
-/* Custom scrollbar - Light theme */
-::-webkit-scrollbar {
-  width: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: #f1f5f9;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-}
-
-/* Custom scrollbar - Dark theme */
-.dark ::-webkit-scrollbar-track {
-  background: #1e293b;
-}
-
-.dark ::-webkit-scrollbar-thumb {
-  background: #475569;
-}
-
-.dark ::-webkit-scrollbar-thumb:hover {
-  background: #64748b;
-}
-
-/* Smooth transitions for theme changes (scoped to avoid layout thrash) */
-body,
-.dark,
-[class*="bg-"],
-input,
-select,
-textarea,
-button {
-  transition: background-color 0.2s ease, border-color 0.2s ease;
-}
-
-/* Form elements in dark mode */
-.dark select,
-.dark input,
-.dark textarea {
   color-scheme: dark;
+
+  --primary-bg: #0a0e14;          --primary-bg-rgb: 10 14 20;
+  --surface: #121821;             --surface-rgb: 18 24 33;
+  --surface-elevated: #18202b;    --surface-elevated-rgb: 24 32 43;
+  --surface-3: #1f2835;           --surface-3-rgb: 31 40 53;
+  --border: rgba(255, 255, 255, 0.08); --border-rgb: 255 255 255; --border-alpha: 0.08;
+  --text-primary: #e8edf4;        --text-primary-rgb: 232 237 244;
+  --text-secondary: #a9b4c3;      --text-secondary-rgb: 169 180 195;
+  --text-muted: #8592a4;          --text-muted-rgb: 133 146 164;
+  --terminal: #3ecf9e;            --terminal-rgb: 62 207 158;
+  --terminal-ink: #03140e;        --terminal-ink-rgb: 3 20 14;
+  --terminal-strong: #6fe0b9;     --terminal-strong-rgb: 111 224 185;
+  --terminal-soft: rgba(62, 207, 158, 0.12); --terminal-soft-alpha: 0.12;
+  --glow: rgba(62, 207, 158, 0.35); --glow-alpha: 0.35;
+  --input-bg: #0e131b;            --input-bg-rgb: 14 19 27;
+  --input-border: rgba(255, 255, 255, 0.1); --input-border-rgb: 255 255 255; --input-border-alpha: 0.1;
+
+  --ok: #7fd18b;                  --ok-rgb: 127 209 139;
+  --warn: #f2c35b;                --warn-rgb: 242 195 91;
+  --bad: #f07a52;                 --bad-rgb: 240 122 82;
+  --info: #8fb4ff;                --info-rgb: 143 180 255;
+  --soft-alpha: 0.14;
+  --ok-soft: rgba(127, 209, 139, 0.14);
+  --warn-soft: rgba(242, 195, 91, 0.14);
+  --bad-soft: rgba(240, 122, 82, 0.14);
+  --info-soft: rgba(143, 180, 255, 0.14);
+
+  --shadow-e1: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-e2: 0 0 0 1px var(--border), 0 12px 32px -8px rgba(0, 0, 0, 0.6);
+  --shadow-e3: 0 -24px 48px -12px rgba(0, 0, 0, 0.7);
+  --shadow-glow: 0 0 0 1px rgba(62, 207, 158, 0.35), 0 0 24px -4px rgba(62, 207, 158, 0.45);
 }
 
-/* Edward avatar animations */
-@keyframes edward-blink {
-  0%, 88%, 96%, 100% { transform: scaleY(1); }
-  92% { transform: scaleY(0.1); }
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    overscroll-behavior: none;
+  }
+
+  body {
+    color: var(--text-primary);
+    background: var(--primary-bg);
+    font-family: var(--font-inter), system-ui, sans-serif;
+    font-feature-settings: "cv11", "ss01";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    overscroll-behavior: none;
+  }
+
+  /* A scroll inside a panel, sheet or list never drags the page with it. */
+  .overflow-auto,
+  .overflow-y-auto,
+  .overflow-x-auto,
+  .overflow-scroll,
+  .overflow-y-scroll,
+  .overflow-x-scroll {
+    overscroll-behavior: contain;
+  }
+
+  ::selection {
+    background: rgb(var(--terminal-rgb) / 0.28);
+  }
+
+  /* Keyboard focus: a 2px emerald ring at 60% with a 2px gap of canvas.
+     Never shown for a mouse click or a tap. */
+  :focus-visible {
+    outline: 2px solid rgb(var(--terminal-rgb) / 0.6);
+    outline-offset: 2px;
+  }
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
+
+  /* Thin, quiet scrollbars. Standard properties for Chrome/Firefox;
+     the ::-webkit ones for Safari. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--text-muted-rgb) / 0.35) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: rgb(var(--text-muted-rgb) / 0.3);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(var(--text-muted-rgb) / 0.5);
+  }
 }
 
-@keyframes edward-mouth {
-  0%, 78%, 92%, 100% { transform: scaleX(1); }
-  85% { transform: scaleX(1.2); }
+@layer utilities {
+  /* Horizontal chip rows and the like: scroll without a bar. */
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
 }
 
-@keyframes edward-float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-3px); }
-}
-
-@keyframes edward-eye-glow {
-  0%, 100% { filter: drop-shadow(0 0 0px transparent); }
-  50% { filter: drop-shadow(0 0 3px #52b788); }
-}
-
-@keyframes edward-screen-flicker {
-  0%, 4%, 100% { opacity: 1; }
-  2% { opacity: 0.85; }
-}
-
-@keyframes edward-antenna-glow {
-  0%, 100% { filter: drop-shadow(0 0 0px transparent); fill: #52b788; }
-  50% { filter: drop-shadow(0 0 4px #52b788); fill: #6fcf97; }
-}
-
-@keyframes edward-antenna-wobble {
-  0%, 100% { transform: rotate(0deg); }
-  25% { transform: rotate(3deg); }
-  75% { transform: rotate(-3deg); }
-}
-
-.edward-blink {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: edward-blink 3.7s ease-in-out infinite;
-}
-
-.edward-mouth {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: edward-mouth 6s ease-in-out infinite;
-}
-
-.edward-float {
-  animation: edward-float 5s ease-in-out infinite;
-}
-
-.edward-antenna {
-  transform-origin: 50px 34px;
-  animation: edward-antenna-wobble 3s ease-in-out infinite;
-}
-
-.edward-eye-glow {
-  animation: edward-eye-glow 4s ease-in-out infinite;
-}
-
-.edward-screen-flicker {
-  animation: edward-screen-flicker 8s ease-in-out infinite;
-}
-
-.edward-antenna-glow {
-  animation: edward-antenna-glow 5s ease-in-out infinite;
+/* Theme switch: lib/theme.tsx adds this class for ~300ms on a toggle so the
+   colours cross-fade, then removes it. Nothing else animates colours
+   globally — transition utilities on components stay in charge. */
+html.theme-transition,
+html.theme-transition *,
+html.theme-transition *::before,
+html.theme-transition *::after {
+  transition-property: background-color, border-color, color, fill, stroke, box-shadow !important;
+  transition-duration: var(--dur-base) !important;
+  transition-timing-function: var(--ease-in-out) !important;
+  transition-delay: 0s !important;
 }
 
 @keyframes fade-in-step {
@@ -156,51 +197,594 @@ button {
   to { opacity: 1; transform: translateY(0); }
 }
 .animate-fade-in-step {
-  animation: fade-in-step 0.2s ease-out;
+  animation: fade-in-step 0.2s var(--ease-out);
 }
 
-/* Landing page animations */
-@keyframes landing-gradient-shift {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
+@keyframes reduced-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
-@keyframes edward-hero-pulse {
-  0%, 100% { opacity: 0.6; transform: scale(1); }
-  50% { opacity: 1; transform: scale(1.05); }
-}
-
-@keyframes landing-glow-pulse {
-  0%, 100% { box-shadow: 0 0 20px rgba(82, 183, 136, 0.3), 0 0 40px rgba(82, 183, 136, 0.1); }
-  50% { box-shadow: 0 0 25px rgba(82, 183, 136, 0.5), 0 0 50px rgba(82, 183, 136, 0.2); }
-}
-
-.landing-gradient-bg {
-  background: linear-gradient(135deg, #0f172a 0%, #0d1f2d 25%, #0f172a 50%, #111827 75%, #0f172a 100%);
-  background-size: 400% 400%;
-  animation: landing-gradient-shift 15s ease infinite;
-}
-
-.landing-cta-button {
-  background: linear-gradient(135deg, #52b788 0%, #40916c 100%);
-  animation: landing-glow-pulse 3s ease-in-out infinite;
-}
-
-.landing-cta-button:hover {
-  background: linear-gradient(135deg, #5ec898 0%, #52b788 100%);
-}
-
+/* Reduced motion: opacity fades of 120ms or less, nothing loops. */
 @media (prefers-reduced-motion: reduce) {
-  .edward-blink,
-  .edward-mouth,
-  .edward-float,
-  .edward-antenna,
-  .edward-eye-glow,
-  .edward-screen-flicker,
-  .edward-antenna-glow,
-  .landing-gradient-bg,
-  .landing-cta-button {
-    animation: none;
+  .animate-fade-rise,
+  .animate-scale-in,
+  .animate-fade-in,
+  .animate-fade-in-step {
+    animation: reduced-fade 120ms linear both !important;
+  }
+  .toast-leave {
+    animation: reduced-fade 112ms linear reverse forwards !important;
+  }
+  .animate-breathe,
+  .animate-shimmer,
+  .animate-spin,
+  .animate-ping,
+  .animate-pulse,
+  .animate-bounce {
+    animation: none !important;
+  }
+  html.theme-transition,
+  html.theme-transition *,
+  html.theme-transition *::before,
+  html.theme-transition *::after {
+    transition-duration: 120ms !important;
   }
 }
+
+/* Ensure long unbroken strings wrap inside markdown content */
+.markdown-content {
+  overflow-wrap: anywhere;
+}
+
+/* Safe-area utilities. The home indicator, or 8px where there is none. */
+.pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom), 8px);
+}
+.pt-safe {
+  padding-top: calc(var(--safe-top) + 0.5rem);
+}
+
+/* Toasts (components/ui/Toast.tsx): above the dock and the home indicator
+   on the phone, bottom-right on md+ where there is no dock. --dock-h is
+   the dock's drawn height above its safe-area padding. */
+:root {
+  --dock-h: 56px;
+}
+/* Above the dock, and above the notification prompt while it shows there
+   (NotificationPrompt publishes --prompt-h: its height plus its gap). */
+.toast-viewport {
+  bottom: calc(max(env(safe-area-inset-bottom), 8px) + var(--dock-h) + 8px + var(--prompt-h, 0px));
+}
+@media (min-width: 768px) {
+  .toast-viewport {
+    bottom: 24px;
+  }
+}
+@keyframes toast-leave {
+  to { opacity: 0; transform: translateY(4px) scale(0.98); }
+}
+.toast-leave {
+  animation: toast-leave 112ms var(--ease-in) forwards;
+}
+
+/* === Pane buddy (Edward's character) === */
+/* Owned by the character work; other agents leave this section alone.
+ *
+ * The CSS state machine behind components/pane/PaneSvg.tsx. The component
+ * draws him and sets attributes; lib/useEdwardLife.ts adds the life; this
+ * section turns attributes into poses and motion:
+ *
+ *   data-mood    idle think work listen speak attention sleepy resting offline
+ *   data-beat    nod wince wave acted perk        (one-shot, ≤ BEAT_MS)
+ *   data-gaze    left right up down               (explicit, from a prop)
+ *   data-glance  left right down                  (idle glances, from the hook)
+ *   data-blink   present while the eyes are shut
+ *   .is-live     the one Edward per screen who breathes and runs mood loops
+ *   .pane-static fully still
+ *
+ * Rules of the rig (pinned by __tests__/paneCss.test.ts and
+ * paneTransformOrigin.test.ts):
+ *   - every pivot is viewBox px with the default transform-box — never
+ *     fill-box (it made "18px 17px" pivot far outside the speaking grin);
+ *   - only transform, opacity and fill animate; amplitudes are small;
+ *   - every static avatar reads its mood from a pose; only .is-live loops;
+ *   - reduced motion: no loops, and each pose still says what he is doing.
+ *
+ * Legacy activity classes still work because PaneSvg reads act-think /
+ * act-speak / act-listen as moods; act-look keeps a slow look-around on a
+ * live avatar (the hub). */
+
+.pane-avatar {
+  --pane-accent: #3ecf9e;               /* Edward's light: eyes, chest, tip */
+  --pane-light: var(--pane-accent);
+  --pane-tip: var(--pane-accent);
+  --pane-amber: #f2c35b;
+  --pane-grey: #7d8a9c;
+  --pane-shell: #e9e4d8;                /* the icon's cream shell */
+  --pane-shade: #c9c3b4;                /* its underside */
+  --pane-foot: #8e887b;
+  --pane-visor: #20262f;
+  --pane-floor: #0d141f;
+  --pane-outline: rgba(13, 20, 31, 0.34); /* light mode: never vanish on white */
+  --pane-floor-alpha: 0.16;
+  pointer-events: auto;
+  overflow: visible;
+}
+.dark .pane-avatar {
+  --pane-outline: rgba(0, 0, 0, 0.3);
+  --pane-floor: #000;
+  --pane-floor-alpha: 0.4;
+}
+.pane-avatar > svg { overflow: visible; }
+/* Only the outer svg mirrors: the bust nests a second svg, and a
+   descendant selector would flip it back. */
+.pane-avatar.face-left > svg { transform: scaleX(-1); }
+
+/* ---- Pivots (viewBox px) and the transitions that glide between poses ---- */
+
+.pane-avatar .robot-neck,
+.pane-avatar .robot-head {
+  transform-origin: 18px 21.5px;
+}
+.pane-avatar .robot-neck {
+  transition: transform var(--dur-slow, 360ms) var(--ease-out, ease-out);
+}
+.pane-avatar .robot-antenna {
+  transform-origin: 18px 6.5px;
+  transition: transform var(--dur-slow, 360ms) var(--ease-out, ease-out);
+}
+.pane-avatar .robot-antenna-tip,
+.pane-avatar .robot-antenna-ring,
+.pane-avatar .robot-antenna-glow {
+  transform-origin: 17px 1.2px;
+}
+.pane-avatar .robot-antenna-glow {
+  opacity: 0.55;
+  transition: opacity var(--dur-base, 240ms) ease;
+}
+.pane-avatar .robot-antenna-ring { opacity: 0; }
+/* Small busts keep the trust light readable. */
+.pane-avatar[data-variant="bust"] .robot-antenna-tip { transform: scale(1.2); }
+.pane-avatar .robot-face {
+  transition: transform var(--dur-base, 240ms) var(--ease-out, ease-out);
+}
+.pane-avatar .robot-eyes {
+  transform-origin: 18px 11.2px;
+  transition: transform var(--dur-base, 240ms) var(--ease-out, ease-out);
+}
+.pane-avatar .robot-eye-l {
+  transform-origin: 14.5px 11.2px;
+  transition: transform 80ms ease-in, opacity 120ms ease;
+}
+.pane-avatar .robot-eye-r {
+  transform-origin: 21.5px 11.2px;
+  transition: transform 80ms ease-in, opacity 120ms ease;
+}
+.pane-avatar .robot-eye-glow {
+  opacity: 0.75;
+  transition: opacity var(--dur-base, 240ms) ease;
+}
+.pane-avatar .robot-mouth-open {
+  transform-origin: 18px 16.6px;
+}
+.pane-avatar .robot-arm-r { transform-origin: 25.2px 23.4px; }
+.pane-avatar .robot-wave-arm {
+  transform-origin: 24.8px 23.4px;
+  opacity: 0;
+}
+.pane-avatar .robot-arm-l { transform-origin: 10.8px 23.4px; }
+.pane-avatar .robot-core {
+  transform-origin: 18px 25px;
+  transition: opacity var(--dur-base, 240ms) ease;
+}
+.pane-avatar .robot-shadow {
+  transform-origin: 18px 35px;
+  opacity: var(--pane-floor-alpha);
+}
+
+/* Expression overlays: pills and a smile at rest; the rest wait. */
+.pane-avatar .robot-eye-happy,
+.pane-avatar .robot-eye-wince,
+.pane-avatar .robot-mouth-grin,
+.pane-avatar .robot-mouth-flat,
+.pane-avatar .robot-mouth-open,
+.pane-avatar .robot-scan,
+.pane-avatar .robot-glint {
+  opacity: 0;
+}
+.pane-avatar .robot-eye-happy,
+.pane-avatar .robot-eye-wince,
+.pane-avatar .robot-mouth-smile,
+.pane-avatar .robot-mouth-grin,
+.pane-avatar .robot-mouth-flat,
+.pane-avatar .robot-mouth-open,
+.pane-avatar .robot-scan {
+  transition: opacity var(--dur-fast, 160ms) ease;
+}
+
+/* ---- Breath: only the live Edward, 5.2s, rising faster than he falls ---- */
+
+.pane-avatar.is-live .robot-upper {
+  animation: ed-breathe 5.2s ease-in-out infinite;
+}
+.pane-avatar.is-live .robot-core {
+  animation: ed-core-breathe 5.2s ease-in-out infinite;
+}
+@keyframes ed-breathe {
+  0%, 100% { transform: translateY(0); }
+  38%      { transform: translateY(-0.38px); }
+}
+@keyframes ed-core-breathe {
+  0%, 100% { opacity: 0.78; }
+  38%      { opacity: 1; }
+}
+
+/* ---- Moods: a pose for every avatar, a loop only for the live one ---- */
+
+/* think — looking up and away, eyes narrowed, the scanline mid-visor,
+   the tip glowing; live: the scan sweeps and the tip pulses slowly. */
+.pane-avatar[data-mood="think"] .robot-face { transform: translate(-0.7px, -0.6px); }
+.pane-avatar[data-mood="think"] .robot-eyes { transform: scaleY(0.8); }
+.pane-avatar[data-mood="think"] .robot-eye-glow { opacity: 1; }
+.pane-avatar[data-mood="think"] .robot-antenna-glow { opacity: 0.9; }
+.pane-avatar[data-mood="think"] .robot-scan { opacity: 0.5; transform: translateY(4.4px); }
+.pane-avatar.is-live[data-mood="think"] .robot-scan {
+  animation: ed-scan 2.8s ease-in-out infinite;
+}
+.pane-avatar.is-live[data-mood="think"] .robot-antenna-glow {
+  animation: ed-tip-pulse 2.8s ease-in-out infinite;
+}
+
+/* work — tools running: eyes focused down on the job, the scan quick,
+   the tip shimmering. */
+.pane-avatar[data-mood="work"] .robot-face { transform: translate(0, 0.6px); }
+.pane-avatar[data-mood="work"] .robot-eyes { transform: scaleY(0.72); }
+.pane-avatar[data-mood="work"] .robot-eye-glow { opacity: 1; }
+.pane-avatar[data-mood="work"] .robot-antenna-glow { opacity: 1; }
+.pane-avatar[data-mood="work"] .robot-scan { opacity: 0.45; transform: translateY(6.4px); }
+.pane-avatar.is-live[data-mood="work"] .robot-scan {
+  animation: ed-scan 1.3s linear infinite;
+}
+.pane-avatar.is-live[data-mood="work"] .robot-antenna-glow {
+  animation: ed-tip-shimmer 0.9s linear infinite;
+}
+
+/* listen — head tilted, eyes a touch wider; the ring round the tip opens
+   with the mic level (--level 0..1) when the voice view feeds it. */
+.pane-avatar[data-mood="listen"] .robot-neck { transform: rotate(-5deg); }
+.pane-avatar[data-mood="listen"] .robot-face { transform: translate(0, -0.3px); }
+.pane-avatar[data-mood="listen"] .robot-eyes { transform: scaleY(1.08); }
+.pane-avatar[data-mood="listen"] .robot-eye-glow { opacity: 1; }
+.pane-avatar[data-mood="listen"] .robot-antenna-glow { opacity: 0.9; }
+.pane-avatar[data-mood="listen"] .robot-antenna-ring {
+  opacity: 0.55;
+  transform: scale(calc(1.25 + var(--level, 0) * 1.5));
+  transition: transform 90ms linear;
+}
+.pane-avatar.is-live[data-mood="listen"] .robot-antenna-glow {
+  animation: ed-tip-pulse 1.9s ease-in-out infinite;
+}
+
+/* speak — the mouth opens; live: it talks, or follows --mouth (0..1, the
+   TTS level) when lip-synced, and the head keeps a gentle beat. */
+.pane-avatar[data-mood="speak"] .robot-mouth-smile { opacity: 0; }
+.pane-avatar[data-mood="speak"] .robot-mouth-open { opacity: 1; transform: scaleY(0.75); }
+.pane-avatar[data-mood="speak"] .robot-eyes { transform: scaleY(0.92); }
+.pane-avatar[data-mood="speak"] .robot-antenna-glow { opacity: 0.8; }
+.pane-avatar.is-live[data-mood="speak"] .robot-mouth-open {
+  animation: ed-talk 0.46s ease-in-out infinite alternate;
+}
+.pane-avatar.is-live[data-mood="speak"] .robot-neck {
+  animation: ed-speak-bob 1.8s ease-in-out infinite;
+}
+.pane-avatar[data-mood="speak"][data-lipsync] .robot-mouth-open,
+.pane-avatar.is-live[data-mood="speak"][data-lipsync] .robot-mouth-open {
+  animation: none;
+  transform: scaleY(calc(0.2 + var(--mouth, 0.5) * 0.9));
+  transition: transform 70ms linear;
+}
+
+/* attention — he wants the owner: looking right at you, antenna up, the tip
+   amber; live: the amber light breathes. */
+.pane-avatar[data-mood="attention"] {
+  --pane-tip: var(--pane-amber);
+}
+.pane-avatar[data-mood="attention"] .robot-face { transform: translate(0, -0.5px); }
+.pane-avatar[data-mood="attention"] .robot-eyes { transform: scaleY(1.06); }
+.pane-avatar[data-mood="attention"] .robot-antenna { transform: rotate(-7deg); }
+.pane-avatar[data-mood="attention"] .robot-antenna-glow { opacity: 1; }
+.pane-avatar.is-live[data-mood="attention"] .robot-antenna-glow {
+  animation: ed-tip-pulse 2.4s ease-in-out infinite;
+}
+
+/* resting — the week's quota is spent: honest, not alarming. Content,
+   half-lidded, the tip a steady amber. */
+.pane-avatar[data-mood="resting"] {
+  --pane-tip: var(--pane-amber);
+}
+.pane-avatar[data-mood="resting"] .robot-eyes { transform: scaleY(0.55); }
+.pane-avatar[data-mood="resting"] .robot-antenna-glow { opacity: 0.45; }
+
+/* hands down — his Chrome link is dead: the trust light goes amber
+   whatever he is doing, never a calm emerald (design system §1.2, §4).
+   Offline keeps its grey. /screen marks it through its own anchor. */
+.pane-avatar[data-hands="down"]:not([data-mood="offline"]) {
+  --pane-tip: var(--pane-amber);
+}
+
+/* sleepy — 23:00–06:00: eyes nearly shut, head and antenna drooping, the
+   tip dimmed; live: the breath slows. */
+.pane-avatar[data-mood="sleepy"] .robot-neck { transform: rotate(4deg); }
+.pane-avatar[data-mood="sleepy"] .robot-face { transform: translate(0, 0.5px); }
+.pane-avatar[data-mood="sleepy"] .robot-eyes { transform: scaleY(0.3); }
+.pane-avatar[data-mood="sleepy"] .robot-eye-glow { opacity: 0.35; }
+.pane-avatar[data-mood="sleepy"] .robot-antenna { transform: rotate(16deg); }
+.pane-avatar[data-mood="sleepy"] .robot-antenna-glow { opacity: 0.2; }
+.pane-avatar[data-mood="sleepy"] .robot-mouth-smile { opacity: 0; }
+.pane-avatar[data-mood="sleepy"] .robot-mouth-flat { opacity: 1; }
+.pane-avatar.is-live[data-mood="sleepy"] .robot-upper { animation-duration: 7.4s; }
+
+/* offline — the backend is unreachable: grey lights, no glow, a slump,
+   and no breath. */
+.pane-avatar[data-mood="offline"] {
+  --pane-light: #56616f;
+  --pane-tip: var(--pane-grey);
+}
+.pane-avatar[data-mood="offline"] .robot-neck { transform: rotate(3deg); }
+.pane-avatar[data-mood="offline"] .robot-eyes { transform: scaleY(0.35); }
+.pane-avatar[data-mood="offline"] .robot-eye-glow,
+.pane-avatar[data-mood="offline"] .robot-antenna-glow { opacity: 0; }
+.pane-avatar[data-mood="offline"] .robot-antenna { transform: rotate(20deg); }
+.pane-avatar[data-mood="offline"] .robot-core { opacity: 0.45; }
+.pane-avatar[data-mood="offline"] .robot-mouth-smile { opacity: 0; }
+.pane-avatar[data-mood="offline"] .robot-mouth-flat { opacity: 1; }
+.pane-avatar.is-live[data-mood="offline"] .robot-upper,
+.pane-avatar.is-live[data-mood="offline"] .robot-core {
+  animation: none;
+}
+
+/* Thinking and working keep a straight mouth. */
+.pane-avatar[data-mood="think"] .robot-mouth-smile,
+.pane-avatar[data-mood="work"] .robot-mouth-smile { opacity: 0; }
+.pane-avatar[data-mood="think"] .robot-mouth-flat,
+.pane-avatar[data-mood="work"] .robot-mouth-flat { opacity: 1; }
+
+/* The legacy look-around (/display "looking-*" on the hub). */
+.pane-avatar.is-live.act-look:not([data-gaze]) .robot-face {
+  animation: ed-look-around 6s ease-in-out infinite;
+}
+
+@keyframes ed-scan {
+  0%   { transform: translateY(0);     opacity: 0; }
+  20%  { opacity: 0.55; }
+  80%  { opacity: 0.55; }
+  100% { transform: translateY(9.2px); opacity: 0; }
+}
+@keyframes ed-tip-pulse {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 1; }
+}
+@keyframes ed-tip-shimmer {
+  0%, 100% { opacity: 0.55; }
+  20%      { opacity: 1; }
+  35%      { opacity: 0.7; }
+  60%      { opacity: 1; }
+  80%      { opacity: 0.6; }
+}
+@keyframes ed-talk {
+  0%   { transform: scaleY(0.35); }
+  100% { transform: scaleY(1); }
+}
+@keyframes ed-speak-bob {
+  0%, 100% { transform: rotate(0deg); }
+  50%      { transform: rotate(1.2deg); }
+}
+@keyframes ed-look-around {
+  0%, 100% { transform: translate(0, 0); }
+  25%      { transform: translate(-1.2px, 0); }
+  45%      { transform: translate(-1.2px, 0); }
+  70%      { transform: translate(1.2px, 0); }
+  90%      { transform: translate(1.2px, 0); }
+}
+
+/* ---- Gaze: where he looks. Explicit data-gaze, or an idle data-glance ---- */
+
+.pane-avatar[data-gaze="left"] .robot-face,
+.pane-avatar[data-glance="left"] .robot-face { transform: translate(-1.4px, 0.1px); }
+.pane-avatar[data-gaze="right"] .robot-face,
+.pane-avatar[data-glance="right"] .robot-face { transform: translate(1.4px, 0.1px); }
+.pane-avatar[data-gaze="up"] .robot-face,
+.pane-avatar[data-glance="up"] .robot-face { transform: translate(0, -1px); }
+.pane-avatar[data-gaze="down"] .robot-face,
+.pane-avatar[data-glance="down"] .robot-face { transform: translate(0, 1.1px); }
+/* The head follows the eyes a little, so a glance reads at 20px. */
+.pane-avatar[data-gaze="left"] .robot-head,
+.pane-avatar[data-glance="left"] .robot-head { transform: translateX(-0.35px) rotate(-1.5deg); }
+.pane-avatar[data-gaze="right"] .robot-head,
+.pane-avatar[data-glance="right"] .robot-head { transform: translateX(0.35px) rotate(1.5deg); }
+.pane-avatar[data-gaze="down"] .robot-head,
+.pane-avatar[data-glance="down"] .robot-head { transform: translateY(0.3px); }
+.pane-avatar .robot-head {
+  transition: transform var(--dur-base, 240ms) var(--ease-out, ease-out);
+}
+
+/* ---- Blink: each eye shuts on its own pivot ---- */
+
+.pane-avatar[data-blink] .robot-eye-l,
+.pane-avatar[data-blink] .robot-eye-r {
+  transform: scaleY(0.08);
+}
+
+/* ---- Beats: one-shot, ≤ BEAT_MS, the ed-beat-<beat> animation is the
+   one whose end clears data-beat (lib/useEdwardLife.ts) ---- */
+
+/* Faces during beats. */
+.pane-avatar[data-beat="nod"] .robot-eyes,
+.pane-avatar[data-beat="wave"] .robot-eyes,
+.pane-avatar[data-beat="wince"] .robot-eyes { transform: none; }
+.pane-avatar[data-beat="nod"] .robot-eye-l,
+.pane-avatar[data-beat="nod"] .robot-eye-r,
+.pane-avatar[data-beat="wave"] .robot-eye-l,
+.pane-avatar[data-beat="wave"] .robot-eye-r,
+.pane-avatar[data-beat="wince"] .robot-eye-l,
+.pane-avatar[data-beat="wince"] .robot-eye-r { opacity: 0; }
+.pane-avatar[data-beat="nod"] .robot-eye-happy,
+.pane-avatar[data-beat="wave"] .robot-eye-happy { opacity: 1; }
+.pane-avatar[data-beat="wince"] .robot-eye-wince { opacity: 1; }
+.pane-avatar[data-beat="nod"] .robot-mouth-smile,
+.pane-avatar[data-beat="nod"] .robot-mouth-flat,
+.pane-avatar[data-beat="nod"] .robot-mouth-open,
+.pane-avatar[data-beat="wave"] .robot-mouth-smile,
+.pane-avatar[data-beat="wave"] .robot-mouth-flat,
+.pane-avatar[data-beat="wave"] .robot-mouth-open,
+.pane-avatar[data-beat="wince"] .robot-mouth-smile,
+.pane-avatar[data-beat="wince"] .robot-mouth-open { opacity: 0; }
+.pane-avatar[data-beat="nod"] .robot-mouth-grin,
+.pane-avatar[data-beat="wave"] .robot-mouth-grin,
+.pane-avatar[data-beat="wince"] .robot-mouth-flat { opacity: 1; }
+
+/* nod — a tool worked, a turn finished: happy arcs and a little dip. */
+.pane-avatar[data-beat="nod"] .robot-head {
+  animation: ed-beat-nod 480ms ease-out;
+}
+@keyframes ed-beat-nod {
+  0%   { transform: translateY(0); }
+  35%  { transform: translateY(0.9px); }
+  70%  { transform: translateY(-0.25px); }
+  100% { transform: translateY(0); }
+}
+
+/* wince — an error: > < eyes, a flinch, the antenna droops. */
+.pane-avatar[data-beat="wince"] .robot-head {
+  animation: ed-beat-wince 600ms ease-out;
+}
+.pane-avatar[data-beat="wince"] .robot-antenna {
+  animation: ed-wince-antenna 600ms ease-out;
+}
+@keyframes ed-beat-wince {
+  0%   { transform: translate(0, 0) rotate(0deg); }
+  14%  { transform: translate(0, 0.6px) rotate(-3deg); }
+  38%  { transform: translate(0, 0.45px) rotate(2.4deg); }
+  62%  { transform: translate(0, 0.2px) rotate(-1.2deg); }
+  100% { transform: translate(0, 0) rotate(0deg); }
+}
+@keyframes ed-wince-antenna {
+  0%   { transform: rotate(0deg); }
+  25%  { transform: rotate(24deg); }
+  70%  { transform: rotate(14deg); }
+  100% { transform: rotate(0deg); }
+}
+
+/* wave — hello: the hanging hand gives way to an arm raised from the
+   same shoulder, which wags and lowers again. */
+.pane-avatar[data-beat="wave"] .robot-wave-arm {
+  animation: ed-beat-wave 900ms ease-in-out;
+}
+.pane-avatar[data-beat="wave"] .robot-arm-r {
+  animation: ed-wave-hand 900ms linear;
+}
+@keyframes ed-beat-wave {
+  0%   { opacity: 0; transform: rotate(26deg); }
+  10%  { opacity: 1; transform: rotate(-4deg); }
+  27%  { transform: rotate(10deg); }
+  44%  { transform: rotate(-8deg); }
+  61%  { transform: rotate(10deg); }
+  77%  { transform: rotate(-5deg); }
+  90%  { opacity: 1; transform: rotate(4deg); }
+  100% { opacity: 0; transform: rotate(26deg); }
+}
+@keyframes ed-wave-hand {
+  0%, 100% { opacity: 1; }
+  8%, 92%  { opacity: 0; }
+}
+
+/* acted — he reached outward (a send, a push, a note): one sonar ping
+   from the antenna and a flash of the chest light. */
+.pane-avatar[data-beat="acted"] .robot-antenna-ring {
+  animation: ed-beat-acted 880ms ease-out;
+}
+.pane-avatar[data-beat="acted"] .robot-antenna-tip {
+  animation: ed-acted-tip 520ms ease-out;
+}
+.pane-avatar[data-beat="acted"] .robot-core {
+  animation: ed-acted-core 700ms ease-out;
+}
+@keyframes ed-beat-acted {
+  0%   { transform: scale(1);   opacity: 0.95; }
+  100% { transform: scale(3.6); opacity: 0; }
+}
+@keyframes ed-acted-tip {
+  0%   { transform: scale(1); }
+  30%  { transform: scale(1.35); }
+  100% { transform: scale(1); }
+}
+@keyframes ed-acted-core {
+  0%   { transform: scale(1);   opacity: 1; }
+  30%  { transform: scale(1.7); opacity: 1; }
+  100% { transform: scale(1);   opacity: 0.85; }
+}
+
+/* perk — the app came back: antenna springs, eyes widen, a glint crosses
+   the visor. */
+.pane-avatar[data-beat="perk"] .robot-eyes { transform: scaleY(1.14); }
+.pane-avatar[data-beat="perk"] .robot-antenna {
+  animation: ed-beat-perk 640ms ease-out;
+}
+.pane-avatar[data-beat="perk"] .robot-head {
+  animation: ed-perk-head 460ms ease-out;
+}
+.pane-avatar[data-beat="perk"] .robot-glint {
+  animation: ed-perk-glint 620ms ease-in-out;
+}
+@keyframes ed-beat-perk {
+  0%   { transform: rotate(0deg); }
+  25%  { transform: rotate(-12deg); }
+  55%  { transform: rotate(6deg); }
+  80%  { transform: rotate(-2deg); }
+  100% { transform: rotate(0deg); }
+}
+@keyframes ed-perk-head {
+  0%   { transform: translateY(0); }
+  40%  { transform: translateY(-0.7px); }
+  100% { transform: translateY(0); }
+}
+@keyframes ed-perk-glint {
+  0%   { transform: translateX(0);    opacity: 0; }
+  30%  { opacity: 0.28; }
+  100% { transform: translateX(25px); opacity: 0; }
+}
+
+/* ---- Still avatars: no loops, no beats, no transitions ---- */
+
+.pane-avatar.pane-static,
+.pane-avatar.pane-static * {
+  animation: none !important;
+  transition: none !important;
+}
+
+/* ---- Reduced motion: nothing moves, every pose still reads ---- */
+
+@media (prefers-reduced-motion: reduce) {
+  .pane-avatar,
+  .pane-avatar * {
+    animation: none !important;
+    transition: opacity 120ms linear !important;
+  }
+  /* Thinking: the scanline parked mid-visor, the tip lit. */
+  .pane-avatar[data-mood="think"] .robot-scan,
+  .pane-avatar[data-mood="work"] .robot-scan { opacity: 0.55; }
+  .pane-avatar[data-mood="think"] .robot-antenna-glow,
+  .pane-avatar[data-mood="work"] .robot-antenna-glow { opacity: 1; }
+  /* Speaking without the talk loop: a steady open mouth. */
+  .pane-avatar[data-mood="speak"] .robot-mouth-open { transform: scaleY(0.75); }
+  /* Acted: the sonar ring shown half-open and the chest lit. */
+  .pane-avatar[data-beat="acted"] .robot-antenna-ring { opacity: 0.6; transform: scale(2.2); }
+  .pane-avatar[data-beat="acted"] .robot-core { opacity: 1; transform: scale(1.4); }
+  /* Wave: the hand held up. */
+  .pane-avatar[data-beat="wave"] .robot-wave-arm { opacity: 1; }
+  .pane-avatar[data-beat="wave"] .robot-arm-r { opacity: 0; }
+  /* Wince: the antenna held drooped. */
+  .pane-avatar[data-beat="wince"] .robot-antenna { transform: rotate(18deg); }
+}
+/* === end Pane buddy === */

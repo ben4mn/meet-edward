@@ -99,53 +99,70 @@ async def search(
     return results
 
 
-async def fetch_page_content(url: str, max_chars: int = 4000) -> str:
+FETCH_MAX_CHARS = 30_000
+FETCH_TIMEOUT_S = 15.0
+_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Safari/537.36"
+
+
+def _client(**kw) -> httpx.AsyncClient:
+    """The fetch's HTTP client (tests swap in a MockTransport)."""
+    return httpx.AsyncClient(**kw)
+
+
+async def _guard_request(request: httpx.Request) -> None:
+    """Every hop, redirects included: never this Mac or the LAN (SSRF)."""
+    from services.headless_browser import url_refusal
+
+    why = await url_refusal(str(request.url))
+    if why:
+        raise PermissionError(f"not fetching {request.url.host}: {why}")
+
+
+async def fetch_page(url: str, max_chars: int = FETCH_MAX_CHARS) -> str:
+    """A web page's main text (trafilatura), at most ``max_chars``.
+
+    Raises on every failure — a refused or unreachable URL, an HTTP error,
+    a page with no readable text — with a message that says what to try
+    instead. No Brave key is needed (2026-10-11: ``fetch_page_content``
+    used to refuse without one). ``Accept-Encoding`` names only gzip and
+    deflate: with brotli/zstd decoders installed httpx advertised them and
+    a broken stream failed in ``decompressobj``.
     """
-    Fetch and extract main content from a web page.
+    from services.headless_browser import check_url
 
-    Uses trafilatura for content extraction to get clean article text.
-
-    Args:
-        url: The URL to fetch content from
-        max_chars: Maximum characters to return (default 4000)
-
-    Returns:
-        Extracted text content from the page
-
-    Raises:
-        Exception if fetch or extraction fails
-    """
+    checked = check_url(url)
     try:
         import trafilatura
-    except ImportError:
-        raise Exception("trafilatura not installed. Run: pip install trafilatura")
+    except ImportError as exc:  # pragma: no cover
+        raise RuntimeError("trafilatura is not installed") from exc
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            url,
-            timeout=15.0,
-            follow_redirects=True,
-            headers={
-                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
-            }
-        )
-        response.raise_for_status()
-        html = response.text
+    async with _client(timeout=FETCH_TIMEOUT_S, follow_redirects=True, max_redirects=8,
+                       event_hooks={"request": [_guard_request]}) as client:
+        response = await client.get(checked, headers={
+            "User-Agent": _UA,
+            "Accept": "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.5",
+            "Accept-Encoding": "gzip, deflate",
+        })
+        if response.status_code >= 400:
+            raise RuntimeError(f"{response.url} answered HTTP {response.status_code}")
+        ctype = (response.headers.get("content-type") or "").split(";", 1)[0].strip().lower()
+        if ctype and not (ctype.startswith("text/") or "html" in ctype or "xml" in ctype or "json" in ctype):
+            raise RuntimeError(f"{response.url} is {ctype}, not a page — look(url) shows images and PDFs")
+        body = response.text
 
-    # Extract main content using trafilatura
-    content = trafilatura.extract(
-        html,
-        include_links=False,
-        include_images=False,
-        include_tables=True,
-        favor_recall=True,
-    )
-
-    if not content:
-        return "Could not extract content from page."
-
-    # Truncate if needed
+    if ctype in ("text/plain", "application/json") or ctype.endswith("+json"):
+        content = body.strip()
+    else:
+        content = trafilatura.extract(body, include_links=False, include_images=False,
+                                      include_tables=True, favor_recall=True) or ""
+    if not content.strip():
+        raise RuntimeError("no readable text on that page (it may build itself in JavaScript) — "
+                           "browser(open, url) reads it like a person would")
     if len(content) > max_chars:
         content = content[:max_chars] + "...[truncated]"
-
     return content
+
+
+async def fetch_page_content(url: str, max_chars: int = 4000) -> str:
+    """The legacy tool's fetch (``EDWARD_TOOLSET=legacy``): ``fetch_page``."""
+    return await fetch_page(url, max_chars=max_chars)

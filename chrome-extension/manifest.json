@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Edward",
+  "version": "0.2.0",
+  "description": "Edward's hands in this Chrome: he can see your tabs, open pages, read, click and type, and go full screen, using your logins. Everything he does is logged in Edward.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqp88OT7UqD4NUemKs0xcB5em8DveOgNpupJgWYZaHs8AkHOCKwQQcBtEbST23u8TYCDiWkk3nCyfuAoMRCF8YqE99vMp+FqXaExhlPJ7HQ/M2padoxlz2qJGwDWSAN/mOF8fXZBzhCqApnyleJDM50ONEiLCs/7QHQCNJ5uDRDSZfuaFFWkAii2FPBKgH9d3LTGtLMYzIo2Fte6iwlJs/mWqDLl3hCzGNTmZ2BtUTrlZYrWzUkvTE/vrBbVg1t5oAUlnNwa35NXou91Re1zdMqmYTVotUchcN6bFvZpzAfieAKAn+pkDcX7qRLYBfGpf5I+bXNb7olAFJP3av4ayNwIDAQAB",
+  "permissions": [
+    "debugger",
+    "tabs",
+    "alarms"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Edward"
+  }
+}

@@ -21,8 +21,17 @@ self.addEventListener('push', (event) => {
       badge: '/icons/icon-192.png',
       tag: data.tag || 'edward-notification',
       data: {
-        url: data.url || '/',
+        url: data.url || '/today',
+        delivery_id: data.delivery_id || null,
+        ledger_id: data.ledger_id || null,
+        kind: data.kind || null,
+        // A held send the owner is asked about (kind "approval", 2026-09-24).
+        approval_id: data.approval_id || null,
+        conversation_id: data.conversation_id || null,
       },
+      // Open / Done / Snooze 1h (2026-09-12). Platforms without action
+      // buttons simply show the notification; a tap is "open".
+      actions: Array.isArray(data.actions) ? data.actions.slice(0, 3) : [],
       // Vibrate pattern: vibrate 200ms, pause 100ms, vibrate 200ms
       vibrate: [200, 100, 200],
       // Keep notification visible until user interacts
@@ -38,49 +47,140 @@ self.addEventListener('push', (event) => {
 });
 
 // Handle notification click
+function ackDelivery(deliveryId, source) {
+  // Tell Edward the notification was seen so the interrupt ladder stops
+  // (no escalation to the next surface). Best effort; never blocks the click.
+  if (!deliveryId) return Promise.resolve();
+  return fetch('/api/push/ack', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ delivery_id: deliveryId, source: source }),
+  }).catch(() => {});
+}
+
+function postJson(path, body) {
+  return fetch(path, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }).catch(() => {});
+}
+
+// Approvals (taint and approvals, 2026-09-24): Approve / Deny answer a send
+// Edward held at the boundary, out of band — a POST with the owner's cookie, never
+// chat text a page could forge. A copy of approvalDecisionRequest /
+// notificationDestination in lib/notificationNav.ts (this classic script
+// cannot import it); __tests__/swPush.test.ts pins that the two agree.
+function approvalDecisionRequest(data, action) {
+  if (!data || data.kind !== 'approval') return null;
+  if (action !== 'approve' && action !== 'deny') return null;
+  const raw = data.approval_id;
+  const id = typeof raw === 'string' && !/^\d+$/.test(raw) ? NaN : Number(raw);
+  if (!Number.isInteger(id) || id <= 0) return null;
+  return { path: '/api/approvals/' + id, body: { decision: action } };
+}
+
+function notificationDestination(data) {
+  if (data && data.kind === 'approval' && data.conversation_id) {
+    return '/chat?c=' + encodeURIComponent(data.conversation_id);
+  }
+  return (data && data.url) || '/today';
+}
+
+// Focus an open window and tell it where to go, or open one there.
+function openApp(url) {
+  return clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+    // Check if there's already a window open
+    for (const client of windowClients) {
+      if (client.url.includes(self.location.origin) && 'focus' in client) {
+        // Focus FIRST so iOS has time to resume the JS context,
+        // then send the navigation message via postMessage + BroadcastChannel fallback.
+        return client.focus().then(() => {
+          const msg = { type: 'NOTIFICATION_CLICK', url: url };
+          client.postMessage(msg);
+          // BroadcastChannel as a durable fallback — survives even if
+          // the main thread hasn't fully resumed after focus()
+          try {
+            const bc = new BroadcastChannel('edward-notification');
+            bc.postMessage(msg);
+            bc.close();
+          } catch (_) { /* BroadcastChannel not available */ }
+        });
+      }
+    }
+    // No existing window, open a new one
+    if (clients.openWindow) {
+      // Also post to BroadcastChannel so the new window can pick it up
+      try {
+        const bc = new BroadcastChannel('edward-notification');
+        bc.postMessage({ type: 'NOTIFICATION_CLICK', url: url });
+        bc.close();
+      } catch (_) { /* BroadcastChannel not available */ }
+      return clients.openWindow(url);
+    }
+  });
+}
+
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
-  const url = event.notification.data?.url || '/';
+  const data = event.notification.data || {};
+  const url = notificationDestination(data);
+
+  // Approve / Deny on a held send: post the decision. If it is refused
+  // (expired, already answered, a dead cookie) open the thread so the owner sees
+  // why instead of believing it went through.
+  const decision = approvalDecisionRequest(data, event.action);
+  if (decision) {
+    event.waitUntil(
+      fetch(decision.path, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(decision.body),
+      })
+        .then((res) => (res && res.ok ? null : openApp(url)))
+        .catch(() => openApp(url))
+    );
+    if (data.ledger_id) {
+      event.waitUntil(postJson('/api/push/ack', { ledger_id: data.ledger_id, source: 'approval-' + event.action }));
+    }
+    return;
+  }
+
+  // "Done": seen, nothing to open. Stops the ladder, marks the ledger opened.
+  if (event.action === 'done') {
+    event.waitUntil(Promise.all([
+      ackDelivery(data.delivery_id, 'done'),
+      data.ledger_id ? postJson('/api/push/ack', { ledger_id: data.ledger_id, source: 'done' }) : Promise.resolve(),
+    ]));
+    return;
+  }
+  // "Snooze 1h": the same push comes back once, later.
+  if (event.action === 'snooze') {
+    event.waitUntil(
+      data.ledger_id
+        ? postJson('/api/push/snooze', { ledger_id: data.ledger_id, delivery_id: data.delivery_id || null, minutes: 60 })
+        : ackDelivery(data.delivery_id, 'snooze')
+    );
+    return;
+  }
+
+  event.waitUntil(ackDelivery(data.delivery_id, 'sw-click'));
+  if (data.ledger_id) {
+    event.waitUntil(postJson('/api/push/ack', { ledger_id: data.ledger_id, source: 'sw-click' }));
+  }
 
   // Focus existing window or open new one
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
-      // Check if there's already a window open
-      for (const client of windowClients) {
-        if (client.url.includes(self.location.origin) && 'focus' in client) {
-          // Focus FIRST so iOS has time to resume the JS context,
-          // then send the navigation message via postMessage + BroadcastChannel fallback.
-          return client.focus().then(() => {
-            const msg = { type: 'NOTIFICATION_CLICK', url: url };
-            client.postMessage(msg);
-            // BroadcastChannel as a durable fallback — survives even if
-            // the main thread hasn't fully resumed after focus()
-            try {
-              const bc = new BroadcastChannel('edward-notification');
-              bc.postMessage(msg);
-              bc.close();
-            } catch (_) { /* BroadcastChannel not available */ }
-          });
-        }
-      }
-      // No existing window, open a new one
-      if (clients.openWindow) {
-        // Also post to BroadcastChannel so the new window can pick it up
-        try {
-          const bc = new BroadcastChannel('edward-notification');
-          bc.postMessage({ type: 'NOTIFICATION_CLICK', url: url });
-          bc.close();
-        } catch (_) { /* BroadcastChannel not available */ }
-        return clients.openWindow(url);
-      }
-    })
-  );
+  event.waitUntil(openApp(url));
 });
 
 // Handle notification close (for analytics if needed)
 self.addEventListener('notificationclose', (event) => {
-  console.log('Notification closed:', event.notification.tag);
+  // A dismissal is still "seen" — it must not escalate to a text.
+  event.waitUntil(ackDelivery(event.notification.data?.delivery_id, 'dismissed'));
 });
 
 // Handle push subscription change (when browser refreshes subscription)

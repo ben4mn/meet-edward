@@ -1,0 +1,6 @@
+# Build before the swap (deploy-build.sh / ensure-build.sh, 2026-09-27):
+# the staged build, its lock, the build it replaced, and a rollback's (or an
+# old hand-made .next.bad's) leftovers. Never commit them from the live checkout.
+.next-staging/
+.next-staging.lock/
+.next.*/

@@ -81,7 +81,10 @@ async def get_task(task_id: str):
     from services.orchestrator_service import get_task as _get_task
 
     task = await _get_task(task_id)
-    if "error" in task:
+    # A task dict always carries an "error" key (None when fine), so test
+    # its value — and a failed task's own error text is not "not found"
+    # (that dict has no "id"). Community fix from public PR #5 (cchen362).
+    if task.get("error") and "id" not in task:
         raise HTTPException(status_code=404, detail=task["error"])
     return _task_to_response(task)
 
@@ -92,7 +95,9 @@ async def cancel_task(task_id: str):
     from services.orchestrator_service import cancel_task as _cancel
 
     result = await _cancel(task_id)
-    if "error" in result:
+    # A cancelled task's own "error" is not a failure; only a lookup miss
+    # (no "id") is. Community fix from public PR #5 (cchen362).
+    if result.get("error") and "id" not in result:
         raise HTTPException(status_code=400, detail=result["error"])
     return _task_to_response(result)
 
@@ -103,7 +108,10 @@ async def send_message(task_id: str, body: WorkerMessageRequest):
     from services.orchestrator_service import send_message_to_worker
 
     result = await send_message_to_worker(task_id, body.message)
-    if "error" in result:
+    # send_message_to_worker answers a task dict only on a lookup miss (no
+    # "id"); a refusal is {"error": …}, a reply {"response": …} — none of them
+    # a worker's own error. Community fix from public PR #5 (cchen362).
+    if result.get("error") and "id" not in result:
         raise HTTPException(status_code=400, detail=result["error"])
     return result
 

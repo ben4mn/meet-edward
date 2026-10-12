@@ -10,6 +10,8 @@ from services.consolidation_models import (
     ConsolidationCycleSchema,
     MemoryConnectionSchema,
     MemoryFlagSchema,
+    FlagResolveUpdate,
+    FlagKeepUpdate,
 )
 
 router = APIRouter()
@@ -86,12 +88,26 @@ async def get_cycles(
         return [_cycle_to_schema(c) for c in cycles]
 
 
+async def _memory_texts(session, ids) -> dict:
+    """{memory id: content} for the ids given (missing ones are absent)."""
+    from sqlalchemy import select
+    from services.database import MemoryModel
+
+    ids = [i for i in ids if i]
+    if not ids:
+        return {}
+    rows = await session.execute(select(MemoryModel.id, MemoryModel.content).where(MemoryModel.id.in_(ids)))
+    return {r[0]: r[1] for r in rows.all()}
+
+
 @router.get("/consolidation/connections")
 async def get_connections(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    with_content: bool = False,
 ):
-    """List memory connections."""
+    """List memory connections. ``with_content`` attaches both memories'
+    text, so a connection reads as what it links (review 2026-09-26)."""
     from sqlalchemy import select
     from services.database import async_session, MemoryConnectionModel
 
@@ -103,8 +119,17 @@ async def get_connections(
             .offset(offset)
         )
         connections = list(result.scalars().all())
+        out = [_connection_to_schema(c) for c in connections]
 
-        return [_connection_to_schema(c) for c in connections]
+        if with_content and connections:
+            content = await _memory_texts(
+                session, {c.memory_id_a for c in connections} | {c.memory_id_b for c in connections}
+            )
+            for schema in out:
+                schema.memory_a_content = content.get(schema.memory_id_a)
+                schema.memory_b_content = content.get(schema.memory_id_b)
+
+        return out
 
 
 @router.get("/consolidation/flags")
@@ -112,10 +137,12 @@ async def get_flags(
     resolved: Optional[bool] = None,
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    with_content: bool = False,
 ):
-    """List memory flags with optional resolved filter."""
+    """List memory flags with optional resolved filter. ``with_content``
+    attaches both memories' text so a contradiction can be judged in place."""
     from sqlalchemy import select
-    from services.database import async_session, MemoryFlagModel
+    from services.database import async_session, MemoryFlagModel, MemoryModel
 
     async with async_session() as session:
         query = select(MemoryFlagModel)
@@ -131,8 +158,41 @@ async def get_flags(
 
         result = await session.execute(query)
         flags = list(result.scalars().all())
+        out = [_flag_to_schema(f) for f in flags]
 
-        return [_flag_to_schema(f) for f in flags]
+        if with_content and flags:
+            ids = {f.memory_id for f in flags} | {f.related_memory_id for f in flags if f.related_memory_id}
+            rows = await session.execute(
+                select(MemoryModel.id, MemoryModel.content).where(MemoryModel.id.in_(list(ids)))
+            )
+            content = {r[0]: r[1] for r in rows.all()}
+            for schema in out:
+                schema.memory_content = content.get(schema.memory_id)
+                if schema.related_memory_id:
+                    schema.related_memory_content = content.get(schema.related_memory_id)
+
+        return out
+
+
+@router.get("/consolidation/flags/{flag_id}")
+async def get_flag(flag_id: str):
+    """One flag with both memories' text — a deep link past the newest page
+    of flags is read directly, never guessed "already settled"."""
+    from sqlalchemy import select
+    from services.database import async_session, MemoryFlagModel
+
+    async with async_session() as session:
+        flag = (
+            await session.execute(select(MemoryFlagModel).where(MemoryFlagModel.id == flag_id))
+        ).scalar_one_or_none()
+        if flag is None:
+            raise HTTPException(status_code=404, detail="Flag not found")
+        schema = _flag_to_schema(flag)
+        content = await _memory_texts(session, {flag.memory_id, flag.related_memory_id})
+        schema.memory_content = content.get(flag.memory_id)
+        if flag.related_memory_id:
+            schema.related_memory_content = content.get(flag.related_memory_id)
+        return schema
 
 
 @router.patch("/consolidation/config")
@@ -169,6 +229,18 @@ async def update_config(body: ConsolidationConfigUpdate):
                     detail="Lookback must be at least 1 hour",
                 )
             config.lookback_hours = body.lookback_hours
+        if body.max_cluster_size is not None:
+            if body.max_cluster_size < 2:
+                raise HTTPException(status_code=400, detail="max_cluster_size must be >= 2")
+            config.max_cluster_size = body.max_cluster_size
+        if body.max_pairs_per_cluster is not None:
+            if body.max_pairs_per_cluster < 1:
+                raise HTTPException(status_code=400, detail="max_pairs_per_cluster must be >= 1")
+            config.max_pairs_per_cluster = body.max_pairs_per_cluster
+        if body.max_llm_calls_per_cycle is not None:
+            if body.max_llm_calls_per_cycle < 1:
+                raise HTTPException(status_code=400, detail="max_llm_calls_per_cycle must be >= 1")
+            config.max_llm_calls_per_cycle = body.max_llm_calls_per_cycle
 
         await session.commit()
         await session.refresh(config)
@@ -177,7 +249,62 @@ async def update_config(body: ConsolidationConfigUpdate):
             "enabled": config.enabled,
             "interval_seconds": config.interval_seconds,
             "lookback_hours": config.lookback_hours,
+            "max_cluster_size": config.max_cluster_size,
+            "max_pairs_per_cluster": config.max_pairs_per_cluster,
+            "max_llm_calls_per_cycle": config.max_llm_calls_per_cycle,
         }
+
+
+@router.patch("/consolidation/flags/{flag_id}")
+async def resolve_flag(flag_id: str, body: FlagResolveUpdate):
+    """Mark a memory flag as resolved (or un-resolved) from the DreamsPanel UI."""
+    from datetime import datetime
+    from sqlalchemy import select
+    from services.database import async_session, MemoryFlagModel
+
+    async with async_session() as session:
+        result = await session.execute(
+            select(MemoryFlagModel).where(MemoryFlagModel.id == flag_id)
+        )
+        flag = result.scalar_one_or_none()
+        if flag is None:
+            raise HTTPException(status_code=404, detail="flag not found")
+
+        flag.resolved = body.resolved
+        flag.resolved_at = datetime.utcnow() if body.resolved else None
+
+        await session.commit()
+        await session.refresh(flag)
+
+        return _flag_to_schema(flag)
+
+
+@router.post("/consolidation/flags/{flag_id}/resolve")
+async def keep_flag_side(flag_id: str, body: FlagKeepUpdate):
+    """The owner's call on an open contradiction: keep one memory, retire the other
+    the same way the automatic path does (valid_until + confidence 0.2)."""
+    from sqlalchemy import select
+    from services.database import async_session, MemoryFlagModel
+    from services.consolidation_service import retire_contradiction_loser, mark_flag_resolved
+
+    async with async_session() as session:
+        flag = (await session.execute(
+            select(MemoryFlagModel).where(MemoryFlagModel.id == flag_id)
+        )).scalar_one_or_none()
+        if flag is None:
+            raise HTTPException(status_code=404, detail="flag not found")
+        if not flag.related_memory_id:
+            raise HTTPException(status_code=400, detail="flag has no second memory to choose between")
+        retire_id = flag.related_memory_id if body.keep == "a" else flag.memory_id
+
+    await retire_contradiction_loser(retire_id)
+    await mark_flag_resolved(flag_id)
+
+    async with async_session() as session:
+        flag = (await session.execute(
+            select(MemoryFlagModel).where(MemoryFlagModel.id == flag_id)
+        )).scalar_one()
+        return _flag_to_schema(flag)
 
 
 @router.post("/consolidation/trigger")
