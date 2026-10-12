@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { cn } from "@/lib/utils";
+import { themeBootScript, themeColorViewport } from "@/lib/themeColors";
+import { ToastProvider } from "@/components/ui/Toast";
 import "./globals.css";
 
 const inter = Inter({
@@ -14,11 +16,41 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const viewport: Viewport = {
-  themeColor: "#10b981",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  // viewport-fit=cover is required for notched iPhone PWAs so that
+  // content extends behind the dynamic island and home indicator and
+  // env(safe-area-inset-*) resolves to non-zero values.
+  viewportFit: "cover",
+  // The canvas of each theme (the iPhone status bar / PWA title bar), not an
+  // accent stripe. The boot script and ThemeProvider replace it with the
+  // theme the owner chose; see lib/themeColors.ts.
+  themeColor: themeColorViewport(),
+  colorScheme: "dark light",
+};
+
+// The app's public origin (link previews, metadataBase): NEXT_PUBLIC_BASE_URL
+// at build time, e.g. https://edward.example.com; localhost otherwise.
+const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000").replace(/\/+$/, "");
+
+// Static OG image lives in /public. Use an absolute URL (rather than a
+// relative path resolved via metadataBase) because Next's dev server
+// silently overrides metadataBase with the request host — the prior
+// dynamic app/opengraph-image.tsx leaked that same way. Absolute URL is
+// the robust option for the two pieces of metadata that get scraped off
+// a production URL (social previews).
+const OG_IMAGE = {
+  url: `${BASE_URL}/og-image.png`,
+  width: 1200,
+  height: 630,
+  alt: "Edward — Your AI Assistant That Remembers Everything",
+  type: "image/png",
 };
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"),
+  metadataBase: new URL(BASE_URL),
   title: "Edward - AI Assistant",
   description: "Your personal AI assistant with long-term memory",
   manifest: "/manifest.json",
@@ -28,7 +60,7 @@ export const metadata: Metadata = {
       { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
       { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
     ],
-    apple: "/icons/icon-192.png",
+    apple: "/icons/apple-touch-icon.png",
   },
   appleWebApp: {
     capable: true,
@@ -38,20 +70,21 @@ export const metadata: Metadata = {
   formatDetection: {
     telephone: false,
   },
+  openGraph: {
+    title: "Edward - AI Assistant",
+    description: "Your personal AI assistant with long-term memory",
+    images: [OG_IMAGE],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Edward - AI Assistant",
+    description: "Your personal AI assistant with long-term memory",
+    images: [OG_IMAGE],
+  },
 };
 
-// Script to prevent FOUC (Flash of Unstyled Content)
-const themeScript = `
-  (function() {
-    const stored = localStorage.getItem('edward-theme');
-    const theme = stored || 'dark';
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  })();
-`;
+// Sets the theme class and theme-color before first paint (no flash).
+const themeScript = themeBootScript();
 
 export default function RootLayout({
   children,
@@ -61,15 +94,13 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
       <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-        <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-        <meta name="apple-mobile-web-app-title" content="Edward" />
-        <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+        {/* viewport, apple-mobile-web-app-*, apple-touch-icon, and
+            theme-color all come from the Metadata/Viewport exports above —
+            do not duplicate them here. */}
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body className={cn(inter.variable, jetbrainsMono.variable, "font-sans")}>
-        {children}
+        <ToastProvider>{children}</ToastProvider>
       </body>
     </html>
   );

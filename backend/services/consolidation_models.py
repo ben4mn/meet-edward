@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Literal, Optional
 from datetime import datetime
 
 
@@ -13,12 +13,28 @@ class ConsolidationStatusSchema(BaseModel):
     cycle_count: int = 0
     total_connections: int = 0
     total_flags: int = 0
+    max_cluster_size: int = 20
+    max_pairs_per_cluster: int = 30
+    max_llm_calls_per_cycle: int = 15
 
 
 class ConsolidationConfigUpdate(BaseModel):
     enabled: Optional[bool] = None
     interval_seconds: Optional[int] = None
     lookback_hours: Optional[int] = None
+    max_cluster_size: Optional[int] = None
+    max_pairs_per_cluster: Optional[int] = None
+    max_llm_calls_per_cycle: Optional[int] = None
+
+
+class FlagResolveUpdate(BaseModel):
+    resolved: bool
+
+
+class FlagKeepUpdate(BaseModel):
+    """The owner's call on an open contradiction: keep memory ``a`` (``memory_id``)
+    or ``b`` (``related_memory_id``); the other is retired."""
+    keep: Literal["a", "b"]
 
 
 class ConsolidationCycleSchema(BaseModel):
@@ -40,6 +56,10 @@ class MemoryConnectionSchema(BaseModel):
     connection_type: str
     strength: float = 0.5
     created_at: str
+    # Filled when the list is requested with ``with_content=true``: the
+    # Dreaming panel shows a connection as its two memories.
+    memory_a_content: Optional[str] = None
+    memory_b_content: Optional[str] = None
 
 
 class MemoryFlagSchema(BaseModel):
@@ -51,3 +71,7 @@ class MemoryFlagSchema(BaseModel):
     resolved: bool = False
     resolved_at: Optional[str] = None
     created_at: str
+    # Filled when the list is requested with ``with_content=true`` so the
+    # Dreams panel can show both sides of a contradiction.
+    memory_content: Optional[str] = None
+    related_memory_content: Optional[str] = None

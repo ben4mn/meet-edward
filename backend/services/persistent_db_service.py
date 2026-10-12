@@ -11,6 +11,7 @@ Key features:
 - Automatic schema management
 """
 
+import os
 import re
 import time
 import uuid
@@ -18,9 +19,19 @@ from datetime import datetime
 from typing import List, Optional, Dict, Any
 
 from sqlalchemy import select, text
+from sqlalchemy.engine.url import make_url
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import create_async_engine
 
-from services.database import async_session, PersistentDatabaseModel, engine
+from services.database import (
+    async_session,
+    PersistentDatabaseModel,
+    engine,
+    CONNECT_ARGS,
+    DATABASE_URL,
+    LLM_DB_ROLE,
+    llm_role_grant_statements,
+)
 
 
 # Configuration
@@ -52,6 +63,72 @@ BLOCKED_PATTERNS = [
     re.compile(r"\bEXECUTE\b", re.IGNORECASE),
     re.compile(r"\bPREPARE\b", re.IGNORECASE),
 ]
+
+
+# --- Write guard (2026-07-05 incident) -------------------------------------
+# User SQL from the LLM tool used to run on the app's full-privilege engine
+# with `public` on the search_path, which let it write any public table (it
+# mass-disabled all rows in `skills`). User SQL now runs as the low-privilege
+# `edward_llm` role, which has grants only inside edward_db_* schemas. If the
+# role is unavailable, we degrade to read-only rather than fall back to full
+# privileges.
+
+_llm_engine = None
+_llm_engine_warning_logged = False
+
+_READ_ONLY_FIRST_KEYWORDS = {"select", "with", "explain"}
+
+
+def _llm_engine_url(password: str):
+    """The app DATABASE_URL with credentials swapped to the low-priv role."""
+    return make_url(DATABASE_URL).set(username=LLM_DB_ROLE, password=password)
+
+
+async def _get_llm_engine():
+    """Return the low-privilege engine, or None when it is unavailable
+    (missing PERSISTENT_DB_LLM_PASSWORD or the role can't connect)."""
+    global _llm_engine, _llm_engine_warning_logged
+
+    if _llm_engine is not None:
+        return _llm_engine
+
+    password = os.getenv("PERSISTENT_DB_LLM_PASSWORD")
+    if not password:
+        if not _llm_engine_warning_logged:
+            print(
+                "[PERSISTENT DB GUARD] PERSISTENT_DB_LLM_PASSWORD not set — "
+                "query_persistent_db is in read-only degraded mode"
+            )
+            _llm_engine_warning_logged = True
+        return None
+
+    try:
+        candidate = create_async_engine(
+            _llm_engine_url(password),
+            pool_size=2,
+            max_overflow=2,
+            pool_pre_ping=True,
+            connect_args=CONNECT_ARGS,
+        )
+        async with candidate.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+    except Exception as exc:
+        if not _llm_engine_warning_logged:
+            print(
+                f"[PERSISTENT DB GUARD] {LLM_DB_ROLE} engine unavailable ({exc}) — "
+                "query_persistent_db is in read-only degraded mode"
+            )
+            _llm_engine_warning_logged = True
+        return None
+
+    _llm_engine = candidate
+    return _llm_engine
+
+
+def _is_read_only_statement(query: str) -> bool:
+    stripped = query.lstrip().lstrip("(")
+    first = stripped.split(None, 1)[0].lower() if stripped.split(None, 1) else ""
+    return first in _READ_ONLY_FIRST_KEYWORDS
 
 
 def validate_name(name: str) -> Optional[str]:
@@ -96,7 +173,7 @@ async def create_database(
     Create a new persistent database (PostgreSQL schema).
 
     Args:
-        name: User-friendly name (e.g., "lana_medication")
+        name: User-friendly name (e.g., "biscuit_medication")
         description: Optional description of the database purpose
         user_id: Optional user ID for future multi-tenant support
 
@@ -136,6 +213,15 @@ async def create_database(
         # Create the PostgreSQL schema
         async with engine.begin() as conn:
             await conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema_name}"'))
+
+            # Write-guard: let the low-privilege LLM role use the new schema
+            # (no-op when the role hasn't been provisioned yet).
+            role_exists = (await conn.execute(text(
+                f"SELECT 1 FROM pg_roles WHERE rolname = '{LLM_DB_ROLE}'"
+            ))).scalar()
+            if role_exists:
+                for stmt in llm_role_grant_statements(schema_name):
+                    await conn.execute(text(stmt))
 
         # Create metadata record
         db_record = PersistentDatabaseModel(
@@ -327,6 +413,24 @@ async def execute_query(
             "duration_ms": 0,
         }
 
+    # Write guard: user SQL runs on the low-privilege engine; without it,
+    # only read statements are allowed (never fall back to full privileges).
+    exec_engine = await _get_llm_engine()
+    if exec_engine is None:
+        if not _is_read_only_statement(query):
+            return {
+                "success": False,
+                "output": "",
+                "error": (
+                    "Persistent databases are in read-only degraded mode (the "
+                    f"low-privilege '{LLM_DB_ROLE}' database role is unavailable). "
+                    "Only SELECT/WITH/EXPLAIN statements are allowed until it is "
+                    "configured (PERSISTENT_DB_LLM_PASSWORD)."
+                ),
+                "duration_ms": 0,
+            }
+        exec_engine = engine
+
     name_lower = db_name.lower()
 
     # Get the database schema name
@@ -353,7 +457,7 @@ async def execute_query(
         await session.commit()
 
     try:
-        async with engine.begin() as conn:
+        async with exec_engine.begin() as conn:
             # Set search_path to the target schema (and public for common functions)
             await conn.execute(text(f'SET search_path TO "{schema_name}", public'))
 

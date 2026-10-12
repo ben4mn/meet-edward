@@ -21,11 +21,17 @@ from sqlalchemy import select, update
 from services.database import async_session, OrchestratorTaskModel, OrchestratorConfigModel
 
 
-# Model shorthand mapping
+# Model shorthand mapping for the Codex fallback's workers. Legacy
+# ``haiku``/``sonnet``/``opus`` keys were removed so workers can't silently
+# route to the wrong provider; on the Claude API (the default provider) the
+# chat route's model runs every worker whatever the shorthand says
+# (``llm_utils.build_chat_llm``). Tiers follow the Codex catalog (2026-09):
+# Luna = fast/cheap, Terra = balanced default, Astra = heaviest reasoning.
 MODEL_SHORTHAND = {
-    "haiku": "claude-haiku-4-5-20251001",
-    "sonnet": "claude-sonnet-4-6",
-    "opus": "claude-opus-4-6",
+    "mini": "gpt-5.6-luna",
+    "fast": "gpt-5.6-luna",
+    "pro": "gpt-5.6-terra",
+    "deep": "gpt-6-astra",
 }
 
 # Global state
@@ -320,6 +326,7 @@ async def _run_worker_chat(
 
     # Call chat_with_memory with worker flags
     response = await chat_with_memory(
+        turn_source="worker",
         message=task_description,
         conversation_id=conversation_id,
         system_prompt=system_prompt,
@@ -328,6 +335,7 @@ async def _run_worker_chat(
         graph=graph,
         skip_memory=skip_memory,
         is_worker=True,
+        provider=settings.provider,
     )
 
     return str(response)[:2000] if response else "No response"
@@ -464,7 +472,10 @@ async def wait_for_tasks(task_ids: List[str], timeout: Optional[int] = None) -> 
 async def send_message_to_worker(task_id: str, message: str) -> dict:
     """Send a follow-up message to a completed worker's conversation."""
     task = await get_task(task_id)
-    if task.get("error"):
+    # A task dict always carries an "error" key (None when fine), so test
+    # its value — and a failed task's own error text is not a lookup
+    # failure (that dict has no "id"). Community fix from public PR #5 (cchen362).
+    if task.get("error") and "id" not in task:
         return task
 
     if task["status"] == "running":
@@ -484,6 +495,7 @@ async def send_message_to_worker(task_id: str, message: str) -> dict:
     set_current_conversation_id(conversation_id)
 
     response = await chat_with_memory(
+        turn_source="worker",
         message=message,
         conversation_id=conversation_id,
         system_prompt=settings.system_prompt,
@@ -492,6 +504,7 @@ async def send_message_to_worker(task_id: str, message: str) -> dict:
         graph=graph,
         skip_memory=True,
         is_worker=True,
+        provider=settings.provider,
     )
 
     return {"response": str(response)[:2000] if response else "No response"}
@@ -551,19 +564,28 @@ async def spawn_cc_task(
     cwd: Optional[str] = None,
     timeout_seconds: Optional[int] = None,
     wait: bool = True,
+    read_only: bool = False,
 ) -> dict:
-    """Spawn a Claude Code session tracked by the orchestrator.
+    """Spawn a Codex session (``codex exec``) tracked by the orchestrator.
 
     Args:
         parent_conversation_id: The conversation that spawned this task
-        task_description: What CC should do
-        cwd: Working directory for CC
+        task_description: What Codex should do
+        cwd: Working directory (default: a fresh scratch directory; never
+            the live repo or a release — refused before any task row)
         timeout_seconds: Max execution time (default: 600)
-        wait: If True, block until CC completes
+        wait: If True, block until the session completes
+        read_only: Run in the read-only sandbox (look, don't change)
 
     Returns:
         Task dict with id, status, etc.
     """
+    from services.codex_cli_service import cwd_refusal
+
+    refused = cwd_refusal(cwd)
+    if refused:
+        return {"error": refused}
+
     config = await get_config()
 
     if not config["enabled"]:
@@ -598,6 +620,7 @@ async def spawn_cc_task(
             task_description=task_description,
             cwd=cwd,
             timeout=timeout,
+            read_only=read_only,
         )
     )
     _cc_tasks[task_id] = asyncio_task

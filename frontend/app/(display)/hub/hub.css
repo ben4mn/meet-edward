@@ -1,0 +1,1867 @@
+/* Household hub — the pet-station touchscreen.
+ *
+ * Target device: Raspberry Pi Touch Display 2, 7", run landscape at
+ * 1280x720. Everything here assumes a finger at arm's length in a room
+ * with dogs in it: 60px minimum tap targets, no hover-only affordances,
+ * and status carried by shape + text as well as colour.
+ */
+
+.hub-root {
+  --hub-bg: #07090f;
+  --hub-panel: #0d1118;
+  --hub-panel-2: #131926;
+  --hub-line: #1f2937;
+  --hub-text: #e5e7eb;
+  --hub-dim: #7c8698;
+  --hub-done: #34d399;
+  --hub-due: #4b5563;
+  --hub-overdue: #f59e0b;
+  --hub-missed: #5b6472;
+  --hub-refused: #f87171;
+  /* Identity accent — follows the active person (see [data-who] below). */
+  --hub-accent: #60a5fa;
+  /* Fixed status blue. Deliberately NOT --hub-accent: "repaired" must mean
+   * the same thing whoever is standing at the screen. */
+  --hub-info: #60a5fa;
+
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--hub-bg);
+  color: var(--hub-text);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  overflow: hidden;
+  /* A kiosk should never surface a text cursor or a long-press menu. */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ---- header ---- */
+
+.hub-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--hub-line);
+  background: var(--hub-panel);
+  flex: 0 0 auto;
+}
+
+.hub-clock {
+  font-size: 26px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.hub-date {
+  font-size: 13px;
+  color: var(--hub-dim);
+  margin-top: -2px;
+}
+
+.hub-alerts {
+  flex: 1;
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.hub-alert {
+  background: rgba(245, 158, 11, 0.14);
+  border: 1px solid var(--hub-overdue);
+  color: var(--hub-overdue);
+  border-radius: 999px;
+  padding: 5px 13px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* ---- who is logging ---- */
+
+.hub-who {
+  display: flex;
+  gap: 6px;
+  background: var(--hub-panel-2);
+  border-radius: 999px;
+  padding: 4px;
+}
+
+.hub-who button {
+  min-height: 44px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--hub-dim);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.hub-who button[data-active="true"] {
+  background: var(--hub-accent);
+  color: #06121f;
+}
+
+/* ---- pet grid ---- */
+
+.hub-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  padding: 10px 12px;
+  min-height: 0;
+}
+
+.hub-pet {
+  display: flex;
+  flex-direction: column;
+  background: var(--hub-panel);
+  border: 1px solid var(--hub-line);
+  border-radius: 14px;
+  padding: 10px;
+  min-height: 0;
+}
+
+.hub-pet-name {
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.hub-pet-species {
+  font-size: 17px;
+}
+
+/* ---- bowls ---- */
+
+.hub-bowls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 9px;
+}
+
+.hub-bowl {
+  position: relative;
+  min-height: 76px;
+  border-radius: 12px;
+  border: 2px solid var(--hub-due);
+  background: var(--hub-panel-2);
+  color: var(--hub-dim);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  cursor: pointer;
+  padding: 6px 4px;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.hub-bowl[data-done="true"] {
+  border-color: var(--hub-done);
+  background: rgba(52, 211, 153, 0.13);
+  color: var(--hub-done);
+}
+
+.hub-bowl:active {
+  transform: scale(0.97);
+}
+
+.hub-bowl-window {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+}
+
+.hub-bowl-icon {
+  font-size: 21px;
+  line-height: 1;
+  opacity: 0.55;
+}
+
+.hub-bowl[data-done="true"] .hub-bowl-icon {
+  opacity: 1;
+}
+
+.hub-bowl-by {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--hub-done);
+}
+
+.hub-bowl-marker {
+  position: absolute;
+  top: 5px;
+  right: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--hub-accent);
+  background: rgba(96, 165, 250, 0.15);
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+
+/* ---- meds ---- */
+
+.hub-meds {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.hub-med {
+  min-height: 60px;
+  border-radius: 11px;
+  border: 2px solid var(--hub-due);
+  background: var(--hub-panel-2);
+  color: var(--hub-text);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 11px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.hub-med[data-status="given"] {
+  border-color: var(--hub-done);
+  background: rgba(52, 211, 153, 0.13);
+}
+
+.hub-med[data-status="overdue"] {
+  border-color: var(--hub-overdue);
+  background: rgba(245, 158, 11, 0.11);
+}
+
+.hub-med[data-status="missed"] {
+  border-color: var(--hub-missed);
+  border-style: dashed;
+  opacity: 0.62;
+}
+
+.hub-med[data-status="refused"],
+.hub-med[data-status="skipped"] {
+  border-color: var(--hub-refused);
+  background: rgba(248, 113, 113, 0.1);
+}
+
+.hub-med:active {
+  transform: scale(0.98);
+}
+
+.hub-med-name {
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.15;
+}
+
+.hub-med-dose {
+  font-size: 12px;
+  color: var(--hub-dim);
+  margin-top: 1px;
+}
+
+.hub-med-state {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.hub-review {
+  display: inline-block;
+  margin-left: 5px;
+  font-size: 10px;
+  font-weight: 800;
+  color: #06121f;
+  background: var(--hub-accent);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
+.hub-empty {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--hub-dim);
+  text-align: center;
+  padding: 12px 4px;
+  border: 1px dashed var(--hub-line);
+  border-radius: 10px;
+}
+
+/* ---- footer ---- */
+
+.hub-footer {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-top: 1px solid var(--hub-line);
+  background: var(--hub-panel);
+}
+
+.hub-giveall {
+  flex: 1;
+  min-height: 58px;
+  border-radius: 12px;
+  border: 0;
+  background: var(--hub-accent);
+  color: #06121f;
+  font-size: 17px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.hub-giveall[disabled] {
+  background: var(--hub-panel-2);
+  color: var(--hub-dim);
+  cursor: default;
+}
+
+/* Undo is deliberately large and permanent rather than a confirm dialog:
+ * mis-taps are guaranteed here, and a log nobody trusts is worse than no
+ * log at all. */
+.hub-undo {
+  min-height: 58px;
+  padding: 0 22px;
+  border-radius: 12px;
+  border: 2px solid var(--hub-line);
+  background: transparent;
+  color: var(--hub-text);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.hub-undo[disabled] {
+  opacity: 0.32;
+  cursor: default;
+}
+
+.hub-status {
+  font-size: 12px;
+  color: var(--hub-dim);
+  min-width: 118px;
+  text-align: right;
+}
+
+/* ---- back affordance ---- */
+
+.hub-back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  min-height: 52px;
+  border-radius: 12px;
+  border: 1px solid var(--hub-line);
+  background: var(--hub-panel-2);
+  color: var(--hub-text);
+  font-size: 30px;
+  line-height: 1;
+  text-decoration: none;
+  flex: 0 0 auto;
+}
+
+/* ---- home ---- */
+
+.hub-home {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  gap: 14px;
+  padding: 14px;
+  min-height: 0;
+}
+
+.hub-greet {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: var(--hub-panel);
+  border: 1px solid var(--hub-line);
+  border-radius: 16px;
+  padding: 12px;
+  text-align: center;
+}
+
+.hub-greet-text {
+  font-size: 25px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-top: 4px;
+}
+
+.hub-greet-sub {
+  font-size: 13px;
+  color: var(--hub-dim);
+  line-height: 1.35;
+}
+
+.hub-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  gap: 12px;
+  min-height: 0;
+}
+
+.hub-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  border-radius: 16px;
+  border: 1px solid var(--hub-line);
+  background: var(--hub-panel);
+  color: var(--hub-text);
+  text-decoration: none;
+  min-height: 96px;
+}
+
+.hub-tile[data-live="true"]:active {
+  transform: scale(0.98);
+  background: var(--hub-panel-2);
+}
+
+/* Not yet built: readable, obviously inert, no tap target. */
+.hub-tile[data-live="false"] {
+  opacity: 0.34;
+  border-style: dashed;
+}
+
+.hub-tile-icon {
+  font-size: 32px;
+  line-height: 1;
+}
+
+.hub-tile-label {
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.hub-tile-hint {
+  font-size: 11px;
+  color: var(--hub-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.hub-tile-badge {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  min-width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: var(--hub-accent);
+  color: #06121f;
+  font-size: 14px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 7px;
+}
+
+/* ---- feeding glance strip ---- */
+
+.hub-strip {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--hub-line);
+  background: var(--hub-panel);
+  text-decoration: none;
+  color: var(--hub-text);
+  min-height: 62px;
+}
+
+.hub-strip-pet {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.hub-strip-icon {
+  font-size: 19px;
+}
+
+.hub-strip-name {
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.hub-strip-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 2px solid var(--hub-due);
+  background: transparent;
+}
+
+.hub-strip-dot[data-done="true"] {
+  border-color: var(--hub-done);
+  background: var(--hub-done);
+}
+
+.hub-strip-marker {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--hub-accent);
+}
+
+/* ---- generic two-column view (today / lists / timers) ---- */
+
+.hub-two-col {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding: 12px;
+  min-height: 0;
+}
+
+.hub-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--hub-panel);
+  border: 1px solid var(--hub-line);
+  border-radius: 16px;
+  padding: 12px 14px;
+  min-height: 0;
+}
+
+.hub-card-title {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--hub-dim);
+  margin: 0 0 10px;
+}
+
+.hub-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-height: 0;
+}
+
+.hub-rows-scroll {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.hub-row {
+  display: flex;
+  align-items: baseline;
+  gap: 11px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  background: var(--hub-panel-2);
+}
+
+.hub-row[data-past="true"] {
+  opacity: 0.42;
+}
+
+.hub-row-time {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--hub-accent);
+  font-variant-numeric: tabular-nums;
+  min-width: 68px;
+}
+
+.hub-row-text {
+  font-size: 15px;
+  line-height: 1.25;
+}
+
+.hub-row-tag {
+  margin-left: 7px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--hub-dim);
+}
+
+.hub-empty-lg {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--hub-dim);
+  font-size: 14px;
+  border: 1px dashed var(--hub-line);
+  border-radius: 12px;
+  padding: 22px;
+}
+
+/* ---- lists ---- */
+
+.hub-listrow {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: var(--hub-panel-2);
+  min-height: 58px;
+}
+
+.hub-check {
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  border: 2px solid var(--hub-due);
+  background: transparent;
+  color: var(--hub-done);
+  font-size: 21px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.hub-check[data-done="true"] {
+  border-color: var(--hub-done);
+  background: rgba(52, 211, 153, 0.15);
+}
+
+.hub-listrow-text {
+  flex: 1;
+  font-size: 16px;
+}
+
+.hub-listrow-text[data-done="true"] {
+  text-decoration: line-through;
+  color: var(--hub-dim);
+}
+
+.hub-x {
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  border: 0;
+  background: transparent;
+  color: var(--hub-dim);
+  font-size: 17px;
+  cursor: pointer;
+}
+
+.hub-add {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.hub-add-input {
+  flex: 1;
+  min-height: 52px;
+  border-radius: 11px;
+  border: 1px solid var(--hub-line);
+  background: var(--hub-panel-2);
+  color: var(--hub-text);
+  padding: 0 13px;
+  font-size: 16px;
+}
+
+.hub-add-input:focus {
+  outline: none;
+  border-color: var(--hub-accent);
+}
+
+.hub-add-btn {
+  min-height: 52px;
+  padding: 0 20px;
+  border-radius: 11px;
+  border: 0;
+  background: var(--hub-accent);
+  color: #06121f;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+/* ---- timers ---- */
+
+.hub-presets {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.hub-preset {
+  min-height: 74px;
+  border-radius: 12px;
+  border: 2px solid var(--hub-line);
+  background: var(--hub-panel-2);
+  color: var(--hub-text);
+  font-size: 17px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.hub-preset:active {
+  transform: scale(0.97);
+}
+
+.hub-timer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 11px;
+  background: var(--hub-panel-2);
+  border: 2px solid transparent;
+}
+
+.hub-timer[data-done="true"] {
+  border-color: var(--hub-overdue);
+  background: rgba(245, 158, 11, 0.13);
+}
+
+.hub-timer-left {
+  font-size: 27px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  min-width: 118px;
+  color: var(--hub-accent);
+}
+
+.hub-timer[data-done="true"] .hub-timer-left {
+  color: var(--hub-overdue);
+}
+
+.hub-timer-label {
+  flex: 1;
+  font-size: 15px;
+  color: var(--hub-dim);
+}
+
+/* ---- ask (voice takes the whole screen) ---- */
+
+.hub-ask {
+  display: block;
+  background: var(--hub-bg);
+}
+
+/* Eight tiles now, so widen the grid. */
+.hub-tiles {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+/* ---- health ---- */
+
+
+.hub-health-banner[data-status="healthy"] {
+  border-color: var(--hub-done);
+  background: rgba(52, 211, 153, 0.1);
+}
+
+.hub-health-banner[data-status="repaired"] {
+  border-color: var(--hub-accent);
+  background: rgba(96, 165, 250, 0.1);
+}
+
+.hub-health-banner[data-status="stale"],
+.hub-health-banner[data-status="unknown"] {
+  border-color: var(--hub-overdue);
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.hub-health-banner[data-status="problem"] {
+  border-color: var(--hub-refused);
+  background: rgba(248, 113, 113, 0.11);
+}
+
+.hub-health-headline {
+  font-size: 25px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.hub-health-host {
+  font-size: 12px;
+  color: var(--hub-dim);
+}
+
+.hub-health-watchdog {
+  margin: 10px 0;
+  font-size: 13px;
+  color: var(--hub-dim);
+  line-height: 1.4;
+}
+
+.hub-health-problem {
+  border-radius: 9px;
+  padding: 9px 11px;
+  font-size: 13px;
+  background: rgba(248, 113, 113, 0.13);
+  color: var(--hub-refused);
+  font-weight: 600;
+}
+
+.hub-health-repair {
+  border-radius: 9px;
+  padding: 9px 11px;
+  font-size: 13px;
+  background: rgba(96, 165, 250, 0.12);
+  color: var(--hub-info);
+  font-weight: 600;
+}
+
+.hub-health-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 9px 11px;
+  border-radius: 10px;
+  background: var(--hub-panel-2);
+}
+
+.hub-health-dot {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--hub-missed);
+}
+
+.hub-health-dot[data-status="healthy"] { background: var(--hub-done); }
+.hub-health-dot[data-status="repaired"] { background: var(--hub-info); }
+.hub-health-dot[data-status="stale"],
+.hub-health-dot[data-status="unknown"] { background: var(--hub-overdue); }
+.hub-health-dot[data-status="problem"] { background: var(--hub-refused); }
+
+.hub-health-name {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.hub-health-detail {
+  font-size: 12px;
+  color: var(--hub-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- KPI row ---- */
+
+.hub-kpis {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+  padding: 10px 12px 0;
+}
+
+.hub-stat {
+  background: var(--hub-panel);
+  border: 1px solid var(--hub-line);
+  border-radius: 13px;
+  padding: 11px 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  justify-content: center;
+}
+
+/* Values wear text tokens, not status colour — a coloured glyph beside
+ * them carries state instead. */
+.hub-stat-value {
+  font-size: 27px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  color: var(--hub-text);
+}
+
+.hub-stat-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--hub-dim);
+}
+
+.hub-stat-sub {
+  font-size: 11px;
+  color: var(--hub-dim);
+}
+
+.hub-stat-status .hub-stat-value {
+  font-size: 20px;
+}
+
+.hub-stat-status[data-status="problem"] { border-color: var(--hub-refused); }
+.hub-stat-status[data-status="stale"],
+.hub-stat-status[data-status="unknown"] { border-color: var(--hub-overdue); }
+.hub-stat-status[data-status="healthy"] { border-color: var(--hub-done); }
+.hub-stat-status[data-status="repaired"] { border-color: var(--hub-info); }
+
+/* ---- meters ---- */
+
+.hub-meters {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  margin-bottom: 12px;
+}
+
+.hub-meter-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 5px;
+}
+
+.hub-meter-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--hub-text);
+}
+
+.hub-meter-value {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--hub-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.hub-meter-caption {
+  font-weight: 500;
+}
+
+.hub-meter-track {
+  height: 12px;
+  border-radius: 999px;
+  background: var(--hub-panel-2);
+  overflow: hidden;
+}
+
+.hub-meter-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--hub-done);
+  transition: width 400ms ease;
+  min-width: 4px;
+}
+
+.hub-meter-fill[data-level="warning"] { background: var(--hub-overdue); }
+.hub-meter-fill[data-level="critical"] { background: var(--hub-refused); }
+
+/* ---- status glyphs (never colour alone) ---- */
+
+.hub-health-glyph {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 900;
+  color: #06121f;
+  background: var(--hub-missed);
+}
+
+.hub-health-glyph[data-status="healthy"] { background: var(--hub-done); }
+.hub-health-glyph[data-status="repaired"] { background: var(--hub-info); }
+.hub-health-glyph[data-status="stale"],
+.hub-health-glyph[data-status="unknown"] { background: var(--hub-overdue); }
+.hub-health-glyph[data-status="problem"] { background: var(--hub-refused); }
+
+.hub-services {
+  flex: 1;
+  margin-top: 10px;
+}
+
+/* ---- settings ---- */
+
+.hub-setting {
+  margin-bottom: 15px;
+}
+
+.hub-setting-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--hub-dim);
+  margin-bottom: 7px;
+}
+
+.hub-setting-value {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--hub-accent);
+  text-transform: none;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.hub-select {
+  width: 100%;
+  min-height: 54px;
+  border-radius: 11px;
+  border: 1px solid var(--hub-line);
+  background: var(--hub-panel-2);
+  color: var(--hub-text);
+  font-size: 16px;
+  padding: 0 12px;
+}
+
+/* Chunky thumb: this gets dragged with a fingertip. */
+.hub-slider {
+  width: 100%;
+  height: 40px;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.hub-slider::-webkit-slider-runnable-track {
+  height: 12px;
+  border-radius: 999px;
+  background: var(--hub-panel-2);
+  border: 1px solid var(--hub-line);
+}
+
+.hub-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 38px;
+  height: 38px;
+  margin-top: -14px;
+  border-radius: 999px;
+  background: var(--hub-accent);
+  border: 3px solid var(--hub-panel);
+}
+
+.hub-setting-hint {
+  font-size: 11px;
+  color: var(--hub-dim);
+}
+
+.hub-setting-note {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--hub-dim);
+  border-left: 2px solid var(--hub-line);
+  padding-left: 10px;
+  margin: 14px 0;
+}
+
+.hub-setting-actions {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* ---- photo screensaver ---- */
+
+.hub-screensaver {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: #000;
+  color: #fff;
+  user-select: none;
+  -webkit-user-select: none;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.hub-slide {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  /* Long crossfade — this is furniture, not a transition demo. Duration is
+   * mirrored by FADE_MS in idle/page.tsx, which waits for it before
+   * loading the next photo into the hidden layer. */
+  transition: opacity 1600ms ease-in-out, transform 1600ms ease-in-out;
+  will-change: opacity, transform;
+  transform: translateX(0);
+}
+
+/* A quarter of the album is portrait. `cover` would crop a tall photo to a
+ * middle band and cut people's heads off, so the photo is drawn `contain`
+ * (whole frame, always) over a blurred copy of itself that fills the
+ * leftover margins. */
+.hub-slide-photo {
+  position: absolute;
+  inset: 0;
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.hub-slide-blur {
+  position: absolute;
+  /* Overscan so the blur's soft edge never shows at the frame border. */
+  inset: -8%;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  filter: blur(28px) brightness(0.6);
+  transform: scale(1.06);
+}
+
+.hub-slide[data-visible="true"] {
+  opacity: 1;
+}
+
+/* Keeps the clock readable over a bright photo without dimming the whole
+ * image — the gradient only darkens the corner the text sits in. */
+.hub-slide-scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to top right,
+    rgba(0, 0, 0, 0.62) 0%,
+    rgba(0, 0, 0, 0.22) 32%,
+    rgba(0, 0, 0, 0) 62%
+  );
+  pointer-events: none;
+}
+
+.hub-screensaver-clock {
+  position: absolute;
+  left: 40px;
+  bottom: 34px;
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.75);
+}
+
+.hub-screensaver-time {
+  font-size: 76px;
+  font-weight: 200;
+  letter-spacing: -0.035em;
+  line-height: 1;
+}
+
+.hub-screensaver-date {
+  font-size: 19px;
+  font-weight: 500;
+  opacity: 0.88;
+  margin-top: 6px;
+}
+
+.hub-screensaver-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  text-align: center;
+  padding: 40px;
+}
+
+.hub-screensaver-empty-title {
+  font-size: 27px;
+  font-weight: 700;
+  opacity: 0.92;
+}
+
+.hub-screensaver-empty-body {
+  font-size: 14px;
+  line-height: 1.65;
+  opacity: 0.6;
+  max-width: 620px;
+}
+
+.hub-screensaver-empty-body code {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 5px;
+  padding: 2px 7px;
+  font-size: 13px;
+}
+
+.hub-screensaver-note {
+  position: absolute;
+  right: 18px;
+  bottom: 16px;
+  font-size: 11px;
+  opacity: 0.42;
+}
+
+/* ---- adaptive clock ink ----
+ * The clock is always on top of the photo; only its colour changes, chosen
+ * from the luminance of the patch behind it (lib/sampleInk.ts). Each ink
+ * carries its own shadow — a dark glow behind light text, a light one
+ * behind dark text — so the edge holds on a busy photo either way. */
+
+.hub-screensaver-clock {
+  z-index: 3;
+  transition: color 800ms ease, text-shadow 800ms ease;
+}
+
+.hub-screensaver-clock[data-ink="light"] {
+  color: #fff;
+  text-shadow: 0 2px 20px rgba(0, 0, 0, 0.8), 0 0 3px rgba(0, 0, 0, 0.45);
+}
+
+.hub-screensaver-clock[data-ink="dark"] {
+  color: #0b0d12;
+  text-shadow: 0 2px 20px rgba(255, 255, 255, 0.72), 0 0 3px rgba(255, 255, 255, 0.5);
+}
+
+/* The scrim is a safety net under light ink; on a bright photo the clock
+ * has already flipped to dark, so darkening the corner would fight it. */
+.hub-screensaver:has(.hub-screensaver-clock[data-ink="dark"]) .hub-slide-scrim {
+  opacity: 0;
+  transition: opacity 800ms ease;
+}
+
+/* ---- walking companion ----
+ * Walk cycle ported from ben4mn/companion (docs/packs/pane/animations.css),
+ * which drives this same PaneSvg rigging. */
+
+.hub-companion {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  /* PaneSvg's root span is `display: inline-flex` via an inline style we
+   * can't override from here, so it sits on a text baseline and the line
+   * box reserves descender space *underneath* it. That pushed him a few
+   * pixels up off the floor no matter what `bottom` said. Zeroing the
+   * line-height collapses the strut and the gap with it. */
+  line-height: 0;
+  /* A big offset shadow under a character reads as altitude. His contact
+   * with the floor is drawn by the robot-shadow ellipse inside the SVG;
+   * this pair only buys him an edge against a bright photo. */
+  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.55))
+          drop-shadow(0 1px 3px rgba(0, 0, 0, 0.4));
+  /* The track: PhotoCompanion writes a translate3d here every frame while
+   * he walks (never a React render), and fades it under reduced motion. */
+  will-change: transform;
+  transition: opacity 120ms linear;
+}
+
+/* The body carries the shove (data-pushing) so its keyframed transform
+ * never fights the track's translate. */
+.hub-companion-body {
+  width: 100%;
+  height: 100%;
+  line-height: 0;
+}
+
+/* Only the outer svg: the bust variant nests a second svg, which must keep
+ * its own 36x38 canvas. */
+.hub-companion .pane-avatar > svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: visible;
+}
+
+/* Feet on the floor (review 2026-09-26): the step bob lifts only the upper
+ * body — it used to move .robot-body, which holds the legs, so both feet
+ * left the floor every step. The torso overlaps the legs by 1.5 units, so a
+ * 1-unit bob never opens a gap. More specific than globals.css's breath
+ * (.pane-avatar.is-live .robot-upper), which it replaces while he walks. */
+.hub-companion .pane-avatar.walking .robot-upper {
+  animation: hub-walk-bob 0.5s ease-in-out infinite;
+}
+.pane-avatar.walking .robot-leg-left  { animation: hub-walk-leg-l 0.5s ease-in-out infinite; }
+.pane-avatar.walking .robot-leg-right { animation: hub-walk-leg-r 0.5s ease-in-out infinite; }
+.pane-avatar.walking .robot-arm-l     { animation: hub-walk-arm-l 0.5s ease-in-out infinite; }
+.pane-avatar.walking .robot-arm-r     { animation: hub-walk-arm-r 0.5s ease-in-out infinite; }
+.pane-avatar.walking .robot-shadow    { animation: hub-walk-shadow 0.5s ease-in-out infinite; }
+/* Pivot at the joint the antenna actually grows from — the path starts at
+ * "M18 6.5", and globals.css uses the same origin. `center bottom` (as the
+ * companion repo's own SVG uses) resolves against this SVG's viewport, not
+ * the element, which swung the antenna in an arc around Edward's feet. */
+.pane-avatar.walking .robot-antenna {
+  animation: hub-walk-antenna 0.5s ease-in-out infinite alternate;
+  transform-origin: 18px 6.5px;
+}
+
+@keyframes hub-walk-bob {
+  0%, 100% { transform: translateY(0); }
+  25%      { transform: translateY(-1px); }
+  50%      { transform: translateY(0); }
+  75%      { transform: translateY(-1px); }
+}
+@keyframes hub-walk-leg-l {
+  0%, 100% { transform: translateX(0); }
+  25%      { transform: translateX(1.5px); }
+  75%      { transform: translateX(-1.5px); }
+}
+@keyframes hub-walk-leg-r {
+  0%, 100% { transform: translateX(0); }
+  25%      { transform: translateX(-1.5px); }
+  75%      { transform: translateX(1.5px); }
+}
+@keyframes hub-walk-arm-l {
+  0%, 100% { transform: translateX(0); }
+  25%      { transform: translateX(-1px); }
+  75%      { transform: translateX(1px); }
+}
+@keyframes hub-walk-arm-r {
+  0%, 100% { transform: translateX(0); }
+  25%      { transform: translateX(1px); }
+  75%      { transform: translateX(-1px); }
+}
+@keyframes hub-walk-shadow {
+  0%, 50%, 100% { transform: scaleX(1); }
+  25%, 75%      { transform: scaleX(0.95); }
+}
+/* globals.css idles the antenna at +/-2deg. A walk should be livelier than
+ * standing still but stay in the same motion language — the ported values
+ * were 3x the house amplitude and read as a whip. */
+@keyframes hub-walk-antenna {
+  0%   { transform: rotate(-4deg); }
+  100% { transform: rotate(4deg); }
+}
+
+/* Anticipate: a small crouch before setting off. Arrive: a settle. Without
+ * these two he reads as a sprite sliding on ice. Both squash about his
+ * soles (18px 34px — PANE_FOOT_Y); `center bottom` resolves against the
+ * SVG viewport (y 38), 4 units below his feet, and sank him into the floor. */
+.pane-avatar.walk-anticipate .robot-body {
+  animation: hub-walk-crouch 0.2s ease-out forwards;
+  transform-origin: 18px 34px;
+}
+@keyframes hub-walk-crouch {
+  0%   { transform: scaleY(1) scaleX(1); }
+  100% { transform: scaleY(0.94) scaleX(1.04); }
+}
+
+.pane-avatar.walk-arrive .robot-body {
+  animation: hub-walk-settle 0.3s ease-out forwards;
+  transform-origin: 18px 34px;
+}
+/* A squash on landing, not a hop: it used to start 2 units up (a 5 px pop)
+ * and dip 1 unit into the floor. */
+@keyframes hub-walk-settle {
+  0%   { transform: translateY(-0.4px) scaleY(1); }
+  40%  { transform: translateY(0) scaleY(0.97) scaleX(1.015); }
+  100% { transform: translateY(0) scaleY(1) scaleX(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hub-companion .pane-avatar.walking .robot-upper,
+  .pane-avatar.walking .robot-leg-left,
+  .pane-avatar.walking .robot-leg-right,
+  .pane-avatar.walking .robot-arm-l,
+  .pane-avatar.walking .robot-arm-r,
+  .pane-avatar.walking .robot-shadow,
+  .pane-avatar.walking .robot-antenna { animation: none; }
+}
+
+/* ---- transitions ----
+ * Selected in the hub settings and applied via [data-transition] on the
+ * root, so each mode is pure CSS over the same two stable layers. */
+
+/* Ken Burns: a slow drift on the visible photo, restarted per photo. The
+ * album is furniture, so the movement is small — enough to stop the frame
+ * feeling dead, not enough to notice it happening. */
+.hub-screensaver[data-transition="kenburns"] .hub-slide[data-visible="true"] .hub-slide-photo {
+  animation: hub-kenburns 34s ease-out forwards;
+}
+
+@keyframes hub-kenburns {
+  from { transform: scale(1) translate3d(0, 0, 0); }
+  to   { transform: scale(1.07) translate3d(-1.1%, -0.8%, 0); }
+}
+
+.hub-screensaver[data-transition="kenburns"] .hub-slide[data-visible="true"] .hub-slide-blur {
+  animation: hub-kenburns-blur 34s ease-out forwards;
+}
+
+@keyframes hub-kenburns-blur {
+  from { transform: scale(1.06); }
+  to   { transform: scale(1.13); }
+}
+
+/* Slide: the outgoing photo is pushed off to the LEFT while the incoming
+ * one arrives from the RIGHT — the mode Edward's shove is choreographed
+ * against.
+ *
+ * Three positions, not two. A hidden slot is either leaving (exit left) or
+ * parked with the next photo (wait right); collapsing those into one rule
+ * sends both slides the same way and they cross over each other. The
+ * parked state also skips the transition, so re-parking a slot doesn't
+ * animate a photo across the screen with nobody looking. */
+.hub-screensaver[data-transition="slide"] .hub-slide {
+  transform: translateX(100%);
+  opacity: 1;
+  transition: none;
+}
+
+.hub-screensaver[data-transition="slide"] .hub-slide[data-visible="true"],
+.hub-screensaver[data-transition="slide"] .hub-slide[data-exiting] {
+  transition: transform 1600ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.hub-screensaver[data-transition="slide"] .hub-slide[data-visible="true"] {
+  transform: translateX(0);
+}
+
+.hub-screensaver[data-transition="slide"] .hub-slide[data-exiting] {
+  transform: translateX(-100%);
+}
+
+/* Crossfade needs nothing beyond the base rule. */
+
+/* ---- Edward presenting ----
+ * A wind-up lean, then a shove, timed so the push lands as the slide
+ * starts moving (page.tsx delays the advance by 700ms). */
+
+.hub-companion-body[data-pushing] {
+  animation: hub-push-step 1.4s ease-in-out;
+}
+
+/* The whole figure moves no further than one stride (the legs swing ~3
+ * units ≈ 7.6 px at 96 px): it used to slide −14 → +26 px on planted feet.
+ * The force is in the lean and the arms. */
+@keyframes hub-push-step {
+  0%   { transform: translateX(0); }
+  35%  { transform: translateX(-4px); }  /* wind up */
+  60%  { transform: translateX(7px); }   /* shove */
+  100% { transform: translateX(0); }
+}
+
+/* Slide mode: the photo leaves to the left, so he faces left and shoves
+ * left (L7, 2026-09-27 — he used to shove right while it went left). Only
+ * the step needs mirroring here: the lean and the arms are drawn inside the
+ * svg, which .face-left flips. Listed under reduced motion below: this rule
+ * out-ranks the plain `animation: none` there. */
+.hub-companion-body[data-pushing][data-push="left"] {
+  animation-name: hub-push-step-left;
+}
+
+@keyframes hub-push-step-left {
+  0%   { transform: translateX(0); }
+  35%  { transform: translateX(4px); }   /* wind up */
+  60%  { transform: translateX(-7px); }  /* shove */
+  100% { transform: translateX(0); }
+}
+
+/* He leans from the waist, feet flat: tilting .robot-body about y 38 sank
+ * one foot into the floor and lifted the other. More specific than the
+ * breath on .robot-upper, which it replaces for the shove. */
+.hub-companion .pane-avatar.hub-pushing .robot-upper {
+  animation: hub-push-lean 1.4s ease-in-out;
+  transform-origin: 18px 28.5px;
+}
+
+@keyframes hub-push-lean {
+  0%   { transform: rotate(0deg) scaleY(1); }
+  35%  { transform: rotate(-7deg) scaleY(0.97); }
+  60%  { transform: rotate(11deg) scaleY(1.02); }
+  100% { transform: rotate(0deg) scaleY(1); }
+}
+
+/* Arms for the shove. Both pivot at their shoulders (globals.css), so each
+ * turns about the joint it hangs from: the right arm swings back on the
+ * wind-up and reaches out on the shove; the left swings back, then comes
+ * forward across. Translations stay within ~1 unit so nothing detaches (a
+ * shared 5px slide sank the left arm into his torso and floated the right
+ * hand off on its own). */
+.pane-avatar.hub-pushing .robot-arm-r {
+  animation: hub-push-arm-r 1.4s ease-in-out;
+}
+.pane-avatar.hub-pushing .robot-arm-l {
+  animation: hub-push-arm-l 1.4s ease-in-out;
+}
+
+@keyframes hub-push-arm-r {
+  0%   { transform: rotate(0deg); }
+  35%  { transform: rotate(14deg); }                    /* wind up: hand drawn back */
+  60%  { transform: translateX(0.8px) rotate(-58deg); } /* shove: reaching out */
+  100% { transform: rotate(0deg); }
+}
+
+@keyframes hub-push-arm-l {
+  0%   { transform: rotate(0deg); }
+  35%  { transform: translateX(-0.6px) rotate(12deg); }
+  60%  { transform: translateX(1px) rotate(-14deg); }
+  100% { transform: rotate(0deg); }
+}
+
+.pane-avatar.hub-pushing .robot-antenna {
+  animation: hub-push-antenna 1.4s ease-in-out;
+  transform-origin: 18px 6.5px;
+}
+
+/* A shove carries real force, so more than the walk — but nowhere near the
+ * ported +12/-16, which flung it across his head. */
+@keyframes hub-push-antenna {
+  0%   { transform: rotate(0deg); }
+  35%  { transform: rotate(6deg); }
+  60%  { transform: rotate(-9deg); }
+  100% { transform: rotate(0deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hub-screensaver[data-transition="kenburns"] .hub-slide[data-visible="true"] .hub-slide-photo,
+  .hub-screensaver[data-transition="kenburns"] .hub-slide[data-visible="true"] .hub-slide-blur,
+  .hub-companion-body[data-pushing],
+  .hub-companion-body[data-pushing][data-push="left"],
+  .hub-companion .pane-avatar.hub-pushing .robot-upper,
+  .pane-avatar.hub-pushing .robot-arm-l,
+  .pane-avatar.hub-pushing .robot-arm-r,
+  .pane-avatar.hub-pushing .robot-antenna { animation: none; }
+}
+
+/* ---- segmented control (touch-sized) ---- */
+
+.hub-segmented {
+  display: flex;
+  gap: 6px;
+  background: var(--hub-panel-2);
+  border-radius: 11px;
+  padding: 5px;
+}
+
+.hub-segmented button {
+  flex: 1;
+  min-height: 48px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--hub-dim);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.hub-segmented button[data-active="true"] {
+  background: var(--hub-accent);
+  color: #06121f;
+}
+
+/* The Edward card now scrolls — machine stats plus screensaver controls no
+ * longer fit a 720px-tall panel. */
+.hub-two-col > .hub-card:last-child {
+  overflow-y: auto;
+}
+
+
+/* ---- per-person theming ----
+ * The household shares one screen and the who-toggle is a small control in
+ * a corner. Tinting the panel makes the active person legible from across
+ * the room, so a dose doesn't get logged under the wrong name.
+ *
+ * Palettes go by position in the household (lib/whoTheme.ts): the first
+ * person (the owner) is "first", the next "second", then "third"; anyone
+ * further along shares the first palette.
+ *
+ * Only the identity accent moves. Status colours (given / late / missed /
+ * repaired) are fixed — see --hub-info.
+ *
+ * Both accents are picked to stay legible on the near-black surface AND to
+ * carry the dark ink (#06121f) used on top of them for active controls. */
+
+/* Whole palettes, not just accents. Every surface moves — background,
+ * panels, borders, text, dim text — so the active person is obvious from
+ * the doorway, the way light and dark mode are obvious.
+ *
+ * What does NOT move: the status ramp (given / late / missed / refused)
+ * and --hub-info. A colour meaning "overdue" has to mean that regardless
+ * of who is standing at the screen. Every palette is built to keep those
+ * four legible, which is why the second palette's surfaces stay dark plum
+ * rather than going light — amber and red on a pale violet would be a
+ * different, worse problem — and why the third is a neutral graphite with a
+ * silver accent rather than another hue near green, amber or red. */
+
+.hub-root[data-who="first"] {
+  --hub-bg: #07090f;
+  --hub-panel: #0d1118;
+  --hub-panel-2: #131926;
+  --hub-line: #1f2937;
+  --hub-text: #e5e7eb;
+  --hub-dim: #7c8698;
+  --hub-accent: #60a5fa;      /* blue */
+  --hub-accent-soft: rgba(96, 165, 250, 0.14);
+}
+
+.hub-root[data-who="second"] {
+  --hub-bg: #0c0716;
+  --hub-panel: #17102a;
+  --hub-panel-2: #21193a;
+  --hub-line: #362a5e;
+  --hub-text: #ece9f7;
+  --hub-dim: #a294c8;
+  --hub-accent: #b794f6;      /* violet */
+  --hub-accent-soft: rgba(183, 148, 246, 0.16);
+}
+
+.hub-root[data-who="third"] {
+  --hub-bg: #0a0a0c;
+  --hub-panel: #141417;
+  --hub-panel-2: #1d1d22;
+  --hub-line: #303037;
+  --hub-text: #ededf0;
+  --hub-dim: #9b9ba6;
+  --hub-accent: #cbd5e1;      /* silver */
+  --hub-accent-soft: rgba(203, 213, 225, 0.13);
+}
+
+/* Surfaces animate between palettes so switching person reads as the panel
+ * changing mood, not as a page reload. */
+.hub-root,
+.hub-root .hub-header,
+.hub-root .hub-pet,
+.hub-root .hub-card,
+.hub-root .hub-tile,
+.hub-root .hub-stat,
+.hub-root .hub-footer,
+.hub-root .hub-strip {
+  transition: background-color 420ms ease, border-color 420ms ease,
+    color 420ms ease;
+}
+
+/* Tiles pick up a wash of the active person's colour so the grid itself
+ * changes character, not just its edges. */
+.hub-root .hub-tile[data-live="true"] {
+  background: linear-gradient(
+    160deg,
+    var(--hub-accent-soft) 0%,
+    var(--hub-panel) 62%
+  );
+  border-color: var(--hub-line);
+}
+
+.hub-root .hub-tile-icon {
+  filter: drop-shadow(0 2px 10px var(--hub-accent-soft));
+}
+
+/* Same wash on the pet cards and the KPI tiles. */
+.hub-root .hub-pet,
+.hub-root .hub-stat:not(.hub-stat-status) {
+  background: linear-gradient(
+    170deg,
+    var(--hub-accent-soft) 0%,
+    var(--hub-panel) 70%
+  );
+}
+
+/* The greeting card is the loudest surface — it holds Edward and the
+ * person's name, so it carries the strongest tint. */
+.hub-root .hub-greet {
+  background: linear-gradient(
+    150deg,
+    var(--hub-accent-soft) 0%,
+    var(--hub-panel) 78%
+  );
+  border-color: var(--hub-accent);
+}
+
+/* The who-toggle itself carries each person's colour on their own button,
+ * so the mapping is visible even before you switch — you can see which
+ * colour means which person without changing anything. */
+.hub-who button[data-person="first"][data-active="true"] {
+  background: #60a5fa;
+  color: #06121f;
+}
+
+.hub-who button[data-person="second"][data-active="true"] {
+  background: #a78bfa;
+  color: #06121f;
+}
+
+.hub-who button[data-person="third"][data-active="true"] {
+  background: #cbd5e1;
+  color: #06121f;
+}
+
+/* A soft edge-glow in the active person's colour: readable from a distance
+ * without competing with the photos or the pet cards. */
+.hub-root[data-who] .hub-header {
+  box-shadow: inset 0 -3px 0 var(--hub-accent);
+  background: linear-gradient(
+    180deg,
+    var(--hub-accent-soft) 0%,
+    var(--hub-panel) 90%
+  );
+}
+
+
+/* ---- this-screen controls (/hub/settings) ----
+ * Big, left-aligned targets with the consequence spelled out underneath.
+ * This gets used one-handed, often while holding a cat. */
+
+.hub-device-actions {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 10px;
+  min-height: 0;
+}
+
+/* The controls earn more room than the signposting next to them. */
+.hub-two-col:has(.hub-device-actions) {
+  grid-template-columns: 1.25fr 0.75fr;
+}
+
+.hub-device-action {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  /* Centred in the tile, left-aligned within itself: the whole tile is the
+   * target, but the words still start on a common edge. */
+  justify-content: center;
+  gap: 5px;
+  min-height: 92px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--hub-line);
+  background: var(--hub-panel-2);
+  color: var(--hub-text);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.hub-device-action:active {
+  transform: scale(0.985);
+}
+
+.hub-device-icon {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.hub-device-label {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.hub-device-hint {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--hub-dim);
+}
+
+/* Armed is amber, the same amber as a late dose, and deliberately NOT the
+ * person's accent: "are you sure" must not change colour depending on who
+ * is standing at the screen. */
+.hub-device-action[data-armed] {
+  border-color: var(--hub-overdue);
+  background: rgba(245, 158, 11, 0.12);
+  animation: hub-armed-pulse 1.1s ease-in-out infinite;
+}
+
+.hub-device-action[data-armed] .hub-device-label {
+  color: var(--hub-overdue);
+}
+
+@keyframes hub-armed-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+  50%      { box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.22); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hub-device-action[data-armed] { animation: none; }
+}
+
+/* Screen off. The whole viewport, above everything, and a touch anywhere
+ * brings it back — no dialog to find in the dark. Rendered outside
+ * .hub-root on purpose, so none of the hub chrome can leak light. */
+.hub-blackout {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: #000;
+  cursor: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ---- Canvas: Edward's expression surface (drawn over any hub page) ---- */
+.hub-canvas {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.hub-canvas-media {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  object-fit: contain;
+  background: #000;
+}
+.hub-canvas-text {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  padding: 6vh 6vw;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2vh;
+  text-align: left;
+  background: var(--hub-bg);
+  color: var(--hub-text);
+  font: inherit;
+}
+.hub-canvas-text.is-alert {
+  background: #3b0d0d;
+  color: #fff;
+}
+.hub-canvas-title {
+  font-size: 3.2vh;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--hub-dim);
+}
+.hub-canvas-text.is-alert .hub-canvas-title { color: #fca5a5; }
+.hub-canvas-body {
+  font-size: 6.5vh;
+  line-height: 1.2;
+  white-space: pre-wrap;
+  font-weight: 600;
+}
+.hub-canvas-hint {
+  font-size: 2.4vh;
+  color: var(--hub-dim);
+}
+.hub-canvas-close {
+  position: absolute;
+  right: 2vw;
+  bottom: 2vh;
+  padding: 1.2vh 2vw;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 2.4vh;
+}

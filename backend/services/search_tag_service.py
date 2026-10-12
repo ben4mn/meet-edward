@@ -1,16 +1,17 @@
-"""Service for generating search tags for conversations using Claude Haiku."""
+"""Service for generating search tags for conversations via ``build_background_llm()`` (the background route)."""
 
 import asyncio
 from typing import List, Dict
 
 from langchain_core.messages import SystemMessage, HumanMessage
-from services.llm_utils import build_background_llm
+
+from services.llm_utils import build_background_llm, make_background_system_message
 
 from services.conversation_service import update_search_tags
 
 
 async def generate_search_tags(conversation_id: str, messages: List[Dict[str, str]]) -> None:
-    """Generate search tags for a conversation using Claude Haiku.
+    """Generate search tags for a conversation via ``build_background_llm()`` (the background route).
 
     Args:
         conversation_id: The conversation to tag
@@ -39,7 +40,7 @@ async def generate_search_tags(conversation_id: str, messages: List[Dict[str, st
     )
 
     response = await llm.ainvoke([
-        SystemMessage(content=system),
+        make_background_system_message(system),
         HumanMessage(content=conversation_text),
     ])
 

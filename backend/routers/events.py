@@ -1,5 +1,6 @@
 """REST API endpoints for scheduled events."""
 
+import json
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -18,8 +19,20 @@ from services.scheduled_events_service import (
 router = APIRouter()
 
 
+def _metadata(raw) -> Optional[dict]:
+    """The event's metadata as a dict, or None when absent or unreadable."""
+    if not raw:
+        return None
+    try:
+        value = json.loads(raw) if isinstance(raw, str) else raw
+    except (TypeError, ValueError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
 def _model_to_schema(event) -> ScheduledEvent:
     """Convert a SQLAlchemy model to a Pydantic schema."""
+    meta = _metadata(getattr(event, "event_metadata", None))
     return ScheduledEvent(
         id=event.id,
         conversation_id=event.conversation_id,
@@ -35,6 +48,8 @@ def _model_to_schema(event) -> ScheduledEvent:
         last_result=event.last_result,
         created_at=(event.created_at.isoformat() + "Z") if event.created_at else "",
         updated_at=(event.updated_at.isoformat() + "Z") if event.updated_at else "",
+        event_metadata=meta,
+        event_type=str(meta["type"]) if meta and meta.get("type") else None,
     )
 
 

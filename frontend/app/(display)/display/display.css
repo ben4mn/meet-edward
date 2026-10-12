@@ -1,0 +1,1177 @@
+/* Edward Always-On Display — keyframes, mc-* utility classes, density modifiers.
+ * Lifted from the design handoff (edward.css) and adapted for Next.js.
+ *
+ * Component CSS-vars (`--ed-bg`, `--ed-accent`, etc.) — root tokens for
+ * the time-of-day data attribute live in app/globals.css so the [data-tod]
+ * selectors work even when this stylesheet is split out. Everything below
+ * is component-scoped: only loaded when /display mounts.
+ */
+
+/* Avatar animations now live in app/globals.css under .pane-avatar.* —
+ * the Pane buddy replaced the bespoke Edward SVG that used to read
+ * the ed-* keyframes here. Anything that still wants a slow pulsing
+ * accent should use .pane-think (or compose its own) rather than the
+ * old ed-antenna-pulse keyframe. */
+
+@keyframes pane-think-glow-cell {
+  0%, 100% { opacity: 0.6; transform: scale(0.9); }
+  50%      { opacity: 1;   transform: scale(1.12); }
+}
+
+@keyframes compose-card-in {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+
+@keyframes buddy-speech-in {
+  from { opacity: 0; transform: translateX(-4px) scale(0.94); }
+  to   { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+.pane-clickable:hover .robot-eye-l,
+.pane-clickable:hover .robot-eye-r {
+  filter: brightness(1.2);
+}
+
+.mc-compose:focus-within {
+  border-color: var(--ed-accent) !important;
+  box-shadow: 0 0 0 1px var(--ed-accent-soft);
+}
+
+/* ---- Mission control chrome ---- */
+
+.mc-root {
+  --ed-bg: #07090f;
+  --ed-bg-2: #0d1118;
+  --ed-surface: #121826;
+  --ed-surface-2: #1a2233;
+  --ed-border: #1e2a3f;
+  --ed-border-strong: #2a3a55;
+  --ed-text: #e6edf7;
+  --ed-text-dim: #7c8ba6;
+  --ed-text-faint: #4b5872;
+  --ed-accent: #10b981;
+  --ed-accent-soft: rgba(16, 185, 129, 0.12);
+  --ed-warn: #f59e0b;
+  --ed-danger: #ef4444;
+  --ed-info: #3b82f6;
+  --ed-mono: var(--font-jetbrains), ui-monospace, "SF Mono", "JetBrains Mono", "Menlo", monospace;
+
+  background:
+    radial-gradient(1400px 800px at 20% 0%, rgba(16, 185, 129, 0.04), transparent 60%),
+    radial-gradient(1000px 600px at 100% 100%, rgba(59, 130, 246, 0.03), transparent 60%),
+    var(--ed-bg);
+  color: var(--ed-text);
+  font-family: var(--ed-mono);
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Scanline overlay */
+.mc-root::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(255, 255, 255, 0.012) 0px,
+    rgba(255, 255, 255, 0.012) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Time-of-day tints */
+.mc-root[data-tod="morning"] { --ed-bg: #0a1018; --ed-bg-2: #0f1722; }
+.mc-root[data-tod="day"]     { --ed-bg: #07090f; --ed-bg-2: #0d1118; }
+.mc-root[data-tod="dusk"]    { --ed-bg: #0e0a14; --ed-bg-2: #16111c; }
+.mc-root[data-tod="night"]   { --ed-bg: #04060b; --ed-bg-2: #080b13; }
+
+.mc-card {
+  background: linear-gradient(180deg, var(--ed-surface) 0%, var(--ed-bg-2) 100%);
+  border: 1px solid var(--ed-border);
+  border-radius: 10px;
+  position: relative;
+  overflow: hidden;
+}
+.mc-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--ed-border-strong), transparent);
+  pointer-events: none;
+}
+
+.mc-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--ed-border);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ed-text-dim);
+  background: rgba(0, 0, 0, 0.2);
+}
+.mc-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+}
+.mc-card-body { padding: 12px; }
+
+.mc-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid;
+}
+.mc-pill-ok    { color: var(--ed-accent); border-color: rgba(16,185,129,0.35); background: var(--ed-accent-soft); }
+.mc-pill-warn  { color: var(--ed-warn);   border-color: rgba(245,158,11,0.35); background: rgba(245,158,11,0.1); }
+.mc-pill-info  { color: var(--ed-info);   border-color: rgba(59,130,246,0.35); background: rgba(59,130,246,0.1); }
+.mc-pill-mute  { color: var(--ed-text-dim); border-color: var(--ed-border-strong); background: rgba(255,255,255,0.02); }
+.mc-pill-danger{ color: var(--ed-danger); border-color: rgba(239,68,68,0.35); background: rgba(239,68,68,0.1); }
+
+.mc-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  position: relative;
+}
+.mc-dot-pulse::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.4;
+  animation: mc-ping 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+@keyframes mc-ping {
+  75%, 100% { transform: scale(2.2); opacity: 0; }
+}
+
+.mc-mono { font-family: var(--ed-mono); font-variant-numeric: tabular-nums; }
+
+.mc-row {
+  display: grid;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  font-size: 12px;
+  line-height: 1.4;
+  border-radius: 4px;
+}
+.mc-row + .mc-row { border-top: 1px dashed rgba(255, 255, 255, 0.04); }
+
+@keyframes mc-marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+.mc-marquee {
+  display: flex;
+  white-space: nowrap;
+  animation: mc-marquee 180s linear infinite;
+  width: max-content;
+}
+.mc-marquee:hover { animation-play-state: paused; }
+
+@keyframes mc-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.mc-shimmer {
+  background: linear-gradient(90deg, var(--ed-text-dim) 0%, var(--ed-text) 50%, var(--ed-text-dim) 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: mc-shimmer 3s linear infinite;
+}
+
+.mc-bar {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.mc-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--ed-accent);
+  border-radius: 2px;
+  transition: width 0.6s ease;
+}
+
+/* Density modifiers — applied to .mc-root */
+.mc-root[data-density="loose"]  .mc-card-body { padding: 16px; }
+.mc-root[data-density="loose"]  .mc-row       { padding: 9px 12px; font-size: 13px; }
+.mc-root[data-density="dense"]  .mc-card-body { padding: 8px; }
+.mc-root[data-density="dense"]  .mc-row       { padding: 4px 8px; font-size: 11px; }
+.mc-root[data-density="dense"]  .mc-card-header { padding: 6px 10px; font-size: 9px; }
+
+/* Hide the global Edward scrollbar styling we don't want eating into panel
+ * borders. Display is full-screen — use a thin track for in-card scrolls. */
+.mc-card *::-webkit-scrollbar { width: 4px; height: 4px; }
+.mc-card *::-webkit-scrollbar-thumb { background: var(--ed-border); border-radius: 2px; }
+.mc-card *::-webkit-scrollbar-track { background: transparent; }
+
+/* ---- The show layer: what Edward puts over everything (show_on_screen) ---- */
+
+.mc-show {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.mc-show-media {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  object-fit: contain;
+  background: #000;
+}
+.mc-show-text {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  padding: 6vh 8vw;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2vh;
+  text-align: left;
+  background: var(--ed-bg);
+  color: var(--ed-text);
+  font-family: var(--font-inter), system-ui, sans-serif;
+  cursor: pointer;
+}
+.mc-show-text.is-alert { background: #3b0d0d; color: #fff; }
+.mc-show-title {
+  font-family: var(--ed-mono);
+  font-size: 2.2vh;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ed-text-dim);
+}
+.mc-show-text.is-alert .mc-show-title { color: #fca5a5; }
+.mc-show-body {
+  font-size: 5.5vh;
+  line-height: 1.25;
+  white-space: pre-wrap;
+  font-weight: 600;
+}
+.mc-show-hint {
+  font-family: var(--ed-mono);
+  font-size: 1.6vh;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ed-text-faint);
+}
+.mc-show-close {
+  position: absolute;
+  right: 2vw;
+  bottom: 2vh;
+  padding: 1vh 1.6vw;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-family: var(--ed-mono);
+  font-size: 1.6vh;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+.mc-show-banner {
+  position: fixed;
+  right: 24px;
+  top: 14px;
+  z-index: 250;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--ed-border-strong);
+  background: var(--ed-surface);
+  color: var(--ed-text-dim);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+.mc-show-banner strong { color: var(--ed-text); font-weight: 500; }
+.mc-show-banner-btn {
+  border: 1px solid var(--ed-border-strong);
+  background: transparent;
+  color: var(--ed-text-dim);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font: inherit;
+  cursor: pointer;
+}
+.mc-show-banner-btn:hover { color: var(--ed-text); border-color: var(--ed-accent); }
+
+
+/* ---- Vitals ----
+ * Twelve stats. In two columns they are six rows, which a one-row tile
+ * (~180px under its header at 1920×1080) cut in half; with room for three
+ * columns they are four rows and fit. */
+.mc-vitals { container-type: inline-size; }
+.mc-vitals-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 16px;
+  font-size: 11px;
+}
+@container (min-width: 460px) {
+  .mc-vitals-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* His hands (the Chrome link) down: the trust light goes amber whatever he
+ * is doing — never "fine" while he cannot use the browser (design system
+ * §1.2, §4). Offline keeps its grey. */
+[data-edward-anchor][data-hands="down"] .pane-avatar:not([data-mood="offline"]) {
+  --pane-tip: var(--pane-amber);
+}
+
+.mc-edward-bubble {
+  padding: 8px 14px;
+  background: var(--ed-surface-2);
+  border: 1px solid var(--ed-border-strong);
+  border-radius: 14px;
+  font-family: var(--font-inter), system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 20px;
+  color: var(--ed-text);
+  box-shadow: 0 8px 24px -6px rgba(0, 0, 0, 0.5);
+  /* Small talk stays on one line; a sentence ("Resting until …") wraps. */
+  width: max-content;
+  max-width: 300px;
+  animation: buddy-speech-in 200ms cubic-bezier(0.22, 1, 0.36, 1);
+  z-index: 4;
+}
+.mc-edward-bubble-tail {
+  position: absolute;
+  bottom: 12px;
+  left: -6px;
+  width: 11px;
+  height: 11px;
+  background: var(--ed-surface-2);
+  border-left: 1px solid var(--ed-border-strong);
+  border-bottom: 1px solid var(--ed-border-strong);
+  transform: rotate(45deg);
+}
+
+/* ---- Reduced motion ----
+ * Nothing on the screen loops: the ticker and the shimmer stop, status dots
+ * stop pinging, every entrance is a fade of 120 ms or less and his floor
+ * steps are near-instant. Edward keeps his poses (globals.css owns his
+ * reduced-motion rules). */
+@media (prefers-reduced-motion: reduce) {
+  .mc-marquee { animation: none; }
+  .mc-shimmer {
+    animation: none;
+    background: none;
+    -webkit-text-fill-color: currentColor;
+  }
+  .mc-dot-pulse::after { animation: none; opacity: 0; }
+  .mc-bar > span { transition: none; }
+  .mc-edward-bubble { animation: mc-fade-in 120ms linear; }
+  /* The stage's own reduced-motion rules are at the end of this file: a
+   * media query adds no specificity, so they must come after the rules
+   * they override (stageCss.test pins the cascade). */
+}
+
+@keyframes mc-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ==========================================================================
+ * The stage (2026-09-28) — /screen is a stage Edward writes on.
+ *
+ * Ink canvas, calm cards or set type, Inter. Edward's emerald is only his:
+ * his light, his words' overline, his thinking, his receipts. Status colours
+ * never borrow it. One unit, --u, scales everything with the screen
+ * (14.4 px at 1440×810). Only his breath loops (globals.css .is-live);
+ * everything here enters once, in under a second.
+ * ========================================================================== */
+
+.st-root {
+  --u: min(1vw, 1.7778vh);
+  --st-surface: #121821;
+  --st-surface-2: #18202b;
+  --st-surface-3: #1f2835;
+  --st-hairline: rgba(255, 255, 255, 0.08);
+  --st-text: #e8edf4;
+  --st-text-2: #a9b4c3;
+  --st-text-3: #8592a4;
+  --st-edward: var(--ed-accent, #3ecf9e);
+  --st-edward-strong: color-mix(in srgb, var(--st-edward) 70%, #ffffff);
+  --st-ok: #7fd18b;
+  --st-warn: #f2c35b;
+  /* The live panels read the mission-control tokens; give them the ink ones. */
+  --ed-surface: #121821;
+  --ed-surface-2: #18202b;
+  --ed-border: rgba(255, 255, 255, 0.08);
+  --ed-border-strong: rgba(255, 255, 255, 0.14);
+  --ed-text: #e8edf4;
+  --ed-text-dim: #a9b4c3;
+  --ed-text-faint: #8592a4;
+  --ed-warn: #f2c35b;
+  --ed-danger: #f07a52;
+  --ed-info: #8fb4ff;
+  background: #0a0e14;
+  font-family: var(--font-inter), Inter, system-ui, sans-serif;
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+}
+.st-root::before { display: none; }
+.st-root[data-mode="night"] { background: #05080c; }
+
+@keyframes st-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes st-rise {
+  from { opacity: 0; transform: translateY(calc(var(--u) * 1.2)); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes st-fade-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+/* The same fade under another name: an arrival replays it (StageEdward data-arrive). */
+@keyframes st-fade-b {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes st-bubble {
+  0%   { opacity: 0; transform: translateY(calc(var(--u) * 0.8)); }
+  45%  { opacity: 1; }
+  100% { opacity: 0; transform: translateY(calc(var(--u) * -0.6)); }
+}
+@keyframes st-type {
+  from { clip-path: inset(0 100% 0 0); }
+  to   { clip-path: inset(0 0 0 0); }
+}
+
+.st-stage {
+  position: absolute;
+  inset: 0;
+  transition: transform 1200ms cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+/* ---- Pieces ---- */
+
+.st-piece {
+  position: absolute;
+  box-sizing: border-box;
+  padding: calc(var(--u) * 0.6);
+  z-index: 2;
+  container-type: size;
+  transition: opacity 400ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.st-piece-inner {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.st-piece[data-enter="fade"] { animation: st-fade 500ms cubic-bezier(0.22, 1, 0.36, 1) backwards; }
+.st-piece[data-enter="rise"] { animation: st-rise 600ms cubic-bezier(0.22, 1, 0.36, 1) backwards; }
+.st-piece[data-enter="type"] { animation: st-fade 300ms linear backwards; }
+.st-piece[data-enter="type"] .st-words-text { animation: st-type 900ms steps(28, end) backwards; }
+
+.st-stage[data-mode="night"] .st-piece:not([data-kind="clock"]) { opacity: 0.5; }
+.st-stage[data-mode] .st-piece[data-dimmed="true"] { opacity: 0.2; }
+
+/* Nothing on the stage loops but his breath — the compose bar, a sibling
+ * of the stage, included. */
+.st-stage .mc-dot-pulse::after { animation: none; opacity: 0; }
+.st-root .mc-dot-pulse::after { animation: none; opacity: 0; }
+.st-stage .mc-shimmer {
+  animation: none;
+  background: none;
+  -webkit-text-fill-color: currentColor;
+}
+.st-stage .mc-marquee { animation: none; }
+
+.st-overline {
+  font-size: calc(var(--u) * 0.78);
+  line-height: 1.3;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--st-text-2);
+}
+.st-overline-edward { color: var(--st-edward-strong); }
+/* The capitals are for words; a clock keeps the one format, "5:52 pm". */
+.st-overline .st-overline-clock { text-transform: none; }
+.st-meta {
+  margin-top: calc(var(--u) * 1);
+  font-size: calc(var(--u) * 0.83);
+  line-height: 1.35;
+  font-weight: 500;
+  color: var(--st-text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* words: set type, no card */
+.st-words { height: 100%; min-height: 0; overflow: hidden; }
+.st-words-text {
+  font-size: min(calc(var(--u) * 3.8), 42cqh);
+  line-height: 1.05;
+  font-weight: 650;
+  letter-spacing: -0.035em;
+  color: var(--st-text);
+}
+.st-words[data-size="xs"] .st-words-text { font-size: min(calc(var(--u) * 1.8), 60cqh); letter-spacing: -0.02em; }
+.st-words[data-size="s"] .st-words-text { font-size: min(calc(var(--u) * 2.6), 44cqh); letter-spacing: -0.025em; }
+.st-words[data-size="l"] .st-words-text { font-size: min(calc(var(--u) * 5.8), 40cqh); }
+.st-words[data-size="xl"] .st-words-text { font-size: min(calc(var(--u) * 7.4), 38cqh); }
+.st-words-caption {
+  margin-top: calc(var(--u) * 1.1);
+  font-size: min(calc(var(--u) * 1.8), 18cqh);
+  line-height: 1.3;
+  color: var(--st-text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* cards: note, list, pets */
+.st-card {
+  box-sizing: border-box;
+  max-height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: calc(var(--u) * 1.4) calc(var(--u) * 1.55);
+  background: var(--st-surface);
+  border: 1px solid var(--st-hairline);
+  border-radius: 16px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+.st-note-body {
+  margin-top: calc(var(--u) * 0.85);
+  min-height: 0;
+  overflow: hidden;
+  font-size: calc(var(--u) * 1.39);
+  line-height: 1.4;
+  color: var(--st-text);
+  white-space: pre-wrap;
+}
+.st-note > .st-note-body:first-child { margin-top: 0; }
+.st-card-title {
+  font-size: calc(var(--u) * 1.18);
+  line-height: 1.3;
+  font-weight: 600;
+  color: var(--st-text);
+}
+.st-list-rows {
+  margin-top: calc(var(--u) * 0.6);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.st-list-row,
+.st-care-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: calc(var(--u) * 0.6) 0;
+}
+.st-list-row { align-items: baseline; }
+.st-list-row[data-past="true"] .st-list-label,
+.st-list-row[data-past="true"] .st-list-detail { color: var(--st-text-3); }
+.st-card-next {
+  margin-top: calc(var(--u) * 0.5);
+  font-size: calc(var(--u) * 0.97);
+  line-height: 1.35;
+  color: var(--st-text-2);
+}
+.st-piece-title { margin-bottom: calc(var(--u) * 0.5); }
+.st-list-row + .st-list-row,
+.st-care-row + .st-care-row { border-top: 1px solid var(--st-hairline); }
+.st-list-label {
+  font-size: calc(var(--u) * 1.04);
+  line-height: 1.35;
+  color: var(--st-text);
+}
+.st-list-detail {
+  font-size: calc(var(--u) * 0.9);
+  line-height: 1.35;
+  color: var(--st-text-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.st-care-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.st-care-text .st-list-detail {
+  color: var(--st-text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.st-chip {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: calc(var(--u) * 0.83);
+  line-height: 1.35;
+  font-weight: 500;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  color: var(--st-text-2);
+  background: var(--st-surface-3);
+}
+.st-chip[data-tone="ok"] { color: var(--st-ok); background: rgba(127, 209, 139, 0.14); }
+.st-chip[data-tone="warn"] { color: var(--st-warn); background: rgba(242, 195, 91, 0.14); }
+.st-review {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-left: 6px;
+  border-radius: 50%;
+  border: 1px solid var(--st-hairline);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--st-text-2);
+  vertical-align: 1px;
+}
+
+/* stat, countdown */
+.st-stat {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 0;
+}
+.st-stat-value {
+  margin-top: calc(var(--u) * 0.4);
+  font-size: min(calc(var(--u) * 4.4), 44cqh, 22cqw);
+  line-height: 1;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: var(--st-text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.st-stat-detail {
+  margin-top: calc(var(--u) * 0.7);
+  font-size: min(calc(var(--u) * 1.1), 12cqh);
+  line-height: 1.35;
+  color: var(--st-text-2);
+}
+
+/* timer */
+.st-timer {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 0;
+}
+.st-timer-digits {
+  margin-top: calc(var(--u) * 0.4);
+  font-size: min(50cqh, 25cqw);
+  line-height: 0.92;
+  font-weight: 600;
+  letter-spacing: -0.045em;
+  color: var(--st-text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.st-timer-bar {
+  margin-top: calc(var(--u) * 1.1);
+  width: 90%;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--st-surface-3);
+  overflow: hidden;
+}
+.st-timer-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--st-text-2);
+}
+.st-timer-when {
+  margin-top: calc(var(--u) * 1);
+  font-size: calc(var(--u) * 1.18);
+  color: var(--st-text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* image, video, html */
+.st-media {
+  margin: 0;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.st-media-img,
+.st-media-frame {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: block;
+  object-fit: cover;
+  border: 1px solid var(--st-hairline);
+  border-radius: 22px;
+  background: var(--st-surface-2);
+}
+.st-media > .st-meta { margin-top: calc(var(--u) * 0.7); }
+
+/* the clock */
+.st-clock-time {
+  font-size: calc(var(--u) * 1.53);
+  line-height: 1.25;
+  font-weight: 500;
+  color: var(--st-text-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.st-clock-day {
+  margin-top: 4px;
+  font-size: calc(var(--u) * 0.9);
+  line-height: 1.35;
+  color: var(--st-text-3);
+}
+.st-piece[data-size="m"] .st-clock-time { font-size: calc(var(--u) * 3); font-weight: 400; }
+.st-piece[data-size="l"] .st-clock-time { font-size: calc(var(--u) * 5); font-weight: 300; letter-spacing: -0.03em; }
+.st-piece[data-size="xl"] .st-clock-time { font-size: calc(var(--u) * 8); font-weight: 300; letter-spacing: -0.04em; }
+.st-stage[data-mode="night"] .st-clock-time { color: #6b7686; }
+
+/* the live panels, calmed to the stage */
+.st-piece-inner > .mc-card {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--st-surface);
+  border-color: var(--st-hairline);
+  border-radius: 16px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+.st-piece .mc-card::before { display: none; }
+.st-piece .mc-card-header {
+  padding: 12px 16px 8px;
+  background: transparent;
+  border-bottom-color: var(--st-hairline);
+  font-family: var(--font-inter), Inter, system-ui, sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--st-text-2);
+}
+.st-piece .mc-row { font-family: var(--font-inter), Inter, system-ui, sans-serif; }
+
+/* ---- The lane: his words, else his thinking ---- */
+
+.st-lane {
+  position: absolute;
+  z-index: 3;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 0 calc(var(--u) * 0.6);
+  animation: st-rise 600ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+.st-stage[data-mode="night"] .st-lane { filter: brightness(0.72); }
+
+.st-speech-inner { display: flex; flex-direction: column; }
+.st-speech-over {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.st-speech-previous {
+  margin-top: calc(var(--u) * 1.4);
+  font-size: calc(var(--u) * 1.67);
+  line-height: 1.33;
+  color: var(--st-text-3);
+}
+.st-speech-current {
+  margin-top: calc(var(--u) * 1);
+  font-size: calc(var(--u) * 3.9);
+  line-height: 1.14;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  color: var(--st-text);
+}
+/* Compact (the owner's ask on the stage): his words stay small. */
+.st-stage[data-compact="true"] .st-speech-current { font-size: calc(var(--u) * 1.25); letter-spacing: -0.01em; font-weight: 500; }
+.st-stage[data-compact="true"] .st-speech-previous { display: none; }
+.st-stage[data-compact="true"] .st-speech-current { margin-top: 6px; }
+.st-stage[data-compact="true"] .st-lane { animation-name: st-fade; }
+.st-caret {
+  display: inline-block;
+  width: max(4px, 0.09em);
+  height: 0.86em;
+  margin-left: 0.14em;
+  vertical-align: -0.1em;
+  border-radius: 2px;
+  background: var(--st-edward);
+}
+
+/* The header rides on top of the stream at the lane's foot, never stranded at its top. */
+.st-thought { justify-content: flex-end; }
+.st-thought-head {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 16px;
+  font-size: calc(var(--u) * 0.9);
+  line-height: 1.4;
+}
+.st-thought-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 500;
+  color: var(--st-text-2);
+}
+.st-thought-since {
+  font-size: calc(var(--u) * 0.83);
+  color: var(--st-text-3);
+  font-variant-numeric: tabular-nums;
+}
+.st-pip {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--st-edward);
+  box-shadow:
+    0 0 0 4px color-mix(in srgb, var(--st-edward) 14%, transparent),
+    0 0 12px color-mix(in srgb, var(--st-edward) 55%, transparent);
+}
+.st-thought-stream {
+  display: flex;
+  flex-direction: column;
+  /* A long stream overflows at the top: the newest line always shows. */
+  justify-content: flex-end;
+  gap: calc(var(--u) * 0.95);
+  min-height: 0;
+  overflow: hidden;
+  padding-top: calc(var(--u) * 1.5);
+}
+.st-thought-line {
+  font-size: calc(var(--u) * 1.53);
+  line-height: 1.36;
+  color: var(--st-text-2);
+  animation: st-fade 500ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+.st-thought-line[data-newest="true"] {
+  margin-top: calc(var(--u) * 0.7);
+  font-size: calc(var(--u) * 2.5);
+  line-height: 1.22;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--st-text);
+}
+.st-stage[data-compact="true"] .st-thought-line:not([data-newest="true"]),
+.st-stage[data-compact="true"] .st-receipt { display: none; }
+.st-stage[data-compact="true"] .st-thought-stream { padding-top: 6px; }
+.st-stage[data-compact="true"] .st-thought-line[data-newest="true"] { margin-top: 0; font-size: calc(var(--u) * 1.25); font-weight: 500; }
+.st-receipt {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: var(--st-surface-3);
+  font-size: calc(var(--u) * 0.83);
+  line-height: 1.35;
+  font-weight: 500;
+  color: var(--st-text-2);
+  animation: st-fade 500ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+.st-receipt-icon { color: var(--st-edward); flex-shrink: 0; }
+.st-receipt[data-state="running"] {
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--st-edward) 35%, transparent);
+  color: var(--st-edward-strong);
+}
+.st-receipt[data-state="error"] .st-receipt-icon { color: var(--st-text-3); }
+
+.st-fold { justify-content: center; }
+.st-fold-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: calc(var(--u) * 1);
+  border-top: 1px solid var(--st-hairline);
+  font-size: calc(var(--u) * 0.9);
+  line-height: 1.35;
+  color: var(--st-text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.st-fold-line > span { overflow: hidden; text-overflow: ellipsis; }
+
+/* On his mind (round 2): one recent thought at a time, labelled with its own
+ * time. Quieter than live — no pip, no caret, softer type — and a change is
+ * one cross-fade: the old thought fades out under the new one. */
+.st-mind { justify-content: flex-end; }
+.st-mind-stack { display: grid; min-height: 0; }
+.st-mind-item {
+  grid-area: 1 / 1;
+  align-self: end;
+  min-width: 0;
+  animation: st-fade 900ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+.st-mind-item[data-leaving="true"] { animation: st-fade-out 900ms cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+.st-mind-over { color: var(--st-text-3); }
+.st-mind-text {
+  margin-top: calc(var(--u) * 0.7);
+  font-size: calc(var(--u) * 1.9);
+  line-height: 1.3;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  color: var(--st-text-2);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 6;
+  overflow: hidden;
+}
+
+/* Thought bubbles: three rise once from his head toward his lane. */
+.st-bubbles {
+  position: absolute;
+  z-index: 3;
+  width: calc(var(--u) * 6.5);
+  height: calc(var(--u) * 6.5);
+  overflow: visible;
+  transform: translate(0, -100%);
+  fill: none;
+  stroke: color-mix(in srgb, var(--st-edward) 60%, transparent);
+  stroke-width: 1.5;
+  pointer-events: none;
+}
+.st-bubbles[data-side="left"] { transform: translate(-100%, -100%) scaleX(-1); }
+.st-bubbles circle { opacity: 0; animation: st-bubble 520ms cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+.st-bubbles .st-bubble-2 { animation-delay: 120ms; }
+.st-bubbles .st-bubble-3 { animation-delay: 240ms; }
+
+/* From his head toward the lane: thought bubbles, or the line of his voice. */
+.st-joint {
+  position: absolute;
+  z-index: 3;
+  width: calc(var(--u) * 6.5);
+  height: calc(var(--u) * 6.5);
+  overflow: visible;
+  transform: translate(0, -100%);
+  fill: none;
+  stroke: var(--st-edward);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  pointer-events: none;
+  animation: st-fade 500ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+.st-joint[data-side="left"] { transform: translate(-100%, -100%) scaleX(-1); }
+.st-joint[data-kind="thinking"] circle {
+  fill: color-mix(in srgb, var(--st-edward) 8%, transparent);
+  stroke: color-mix(in srgb, var(--st-edward) 40%, transparent);
+}
+.st-joint[data-kind="speech"] path { stroke: color-mix(in srgb, var(--st-edward) 45%, transparent); }
+.st-joint .st-joint-dot { fill: color-mix(in srgb, var(--st-edward) 70%, transparent); stroke: none; }
+.st-stage[data-mode="night"] .st-joint { opacity: 0.6; }
+
+/* ---- Edward ---- */
+
+.st-edward {
+  position: absolute;
+  z-index: 4;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  pointer-events: none;
+  /* A step is a transform; a wander (round 2) moves his box over --st-walk-ms, once. */
+  transition:
+    transform 900ms cubic-bezier(0.65, 0, 0.35, 1),
+    left var(--st-walk-ms, 0ms) cubic-bezier(0.45, 0, 0.55, 1);
+}
+/* A fade across (a piece in the way): he appears at his new spot. */
+.st-edward[data-walk="fade"][data-arrive="a"] { animation: st-fade 700ms cubic-bezier(0.22, 1, 0.36, 1); }
+.st-edward[data-walk="fade"][data-arrive="b"] { animation: st-fade-b 700ms cubic-bezier(0.22, 1, 0.36, 1); }
+.st-edward-anchor {
+  position: relative;
+  flex-shrink: 0;
+  pointer-events: auto;
+  isolation: isolate;
+}
+.st-edward[data-at="edge"][data-side="left"] .st-edward-anchor { transform: translateX(-38%); }
+.st-edward[data-at="edge"][data-side="right"] .st-edward-anchor { transform: translateX(38%); }
+/* On a piece his line sits beside him, about his waist: under him is the
+ * card, over his head it reads as a caption. The page picks the side
+ * (stageModel.statusSideFor): away from his lane, unless that runs off screen. */
+.st-edward[data-at="on"] .st-status {
+  position: absolute;
+  bottom: 30%;
+  margin: 0;
+}
+.st-edward[data-at="on"][data-status-side="left"] .st-status { right: 100%; margin-right: 6px; }
+.st-edward[data-at="on"][data-status-side="right"] .st-status { left: 100%; margin-left: 6px; }
+/* On the floor, in a corner or at an edge his line stays clear of the screen's bottom edge. */
+.st-edward[data-at="floor"],
+.st-edward[data-at="corner"],
+.st-edward[data-at="edge"] { padding-bottom: calc(var(--u) * 1.1); }
+/* In a corner or at an edge his line hugs the side he stands on, so it never leaves the screen. */
+.st-edward[data-at="corner"][data-side="right"],
+.st-edward[data-at="edge"][data-side="right"] { align-items: flex-end; }
+.st-edward[data-at="corner"][data-side="left"],
+.st-edward[data-at="edge"][data-side="left"] { align-items: flex-start; }
+/* His box sits flush on the screen's edge there; his line keeps the same
+ * gutter the pieces keep from it. */
+.st-edward[data-at="corner"][data-side="right"] .st-status,
+.st-edward[data-at="edge"][data-side="right"] .st-status { margin-right: calc(var(--u) * 2.4); max-width: calc(28vw - var(--u) * 2.4); }
+.st-edward[data-at="corner"][data-side="left"] .st-status,
+.st-edward[data-at="edge"][data-side="left"] .st-status { margin-left: calc(var(--u) * 2.4); max-width: calc(28vw - var(--u) * 2.4); }
+.st-floorglow {
+  position: absolute;
+  left: -40%;
+  right: -40%;
+  top: 80%;
+  height: 20%;
+  z-index: -1;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--st-edward) 10%, transparent), transparent);
+  pointer-events: none;
+}
+.st-stage[data-mode="night"] .st-floorglow { opacity: 0.5; }
+.st-status {
+  margin-top: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 28vw;
+  font-size: calc(var(--u) * 0.9);
+  line-height: 1.4;
+  color: var(--st-text-2);
+  white-space: nowrap;
+  pointer-events: auto;
+}
+.st-status > span:last-child { overflow: hidden; text-overflow: ellipsis; }
+.st-status .mc-dot { box-shadow: 0 0 10px color-mix(in srgb, currentColor 60%, transparent); flex-shrink: 0; }
+.st-stage[data-mode="night"] .st-status { color: #7d8a9c; }
+.st-bubble { position: absolute; }
+
+/* ---- The why receipt, bottom-left ---- */
+
+.st-receipt-why {
+  position: absolute;
+  bottom: calc(var(--u) * 2.4);
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 62%;
+  font-size: calc(var(--u) * 0.83);
+  line-height: 1.35;
+  color: var(--st-text-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.st-receipt-why > span:last-child { overflow: hidden; text-overflow: ellipsis; }
+.st-receipt-why { transition: opacity 250ms ease; }
+/* The compose bar is up: the receipt steps aside for it. */
+.st-root[data-awake="true"] .st-receipt-why,
+.st-root:has(.st-compose:focus-within) .st-receipt-why { opacity: 0; }
+.st-receipt-dot {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--st-edward);
+}
+
+/* ---- Talking to him: the compose bar shows when the mouse moves ---- */
+
+/* A layer of its own: a scrim under the chips and the input, so they never
+ * read as part of a card beneath (the pieces it covers also fade back,
+ * Stage.tsx COMPOSE_RECT). */
+.st-compose {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--u) * 1.2 + 18px);
+  z-index: 6;
+  box-sizing: border-box;
+  width: min(880px, 70%);
+  padding: 10px 12px 8px;
+  background: var(--st-surface);
+  border: 1px solid var(--st-hairline);
+  border-radius: 16px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  transform: translateX(-50%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 250ms ease;
+}
+.st-root[data-awake="true"] .st-compose,
+.st-compose:focus-within,
+.st-compose:has([data-testid="compose-reply-card"]) {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* ---- The stage under reduced motion ----
+ * Last in the file on purpose: a media query adds no specificity, so these
+ * must follow the stage's rules and match their specificity to win. Every
+ * entrance is a fade of 120 ms or less; his steps, the night drift and the
+ * words typing on are near-instant; nothing loops but his breath (globals.css
+ * owns his poses). */
+@media (prefers-reduced-motion: reduce) {
+  .st-piece[data-enter="fade"],
+  .st-piece[data-enter="rise"],
+  .st-piece[data-enter="type"],
+  .st-lane,
+  .st-stage[data-compact="true"] .st-lane,
+  .st-joint,
+  .st-thought-line,
+  .st-receipt,
+  .st-mind-item { animation: mc-fade-in 120ms linear; }
+  .st-mind-item[data-leaving="true"] { animation: none; display: none; }
+  .st-bubbles circle { animation: none; display: none; }
+  .st-edward[data-walk="fade"][data-arrive="a"] { animation: mc-fade-in 120ms linear; }
+  .st-edward[data-walk="fade"][data-arrive="b"] { animation: st-fade-b 120ms linear; }
+  .st-piece[data-enter="type"] .st-words-text { animation: none; }
+  .st-piece,
+  .st-receipt-why,
+  .st-compose { transition: opacity 120ms linear; }
+  .st-edward { animation: none; transition: transform 120ms linear, left 120ms linear; }
+  .st-stage { transition: none; }
+}

@@ -1,0 +1,71 @@
+{
+  "_comment": [
+    "The household hub's pets and their care, planted once into an empty board.",
+    "Copy this file, describe your own pets, and set EDWARD_HUB_SEED to its path",
+    "(relative paths are read from backend/). Unset, the board starts empty.",
+    "Each pet gets a windowed 'Food' bowl per entry in 'food' (default am and pm):",
+    "bowls never go overdue. 'care' lists one slot per dose: 'timed' items need",
+    "at_time (HH:MM, the owner's timezone) and are the only thing that ever alerts;",
+    "'window' items are given whenever inside am/pm; 'prn' is as-needed.",
+    "'needs_review' marks something unconfirmed (a strength copied from a sitter's",
+    "note): the hub shows it with a badge until a human confirms it.",
+    "'bundle_with' names another slot's id, so one tap on that bowl logs both.",
+    "Editing the file after the first seed changes nothing: clear the pets and",
+    "care_items rows first, then the next board read plants it again."
+  ],
+  "pets": [
+    {
+      "id": "biscuit",
+      "name": "Biscuit",
+      "species": "dog",
+      "food": ["am", "pm"],
+      "care": [
+        {
+          "slug": "carprofen",
+          "kind": "med",
+          "name": "Carprofen",
+          "dose": "100mg",
+          "schedule_type": "timed",
+          "window": "am",
+          "at_time": "06:00"
+        },
+        {
+          "slug": "joint-chew",
+          "kind": "supplement",
+          "name": "Joint chew",
+          "dose": "1 chew",
+          "schedule_type": "timed",
+          "window": "am",
+          "at_time": "06:00",
+          "needs_review": true
+        },
+        {
+          "slug": "carprofen",
+          "kind": "med",
+          "name": "Carprofen",
+          "dose": "100mg",
+          "schedule_type": "timed",
+          "window": "pm",
+          "at_time": "18:00"
+        }
+      ]
+    },
+    {
+      "id": "pepper",
+      "name": "Pepper",
+      "species": "cat",
+      "food": ["am", "pm"],
+      "care": [
+        {
+          "slug": "probiotic",
+          "kind": "supplement",
+          "name": "Probiotic powder",
+          "dose": "1 scoop",
+          "schedule_type": "window",
+          "window": "pm",
+          "bundle_with": "pepper-food-pm"
+        }
+      ]
+    }
+  ]
+}

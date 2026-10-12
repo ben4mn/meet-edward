@@ -15,12 +15,22 @@ export function ServiceWorkerRegistration() {
       return;
     }
 
+    // Ask the browser to look for a new build whenever the app comes back
+    // to the foreground. Installed PWAs otherwise check only on a cold
+    // start (at most once a day), and would keep serving the old bundle.
+    const checkForUpdate = () => {
+      if (document.visibilityState !== "visible") return;
+      navigator.serviceWorker.getRegistration().then((r) => r?.update().catch(() => {}));
+    };
+    document.addEventListener("visibilitychange", checkForUpdate);
+
     const registerSW = async () => {
       try {
         // Check if already registered
         const registrations = await navigator.serviceWorker.getRegistrations();
         if (registrations.length > 0) {
           console.log("[SW] Already registered:", registrations.length, "registration(s)");
+          registrations[0].update().catch(() => {});
           return;
         }
 
@@ -50,7 +60,10 @@ export function ServiceWorkerRegistration() {
 
     // Register after a short delay to not block initial render
     const timer = setTimeout(registerSW, 1000);
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", checkForUpdate);
+    };
   }, []);
 
   return null;

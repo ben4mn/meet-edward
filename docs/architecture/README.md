@@ -1,0 +1,36 @@
+# Edward's architecture docs
+
+The long form of CLAUDE.md: one file per subsystem, with the WHY, the dates and the incidents behind each rule. CLAUDE.md at the repo root is the short operating guide every Claude session loads; it links here. When you change a subsystem, update its file here (and CLAUDE.md only if a rule or an index line changed). `backend/tests/test_doc_lint.py` keeps both honest: every path, symbol, route and stream event these files name must exist.
+
+**How to read the dates.** Edward was built for one person and ran on their Mac for months before this release; the dates in these files (mostly 2026) are that install's history — when a rule landed and which incident taught it. The incidents are kept because they are the reason a rule exists; the people and data in them are not. Where these files say "the owner" they mean whoever Edward works for (you, once you set `EDWARD_OWNER_NAME` — `backend/services/owner.py`); where they say "the host Mac" they mean the always-on Mac that runs the backend (`backend/services/host_config.py` holds the host facts). The parts that are bespoke to one setup — Full Disk Access, Messages signed into the owner's Apple ID, a kiosk at the pet station — are marked `ADAPT:` in the code and collected in [ADAPTING.md](../ADAPTING.md).
+
+| File | Covers |
+|---|---|
+| [ops-health-backups.md](ops-health-backups.md) | The host Mac, setup, LaunchAgents and how to restart them, the production frontend build, `deploy-build.sh` / `rollback-build.sh`, the bundle budget, logs and access-log redaction, the health watchdog, the memory report, backups, restores, maintenance scripts |
+| [testing.md](testing.md) | The test cluster on :5433, `with-test-db-lock.sh`, what tests may never reach, the doc lint, the frontend suite, the UX fixture harness, the judgement check and the other real-model evals |
+| [tool-loop.md](tool-loop.md) | LangGraph, the toolset (14 tools on every surface) and `TurnPolicy`, the one send, the one tool loop (failure contract, identical-failure stop, dollar cap, deadlines, the reply check, server tools, images), the Codex and Claude streams, prompt order, the turn trace, one turn per thread, Stop and the save, checkpoint history |
+| [computer.md](computer.md) | Edward's computer: `~/edward-home`, the persistent sandboxed `bash` per thread, the in-process file editor and the Seatbelt rails (never his own credentials, the live repo, Chrome, other apps, other processes, :5432, :5433, his own API on :8000 / :3000 or the WhatsApp bridge) and what the sandbox is not (a containment boundary); his own headless browser and the owner's Chrome as two tools, `look`, the web tools, the owner's calendar |
+| [llm-and-quota.md](llm-and-quota.md) | The Claude API as the default provider (`ChatClaude`, the route table, the prompt cache, the dollar ledger `llm_calls`, the daily spend cap and the optional credits view) and the unofficial Codex fallback (the catalog and knobs, the quota meter and rate gate, Codex OAuth, the `[codex-cache]` line, the Codex spend ledger and `turn:<source>` purposes) |
+| [mind.md](mind.md) | `mind_service.wake` under a turn policy, the pack, follow-through on promises, the silent nightly, free time at 13:00, the inbound shim, the heartbeat's mind path, the state document, standing instructions, `close_intention`, retries, the thought journal, `/api/mind/now` |
+| [surplus.md](surplus.md) | The surplus queue (retired 2026-10-11): why it went, what replaced each job |
+| [trust-boundary.md](trust-boundary.md) | Why Edward's own credentials are not readable, the egress secret scan, taint, the approval gate (off by default), held sends and held Codex sessions |
+| [codex-and-orchestrator.md](codex-and-orchestrator.md) | Workers, Codex sessions and their containment, custom MCP servers' environment, the wishlist |
+| [memory.md](memory.md) | The memory store, extraction profiles and who said it, the owner's words from their pings, reinforcement, citation credit, dated episodes, horizons, decay and what it holds, consolidation and contradiction flags, reflection, deep retrieval, entities, search tags, documents, provenance, forget |
+| [pings.md](pings.md) | Pings: what counts, the runner (claim-time rules, the reply turn, outcomes, delivery — never a tool call written as text —, recovery), friends' pings (no shell, Chrome or screens by default; `EDWARD_FRIENDS_FULL_TOOLSET`) and their rails, limits, the `pings` health metric, `EDWARD_PINGS` |
+| [media.md](media.md) | `media.view` and its refs, conversion with `sips`, voice messages and video, links through `netguard`, a ping turn's media and context, images out of saved history, the ping trigger and prompt, limits and fallbacks |
+| [heartbeat.md](heartbeat.md) | The listeners (iMessage is opt-in), the slim cycle and the mind path, escalations on Today, the Listening digest |
+| [scheduler.md](scheduler.md) | Scheduled events, routed events, the nightly and the `proactive_sweep`, retired seeds, which thread an event runs in, cron in the owner's zone, whose event it is, the event extraction profile |
+| [push-and-notes.md](push-and-notes.md) | `reach_service.tell_owner` (the one door: origins, quiet hours, the offer grammar, one follow-up, no push cap unless `EDWARD_PUSH_BUDGET` sets one), the owner's channel, Web Push, the push ledger, action buttons, Edward's notes |
+| [noticing.md](noticing.md) | Proactivity is noticing: `EDWARD_PROACTIVITY`, the noticer pass, the pure `speak_gate`, the speak wake, the sweep, outcomes and the learning ladder, `notice_eval` (the late-dose alert is in [hub.md](hub.md)) |
+| [screen-and-browser.md](screen-and-browser.md) | The expression pulse, the widget and its fallback card, the `/screen` stage on the host Mac, Edward's hands in the owner's Chrome (off unless `EDWARD_CHROME_HANDS=on`) |
+| [auth-and-pwa.md](auth-and-pwa.md) | Password auth, the first password's one-time setup code, rate limits, session renewal, public routes, the household photo door, the PWA's auth and caching rules, the service worker |
+| [design-and-presence.md](design-and-presence.md) | Tokens, primitives, Edward the character, truthful presence, the shell, login, one clock format |
+| [app-shell-today-chat.md](app-shell-today-chat.md) | Today (feed and page), Chat (URL, work rail, turn model, transcript, composer, drafts, attachments, queue), new builds reaching open tabs |
+| [settings.md](settings.md) | The Edward tab, rooms, panels, deep links, Fuel |
+| [hub.md](hub.md) | The household hub, the design rules that must not be improved away, the hub seed, the late-dose alert (`care_watch`) |
+| [voice.md](voice.md) | Voice memos, live voice, the socket, mic sensitivity, handoffs, errors |
+| [integrations.md](integrations.md) | Skills, MCP (built-in and custom), messaging and send guards, search, hosting, files, contacts, Gmail, Alexa, presence beacons, the memory graph |
+| [ledgers.md](ledgers.md) | How a health check sees Edward think: `turn_log`, tool-failure observations, `user_signals`, `ledger_events`, retention, `GET /api/health/report` |
+| [data-model.md](data-model.md) | The tables |
+| [api.md](api.md) | Every route, the chat stream's SSE events, the sockets |
+| [incidents.md](incidents.md) | The incidents behind the rules, by date |

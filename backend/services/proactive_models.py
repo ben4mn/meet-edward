@@ -6,27 +6,21 @@ from datetime import datetime
 
 
 class ProactiveConfigSchema(BaseModel):
-    morning_briefing_enabled: bool = False
-    morning_briefing_time: str = "08:00"
-    morning_briefing_channel: str = "push"
-    meeting_prep_enabled: bool = False
-    meeting_prep_advance_minutes: int = 30
-    pattern_detection_enabled: bool = False
-    open_loop_nudge_enabled: bool = False
-    open_loop_nudge_days: int = 7
-    extraction_depth: str = "standard"
+    """What the owner still configures here. The retired jobs' fields (morning briefing,
+    meeting prep, pattern detection, open-loop nudge, relationship
+    maintenance) and ``extraction_depth`` (read by nothing) are gone with
+    the jobs (Phase 7); the columns stay until the tables are folded."""
+    dossier_enabled: bool = True
+    dossier_min_acted_pushes: int = 2
+    dossier_min_inbound_threads: int = 3
+    dossier_window_days: int = 7
 
 
 class ProactiveConfigUpdate(BaseModel):
-    morning_briefing_enabled: Optional[bool] = None
-    morning_briefing_time: Optional[str] = None
-    morning_briefing_channel: Optional[str] = None
-    meeting_prep_enabled: Optional[bool] = None
-    meeting_prep_advance_minutes: Optional[int] = None
-    pattern_detection_enabled: Optional[bool] = None
-    open_loop_nudge_enabled: Optional[bool] = None
-    open_loop_nudge_days: Optional[int] = None
-    extraction_depth: Optional[str] = None
+    dossier_enabled: Optional[bool] = None
+    dossier_min_acted_pushes: Optional[int] = None
+    dossier_min_inbound_threads: Optional[int] = None
+    dossier_window_days: Optional[int] = None
 
 
 class OpenLoopSchema(BaseModel):
@@ -49,11 +43,14 @@ class OpenLoopUpdate(BaseModel):
     snooze_until: Optional[str] = None  # ISO datetime for snooze
 
 
+class WakeSchema(BaseModel):
+    kind: str
+    cron: str
+
+
 class ProactiveStatusSchema(BaseModel):
     config: ProactiveConfigSchema
     entity_count: int = 0
     open_loop_count: int = 0
-    morning_briefing_running: bool = False
-    meeting_prep_running: bool = False
-    pattern_detection_running: bool = False
-    open_loop_nudge_running: bool = False
+    # The wakes Edward takes on his own (scheduler_service.WAKEUP_TICKS).
+    wakes: List[WakeSchema] = []

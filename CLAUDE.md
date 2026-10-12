@@ -1,595 +1,299 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file guides Claude Code (claude.ai/code), and any AI assistant helping someone with Edward, in this repository. It is the short operating guide; the long form (the why, the dates and the incidents behind every rule) is in [`docs/architecture/`](docs/architecture/README.md), one file per subsystem. When you change a subsystem, update its file there, and this file only when a rule or an index line changes. `backend/tests/test_doc_lint.py` fails when either names a path, a route or a stream event that does not exist, or when this file passes 64 KiB ([testing.md](docs/architecture/testing.md#the-doc-lint)).
 
-## Commit Rules
+## Commit rules
 
-- **Do NOT add `Co-Authored-By` lines** to any commit messages in this repository. No Claude attribution in git history.
+- **Do not add `Co-Authored-By` lines** (or any other AI attribution) to commit messages in this repository.
+- Short conventional messages (`feat: …`, `fix(scope): …`, `docs: …`); a fix lands with the test that pins it.
+- Nothing personal goes into the tree: no names, numbers, hosts or paths of a real household. Code names the owner only through `backend/services/owner.py` and the host only through `backend/services/host_config.py`; examples use invented people (a partner Rowan, a friend Parker, a dog Biscuit), `my-mac.local` and `edward.example.com`. Never commit `.env` or `backend/.jwt_secret`.
 
-## Project Overview
+## Project overview
 
-Edward is a full-stack AI assistant with long-term memory, built with Next.js, FastAPI, and PostgreSQL. Uses LangGraph for conversation orchestration and pgvector for memory retrieval.
+Edward is an open-source personal AI assistant with long-term memory that runs on its owner's Mac (Apache-2.0; github.com/ben4mn/meet-edward, meet-edward.com): Next.js (PWA) + FastAPI + PostgreSQL/pgvector, LangGraph for turns, **the Claude API for every model call** (`ChatClaude`, one route per purpose, a $5 daily spend cap by default). He works for one person, the owner, and answers in chat, voice and iMessage pings (anyone's `@Edward`, the owner's self-chat); works in his own sandboxed computer with one 14-tool set; can read the owner's messages and mail (opt-in) and notice what matters, saying it once through `tell_owner`; thinks on his own in **wakes** (follow-through, a silent nightly, free time at 13:00); keeps a thought journal of what he chooses to do; and shows himself on Today, an iPhone widget, the host Mac's screen and an optional household hub.
 
-## Running the App
+This release is a sanitized snapshot of a private build that served one person for months; the dates in these docs are that install's history. What was bespoke to one home (Messages signed into the owner's Apple ID, Full Disk Access, a pet board, a kiosk) is marked in code with `ADAPT:` comments, each saying how it works here and how to change it, and collected in [docs/ADAPTING.md](docs/ADAPTING.md).
 
-**The backend must run natively on macOS** (not in a container). This is required for the scheduled events scheduler and AppleScript/MCP integrations.
+The tree: `backend/` (the FastAPI app: `services/`, `routers/`, `tests/`, `scripts/`), `frontend/` (the PWA), `chrome-extension/` (Edward's hands in the owner's Chrome, optional), `scripts/` (LaunchAgents, the watchdog, the test cluster), `companion/` (a menu-bar presence companion), `scriptable/` (the iPhone widget), `site/` (meet-edward.com), `docs/`.
 
-```bash
-# First-time setup
-./setup.sh                    # Creates venv, installs deps, sets up .env
+## Helping someone set up Edward
 
-# Recommended: restart script (handles both services)
-./restart.sh                  # Restart both frontend + backend
-./restart.sh frontend         # Restart only frontend
-./restart.sh backend          # Stop and restart only backend
+When a person asks their AI assistant to set Edward up, walk them through these steps in order and confirm each before the next. Never ask them to paste an API key or a password into the chat: they type it into `./setup.sh` or `.env` themselves.
 
-# Individual services
-cd backend && ./start.sh                       # Backend (FastAPI :8000)
-cd frontend && npm install && npm run dev      # Frontend (Next.js :3000)
+1. **Prerequisites.** A Mac with Apple silicon (setup stops on Intel, under Rosetta or with an x86_64 python: the pinned PyTorch has no x86_64 macOS wheel) that stays on and logged in (Edward runs as that user's LaunchAgents; a Mac mini makes a good always-on host), the Xcode command-line tools (`xcode-select --install`), Homebrew, git, and an Anthropic API key (console.anthropic.com). Edward is macOS-only: it reads Messages, Mail, Calendar and Reminders through macOS.
+2. **Clone and run setup**: `git clone https://github.com/ben4mn/meet-edward.git && cd meet-edward && ./setup.sh`. Safe to re-run: Homebrew python@3.12, postgresql@16 (started) and node; pgvector built from source against Postgres 16; the `edward` role and database; the backend's venv (`.venv` in `backend/`) with the pins in `constraints.txt`; Playwright's headless shell; `npm ci`; `.env` from `.env.example`; the Swift media and EventKit helpers. Flags: `--with-test-db`, `--launchagents`, `--no-helpers`, `--non-interactive`.
+3. **Settings.** Setup asks for `EDWARD_OWNER_NAME`, `ANTHROPIC_API_KEY` and `TIMEZONE`. Then, as wanted: `EDWARD_OWNER_HANDLES` (the owner's phone numbers, emails and Apple ID: how Edward recognises their iMessages and self-chat), `EDWARD_OWNER_EMAILS`, `EDWARD_HOUSEHOLD`, the spend cap. `.env.example` describes every setting.
+4. **macOS permissions** (System Settings → Privacy & Security), only for what they will use: **Full Disk Access** for the python3.12 behind the backend's venv (setup prints its path), through which `chat.db`, Mail's index, Calendar's and Reminders' databases, Contacts and a removable backup drive are read; **Automation**, asked the first time Edward sends a message or drives an app; **Calendars and Reminders** with `bash backend/scripts/eventkit_request_access.sh`; **Screen Recording** only for `look` at the screen.
+5. **Start it, one way**: `bash scripts/install-launchagents.sh` (or `./setup.sh --launchagents`; kept alive by launchd; it stops a copy this checkout started by hand) or `./restart.sh` (by hand; waits up to 2 min for the backend and 4 for the frontend, then says "still starting" and exits 0). Then, **on the host Mac**, open http://localhost:3000 and choose a password (first-time setup on `/login` also asks for the one-time code they read on that Mac with cat backend/.setup_code; never ask for it in the chat; a headless Mac needs `ssh -L 3000:localhost:3000`, the code read over ssh), and check the time zone at `/settings/locale`. `GET /api/health/report` and the logs say what works.
+6. **Optional features**, each inert until configured: reading iMessages and mail (Settings → Listening, off by default; iMessage needs Full Disk Access and `EDWARD_OWNER_HANDLES`), and with it pings (`EDWARD_PINGS`; Edward sends as the owner's own Apple ID); noticing (`EDWARD_PROACTIVITY`); hands in Chrome (`EDWARD_CHROME_HANDS=on`, `chrome-extension/` loaded unpacked); voice (`ELEVENLABS_API_KEY`); push (VAPID keys; phones need HTTPS); a public URL (a tunnel, `EDWARD_PUBLIC_BASE_URL`, `EDWARD_TUNNEL_LABEL`); Twilio; Gmail ([docs/gmail-setup.md](docs/gmail-setup.md)); Alexa ([docs/alexa-setup.md](docs/alexa-setup.md); read the security note under Integrations first); apple-mcp; WhatsApp; the household hub (`EDWARD_HUB_SEED`, `PHOTO_DOOR_PASSWORD_HASH`); the knowledge graph (`GRAPHITI_ENABLED=true` and `GRAPHITI_INGEST_ENABLED=true`, `--with-graph`); backups (`EDWARD_BACKUP_DIR`).
+7. **Adapting**: `grep -rn "ADAPT:" backend frontend scripts companion chrome-extension scriptable` (skip `node_modules`) lists every seam built around the original home; [docs/ADAPTING.md](docs/ADAPTING.md) walks through them. Prefer settings to code changes, and keep the tests passing.
 
-# Lint frontend
-cd frontend && npm run lint
-```
+## Running your own Edward
 
-After initial setup, `./start.sh` handles venv activation and auto-installs new dependencies.
+Edward runs on one Mac (the host) from wherever it was cloned. Details: [ops-health-backups.md](docs/architecture/ops-health-backups.md).
 
-### Build frontend for production
-```bash
-cd frontend && npm run build
-```
+- **The live checkout** (`EDWARD_LIVE_REPO`, default the one the backend runs from) is production: edits there are live at the next restart, and a build or a dev server there replaces what phones load. Do builds, the UX harness and experiments in a git worktree.
+- **LaunchAgents** come only from `bash scripts/install-launchagents.sh` (`--with-graph`, `--without-backup`, `--dry-run`, `--uninstall`): labels `<EDWARD_LAUNCHD_PREFIX>.<service>`, default `com.meet-edward`; `backend` (:8000) and `frontend` (:3000) are `KeepAlive` (respawn within 10 s), `graph-worker` only with `--with-graph`; `healthcheck` (every 5 min), `healthcheck-deep` (08:00), `backup` (03:30) and `memory-report` (09:05) are scheduled. A tunnel and the WhatsApp bridge are yours to install as their own agents.
+- **Restart with `launchctl kickstart -k gui/$UID/com.meet-edward.backend`** (or `.frontend`; your prefix), which restarts launchd's own process atomically. `./restart.sh [frontend|backend]` does exactly that when the agent is loaded, and otherwise stops and starts the processes itself (only this checkout's); it refuses (exit 78) when the loaded agent runs another checkout (labels are per user, so a second clone shares them), and waits on `/health` ("still starting" after 2 min is exit 0). `install-launchagents.sh` stops this checkout's hand-started copies, and has no such check: never run it, or `restart.sh`, in a development clone on a Mac that runs Edward (CONTRIBUTING.md). A kickstart SIGKILLs uvicorn; the startup orphan sweep kills the stdio MCP servers it re-parented.
+- **The frontend is a production build** (`next build` + `next start`; `frontend/run-launchd.sh` → `ensure-build.sh`, which builds only when a source file is newer than `.next/BUILD_ID`). A failed build falls back to `next dev`, and `next build` lints, so **one lint error (an unescaped apostrophe in JSX) silently puts production back on `next dev`**; `__tests__/buildLint.test.ts` catches it, tsc does not.
+- **Deploy the frontend by building before the swap**: `git pull && bash frontend/deploy-build.sh && launchctl kickstart -k gui/$UID/com.meet-edward.frontend`. `deploy-build.sh` builds into `.next-staging` while the old server keeps serving; on start `ensure-build.sh` swaps in a complete, newer staged build and keeps the replaced one as `.next.prev`, each with its own service worker (`<build>/EDWARD_PWA/`). **Roll back with `bash frontend/rollback-build.sh` then kickstart** (running it again undoes it). **Never a bare `mv .next.prev .next`: the restart rebuilds the bad code in place.** `frontend/scripts/bundle-budget.js` warns about a route over its budget. Open tabs reload onto a new build (`GET /build-id`, `lib/buildReload.ts`) only when idle.
+- **Before restarting onto a change**: run the eval gate that matches it (below; real money, on a `*_test` database), build, kickstart, verify (logs, `/api/health/report`, the watchdog), then push.
+- **Browsers.** Edward's own invisible browser is Playwright's bundled headless shell, asserted under `~/Library/Caches/ms-playwright` before launch, never Google Chrome (`services/headless_browser.py`). His hands in the owner's Chrome are **off** unless `EDWARD_CHROME_HANDS=on`; with them on, `/screen` is a tab in the owner's Chrome, found or opened over AppleScript, sized to the desktop, never a fullscreen Space; with them off, open `/screen` by hand. **Never launch a second Google Chrome instance: it hijacks `open -a` and `tell application "Google Chrome"`.** Tests never reach osascript or Chrome (`conftest._never_touch_chrome`).
+- **PWA auth rules** ([auth-and-pwa.md](docs/architecture/auth-and-pwa.md)): `frontend/pwa-caching.js` makes `/api/auth/*` and `/build-id` NetworkOnly and never caches app data (a cached "authenticated" once looped phones through `/login`). The login page leaves only on the server's verdict; a 401 anywhere clears the hint and goes to `/login?redirect=<page>` once; **an unreachable server is not a verdict**: a 500 or a tunnel's 502 keeps the hint and retries (1 s doubling to 30 s), so the app shows Edward "Offline". `loginRedirectTarget` accepts only a same-site path. Sessions renew past half their 30-day life. **Before a password is set** the API 401s everything but `/health`, `/`, the public routes and `/api/auth/status|setup`, and the voice socket always needs a session. **The first password needs the one-time setup code** (`services/setup_code.py`: backend/.setup_code, 0600, made at start while no password exists, deleted once one is set; logs and scripts name only its path; status says `setup_code_required`). `POST /api/auth/setup` is also JSON only (415) and 403 for a non-loopback `Origin` or a client not on this Mac (`client_ip.is_local_client`), but a LAN device can forge those headers: they never decide alone. Wrong codes: 10 per client per 15 min, apart from the login limiter. Logins are limited per `client_ip.client_ip` (5 per 15 min) and 100 failures across all clients (login and the photo door; `/change-password` is 5 per session, outside it), each attempt reserved before the first await, bcrypt off the event loop; leave `FORWARDED_ALLOW_IPS` unset. The session cookie is `Secure`: serve Edward over HTTPS, or set `EDWARD_COOKIE_SECURE=off` on a plain-HTTP LAN you trust.
+- **A public URL (optional)**: a tunnel (Cloudflare, ngrok …) in front of :3000, `EDWARD_PUBLIC_BASE_URL` (links in pushes and texts, CORS) and `EDWARD_TUNNEL_LABEL` (the watchdog restarts it). Tunnels give up after about 100 s (a 524), so long operations answer **202** and run as tracked tasks.
+- **Logs**: `/tmp/edward-backend.log` (rotated at 100 MB by the watchdog), `/tmp/edward-frontend.log`, `/tmp/edward-graph-worker.log`, `/tmp/edward-healthcheck.log`, `/tmp/edward-backup.log`, `/tmp/edward-memory-report.log`, `~/.edward-health/health.log`. The access log redacts secret query parameters (`services/access_log.py` via `backend/log_config.json`).
+- **Backups**: nightly `pg_dump` + the graph store to `EDWARD_BACKUP_DIR` (default `~/edward-backups`), verified, rotated, owner-only (folder 700, dumps 600), stamped in `~/.edward-health/backup.ok`; a `/Volumes/…` path is a removable drive (refused while unplugged; needs Full Disk Access). Restore into a verification database with `backend/scripts/restore_memories.sh` (`PGHOST=localhost PGPORT=5433` restores onto the test cluster). Keep a copy off the Mac too.
+- **The Full Disk Access python**: chat.db, Mail, Calendar, Reminders, Contacts and the backup drive are read under the Homebrew `python3.12` behind the venv. The grant is path-based, so `brew upgrade python@3.12` breaks them until re-granted. **No ffmpeg** for the same reason: a plain `brew install` can upgrade python@3.12 off its grant.
+- **pgvector** is built from source against Postgres 16 by `./setup.sh`; `brew reinstall postgresql@16` removes it: run `./setup.sh` again.
+- **The household hub (optional)**: a tablet or a Raspberry Pi touchscreen running Chromium in kiosk mode against `/hub`, a thin client. Over plain-HTTP LAN the kiosk needs `--unsafely-treat-insecure-origin-as-secure=http://my-mac.local:3000`, or the mic, Wake Lock and the Secure cookie silently fail.
+
+## Running and testing
+
+**The backend runs natively on macOS** (AppleScript, chat.db, EventKit, MCP, the scheduler), never in a container. Manual dev: `cd backend && ./start.sh` (:8000 on `EDWARD_BACKEND_HOST`; never exports `.env`, which `main.py` loads itself: a start-up environment is readable by the user's other processes; PATH: the system's directories first, never `~/.local/bin`; installs with `-c constraints.txt`, which `scripts/pin_requirements.sh` writes: an unpinned rebuild cannot read older checkpoints) and `cd frontend && npm run dev`. Shell scripts read settings through `scripts/lib/edward-env.sh`: the environment, then `.env`, then a default.
+
+**Backend tests run on the test cluster, never production** ([testing.md](docs/architecture/testing.md)):
+- `edward_test` lives in its own Postgres cluster on **:5433** (fsync off, `~/.edward-test-pg`; `scripts/test-pg-cluster.sh ensure|status|stop|url|createdb <name>_test`; `./setup.sh --with-test-db`). A full run on the production cluster (:5432) stalled its checkpointer and exhausted the live pool, so conftest never uses a database not named `*_test`, refuses a `*_test` URL on :5432, and `clean_db` truncates only a test database.
+- Always through the wrapper, which starts the cluster, creates the database, drops the live `DATABASE_URL`, refuses :5432 (exit 78) and locks per database (30 min wait, exit 75):
+  `cd backend && ../scripts/with-test-db-lock.sh .venv/bin/python -m pytest tests/test_<name>.py -q`
+  A worktree has no venv of its own: use the live checkout's venv python by path (`/Users/me/edward/backend/.venv/bin/python`). For a parallel run export `TEST_DATABASE_URL=…:5433/<name>_test`.
+- **Never run the backend test suite with the live DATABASE_URL exported**: on 2026-09-07 a pytest run from Edward's old self-coding loop inherited it and truncated the production database, restored the same day from the nightly backup.
+- Tests can never reach a real model (conftest refuses chatgpt.com / openai.com / anthropic.com at httpx's transports; `@pytest.mark.real_llm` is the only way through), a Codex login (each test gets a throwaway `auth.json`), Chrome/osascript, the display, the headless browser (`conftest._never_look_or_launch`; `EDWARD_TEST_BROWSER=1` runs the one headless case), Messages, Mail, the owner's calendar or EventKit (`conftest._never_reach_eventkit`), or the embedding model (`EDWARD_FAKE_EMBEDDINGS=1`). **Stub a model where the code looks it up**, e.g. `services.memory_service.build_background_llm`, not only `services.llm_utils`.
+- A full run is fine on :5433 (one at a time on an 8 GB Mac); every test is bounded at 120 s. Some failures may be known at any time: run the same tests on a worktree of the base branch before blaming your change. `test_public_*.py` pins this release's public defaults (the owner from settings, host facts, flags that start off).
+
+**Frontend**: `cd frontend && npm test` (node --test over `__tests__/**/*.test.ts(x)`), `npx tsc --noEmit -p .`, `npm run lint`. Guardrail tests pin real contracts: `toolLabels.test.ts` (every backend tool has a work-rail label), `clockFormat.test.tsx` (never Intl's "AM/PM"), `settingsRooms.test.ts` (every panel in a room), `hubHousehold.public.test.ts`. Scripts: `bash frontend/test_ensure_build.sh`, `bash scripts/test_health_check.sh`, `bash scripts/test_setup.sh`, `bash scripts/test_install_launchagents.sh`, `bash scripts/test_restart.sh`. Never `npm run build` in the live checkout: use `deploy-build.sh`, or a worktree with its own `NEXT_DIST_DIR`.
+
+**UX fixture harness** (`frontend/scripts/mock-api/`): the real PWA (`next dev` on :3100) against a mock API on :8100 with invented content: no auth, no database, no model, nothing leaves the machine. **Run it from a git worktree, never the live checkout** (it refuses the checkout serving :3000; `EDWARD_HARNESS_PYTHON` names a venv when the worktree has none): `bash frontend/scripts/mock-api/run-harness.sh start`, open `http://localhost:3100/today`; `shoot.py` screenshots through Playwright's headless shell. Every tap in the owner's live PWA is real (Today's "Send" texts someone from the owner's number).
+
+**The eval gates** (the real model, real money, on the test database; every outward call a recorded dry run, `EDWARD_DRY_RUN_OUTWARD=1`, never sent; `services.eval_guards` goes on first and takes only the provider and key from `.env`):
+- **The judgement check**, whenever the mind prompt, its tools or the `mind` route change, and before running the mind unattended: `cd backend && TEST_DATABASE_URL=postgresql+asyncpg://edward:edward@localhost:5433/judgement_test ../scripts/with-test-db-lock.sh .venv/bin/python scripts/judgement_eval.py` (a mention, a standing instruction, a follow-through, the silent nightly; ≈ $1–4); exit 2 is a safety failure.
+- `scripts/ping_eval.py`: the same gate for the `chat` route and the ping path. `scripts/notice_eval.py`: the noticer and the gate over fixtures, before `EDWARD_PROACTIVITY` goes past `off`.
+- The default routes came from a model benchmark on the private build; that harness is not in this release.
 
 ## Architecture
 
 ```
-Frontend (Next.js :3000)  →  Backend (FastAPI :8000)  →  PostgreSQL (:5432)
+Frontend (Next.js :3000, PWA)  →  Backend (FastAPI :8000)  →  PostgreSQL 16 + pgvector (:5432; tests :5433)
                                       ↓
-                              LangGraph Agent
+                  LangGraph turn (preprocess → retrieve_memory → respond[tool loop] → extract_memory)
                                       ↓
-                              Claude API (Anthropic)
+                  Claude: ChatClaude → the Anthropic Messages API (routes: claude_routing.py; $5/day cap)
+                  opt-in fallback: GPT via the Codex CLI's login (EDWARD_LLM_PROVIDER=codex; unofficial)
 ```
 
-### Frontend Routes
+### Startup order (`main.py` lifespan)
+
+Init order matters: the tool registry must come after skills and every MCP source.
+
+1. Logging, `init_db()` + `initialize_graph()` (tables, migrations, drops; the LangGraph checkpointer)
+2. The timezone cache from settings; the embedding model on the main thread; the Codex rate gate's meter (only when the provider is `codex`)
+3. The storage directory, `init_skills()`
+4. Built-in MCP clients (orphan sweep first; WhatsApp, Apple Services), custom MCP servers, a second skills sweep
+5. Tool registry
+6. Edward's computer (`computer.startup`: `~/edward-home`, the Seatbelt profile, a sweep of leftover shells)
+7. Scheduler (polls every 30 s)
+8. Heartbeat (listeners + the mind path), the local presence probe
+9. The ping runner (`services/pings/hooks.py`; stopped with `EDWARD_PINGS=off`)
+10. Browser hands (a no-op unless `EDWARD_CHROME_HANDS=on`)
+11. Consolidation (hourly, 60 s startup delay)
+12. Orchestrator (recovers crashed worker tasks)
+13. Greeting pre-warm (fire-and-forget). The graph worker is its own LaunchAgent.
+
+Shutdown runs the matching hooks in reverse order, Edward's computer first.
+
+## Components
+
+One paragraph each: the files, what it is, and the rules that must hold. Follow the link for the history and the why. "The owner" is whoever Edward works for; a dated rule is a design decision of that day.
+
+**The turn** ([tool-loop.md](docs/architecture/tool-loop.md)): `services/graph/` (`tool_loop.py`: the one loop and the executor; `streaming.py`: context, `compose_system_prompt`, SSE events, the two entry points; pure `turn_window.py`, `tool_policy.py`, `tool_deadlines.py`; `tools.py`: the old tool bodies the toolset wraps), `services/toolset/`, `services/tool_registry.py`. **One toolset, 14 tools, identical on every surface** (chat, voice, pings, wakes, the pulse, events): `bash`, `str_replace_based_edit_tool`, `web_search`, `web_fetch`, `browser`, `chrome`, `look`, `messages`, `send_message`, `tell_owner`, `memory`, `schedule`, `screen`, `plan` (`toolset/names.py::TOOL_ORDER`; a static `TOOL_MANUAL`); skill toggles only remove a tool; `EDWARD_TOOLSET=legacy` restores the old registry. Model-facing text names the owner with the `{OWNER}` token, rendered once at import (`owner.owner_text`) so the prompt stays byte-identical for the cache; code matches the owner's names with `owner.owner_name_pattern`, never a literal. **What a turn may do is its `TurnPolicy`** (`toolset/policy.py`: `owner_asked`, `may_reach_people`, `may_push`, `reply_to`, `max_turn_usd`, `deadline_s`, `third_party`: a friend's ping, narrowed at the tool boundary by `services/pings/scope.py`), passed as `chat_with_memory(policy=)` / `stream_with_memory_events(policy=)`; a turn the owner is not part of with no policy is **fail-closed**. `send_message` is the only send: one recipient, never the owner from a turn they are not part of (`tell_owner` reaches them), stand-downs, the recipient rule (the owner asked, the chat it was asked in, addressed in 24 h, or a live conversation), the 10-min dedupe, a transport whose failure raises. Calendar and Reminders change only when the owner asks (`TurnPolicy.may_change_owners_calendar`). **The loop**: never a forced `tool_choice`; every failure is `Tool error: <real error>` with `status="error"`; the same failing call is refused the third time; a step-back note after 3 failed rounds, a stop after 6; 60 rounds (`EDWARD_MAX_TOOL_ROUNDS`) and a per-turn dollar cap ($3 when the owner asked, $1 otherwise); 300 s per model call, tool timeouts clamped to the turn's deadline, 600 s per streaming turn; a final text posted as a reply never carries a tool call written as text (`services/tool_markup.py`). Tool results cap at 30K. Scaffolding, dead turns and image bytes never reach a checkpoint. The turn's trace (reasoning, tools, memory hits) is stored on the answer, never a message body or a flagged secret. **One turn at a time in a thread** (`services/thread_turns.py`): both loops hold the per-thread lock around the whole turn; `mind` and `pulse` turns never take it (the wake holds it): keep the name and signature of `mind_service.thread_lock(conversation_id)`. Stop cancels the step in flight (`routers/chat.CLIENT_GONE`); **every step of a streamed turn runs in one context** (`_yield_with_heartbeats`): a task per step loses the turn record; the checkpoint save is shielded; a send the turn is cancelled under is finished and recorded (`_send_and_note`).
+
+**LLM routing and spend** ([llm-and-quota.md](docs/architecture/llm-and-quota.md)): `llm_utils.py`, `claude_routing.py`, `claude_chat_model.py`, `llm_spend.py`, `llm_pricing.py`; the Codex fallback: `codex_chat_model.py`, `llm_rate_gate.py`, `codex_usage_service.py`, `codex_auth_service.py`. **Every runtime LLM call goes through the `llm_utils.py` builders.** The provider is `anthropic` (also when `EDWARD_LLM_PROVIDER` is unset or unknown): every builder returns `ChatClaude`, the one Claude adapter on the `anthropic` SDK (never `langchain_anthropic`), with a model, effort and cache TTL per purpose from `claude_routing.DEFAULT_ROUTES`: `chat`, `mind` and `pulse` on Sonnet 5.5 at medium; `background` (extraction, consolidation, the noticer) on Haiku 5.5 at high; `voice` on Sonnet 5.5 at low; `judge` on Opus 5.5 at high. `EDWARD_CLAUDE_<PURPOSE>_MODEL|_EFFORT|_MAX_TOKENS|_THINKING_DISPLAY|_CACHE_TTL` override per call. **Never run an agentic route at Sonnet low.** **`ChatClaude` asks the daily cap before every request and prices each into `llm_calls`** (`llm_pricing.py` is the only price table): over the owner's local day, background stops at cap × share, Edward's own turns (and events he scheduled, `own_work_scope`) at the cap ($5 by default), the owner's own turns past cap + reserve (`LLMSpendCapReached`, a sentence Edward says as it is); prepaid credits are counted down only when `EDWARD_CREDITS_START_USD` and `EDWARD_CREDITS_START_DATE` are both set (console.anthropic.com stays the authority), on the Fuel card and `GET /api/health/spend`. **Codex is an unofficial, opt-in fallback** (`EDWARD_LLM_PROVIDER=codex`): ChatGPT's private backend through the Codex CLI's login, which may break or conflict with OpenAI's terms (`OPENAI_API_KEY` switches it to the public API); its rate gate reads the real meter (`x-codex-*`): `background` defers (`LLMRateLimitDeferred`), `interactive` never; each request writes a `codex_calls` row. **A user-facing call at background priority is a bug.** Every call is labelled: `mind:<reason>`, `pulse`, `ping:owner` / `ping:friend`, `turn:<source>`.
+
+**The mind** ([mind.md](docs/architecture/mind.md), [noticing.md](docs/architecture/noticing.md)): `services/mind_service.py`, `services/noticing_service.py`, `services/speak_gate.py`, `services/reach_service.py`, `services/care_watch.py`, `routers/mind.py`, `services/thought_journal.py`. **Proactivity is noticing, not a schedule** (2026-10-11): no morning/evening ticks ([surplus.md](docs/architecture/surplus.md) keeps the retired queue's history); one budgeted `free` wake a day (13:00, ≤ ≈ $0.50, his stage and his own projects, reaching nobody). `EDWARD_PROACTIVITY` = `off` (default: inbound is stored, pings are answered by their own path, promises are kept, a silent nightly) | `shadow` | `notice` (a noticer reads each inbound batch into private `noticings`; the pure `speak_gate` decides silent/hold/note/ambient/push/thread; a `speak` wake verifies and says it once). `mind_service.wake(reason)` is the one primitive, an ordinary turn with a raw pack (`render_pack`): `self` (a `wake_me` or a promise's follow-up), `mention` (only while `EDWARD_PINGS=off`), `speak`, `nightly` (03:00, silent; skipped when nothing happened; Sunday runs decay), `free`, `surfaces`, `manual`. **Every way Edward reaches the owner on his own goes through `reach_service.tell_owner`**: quiet hours (`EDWARD_QUIET_HOURS`, default 22–7) held in code (care alerts and travel closing within 3 h excepted), one follow-up per dedupe key, the offer grammar linted (`offer_grammar.lint`), never a secret on the lock screen; no daily push cap unless `EDWARD_PUSH_BUDGET` sets one. **The mind never texts the owner** (`tests/test_mind_never_texts_owner.py`). The late-dose alert is code (`care_watch`: a timed hub item unlogged at +45 min pushes once per pet and slot), outside every flag and the spend cap, run by the `*/5` `proactive_sweep` with no model. `POST /api/mind/wake` answers 202. Standing instructions are only `origin=heard about=owner` rows whose provenance shows the owner speaking (`mind_service.is_owners_instruction`); a row from a wake, the pulse, an event, heartbeat or a worker is left out. A mention must be answered unless a standing instruction says stay out; don't start or join other people's conversations unasked. A wake cannot change or delete what the owner said (`forget_about` is never given to one). Failed wakes retry after 10/20/40 min only when transient and **never after the wake reached someone or committed to something**. A wake that acts outward or commits writes a **journal entry** (`edward_thought`: why I looked, what I noticed, what I did, why) with "Right call? Yes / No"; the "reached out" chip reads only `thought.reached`. `GET /api/mind/now` is his live state and never a 500.
+
+**Trust at the boundary** ([trust-boundary.md](docs/architecture/trust-boundary.md)): `secret_scan.py`, `taint_service.py`, `approvals_service.py`. The egress secret scan is always on (`EDWARD_EGRESS_SECRET_SCAN=off` is the emergency switch) and covers `bash` commands, `send_message` files, `tell_owner`, fetched and looked-at URLs, Chrome typing and every custom MCP string; tool results are redacted (`tool_loop.redact_result`). The session-signing key (`JWT_SECRET_KEY` or `backend/.jwt_secret`) is one of the `known_secrets`, as defence in depth: what protects it is that Edward's shell can neither read it nor reach :8000 or :3000 (below). Turns are tainted by construction (heartbeat, Twilio) or by reading untrusted content; the taint gate is **off by default** (`EDWARD_TAINT_APPROVALS=shadow` logs `would_gate`, `on` holds the call for the owner's Approve/Deny; an approval runs the stored call once and never bypasses the scan). A held send is not "delivered"; the UI says "Sent" only when the server says `delivered`. Edward's own pages are `host_config.own_hosts`.
+
+**Codex sessions and workers** ([codex-and-orchestrator.md](docs/architecture/codex-and-orchestrator.md)): `orchestrator_service.py`, `cc_manager_service.py`, `codex_cli_service.py`, `codex_paths.py`, `sandbox_env.py`. **Dormant**: the worker tools left the toolset on 2026-10-11 (long work is a background job in Edward's shell plus a scheduled wake); the services, routes and panels stay. If they wake: **Codex runs only in `~/edward-scratch/codex` or Edward's own worktrees on an `evolve/*` or `edward/*` branch under `EDWARD_CODEX_WORKTREE_ROOTS`, never in or above the live repo, `EDWARD_RELEASES_DIR` or a human's worktrees (`EDWARD_HUMAN_WORKTREE_ROOTS`)**; argv `codex exec --json --ephemeral --ignore-user-config --ignore-rules --skip-git-repo-check -s workspace-write|read-only --config approval_policy="never" … -- <task>` (never `--approve-for-me`), pinned in `tests/test_codex_cli_cmd.py`; an allowlisted environment (no secrets, the test database on :5433); **`sandbox_workspace_write.network_access` stays off** (it opens production Postgres).
+
+**Evolution and the wishlist** ([codex-and-orchestrator.md](docs/architecture/codex-and-orchestrator.md)): Evolution v1, a loop in which Edward coded and merged his own changes, was removed on 2026-09-12 (zero merges in ten days). **Do not rebuild that self-coding loop.** Any successor keeps the gate outside what the builder can change: extensions before core, immutable releases with automatic rollback, the owner approving every core deploy. The wishlist (`wishlist_service.py`, its panel) stays, and Edward never promises to build what he wishes for.
+
+**Memory** ([memory.md](docs/architecture/memory.md)): `memory_service.py`, `memory_decay_service.py`, `consolidation_service.py`, `reflection_service.py`, `deep_retrieval_service.py`, `entity_service.py`, `document_service.py`, `provenance_service.py`, `forget_service.py`. pgvector (all-MiniLM-L6-v2, 384 dims), hybrid 70 % vector + 30 % BM25. Every row has `origin` (heard/read/thought/did), `about` (owner/contact/self/world), a `tier` (observation → belief → knowledge) and a `source_ref`. **Only the owner's own turn (chat, voice, widget, Alexa, their self-chat, their own `@Edward` words, `remember_owners_words`) makes a heard/owner instruction, and only their own words rewrite what they said**: `remember_update`/`remember_forget` refuse a heard/owner or `owner_confirmed` row outside the owner's turn, and conflict detection never rewrites an `owner_confirmed` pin; a wake, the pulse or a fired event never writes `heard` and never reinforces. A memory is "used" only when an answer cites it. A dated episode never reaches knowledge. New temporary instructions and preferences get a 30-day horizon; intentions from wakes 72 h unless linked to an event. Decay (Sunday's nightly) never deletes, holds sensitive content (pets, health, family, money, distress, the names in `EDWARD_SENSITIVE_NAMES` and the household) for the owner, and lets a one-off instruction that is not the owner's own lapse after 30 days (written since `EDWARD_INSTRUCTION_HORIZON_SINCE`; default all); **an instruction the owner keeps must carry `source_ref {"kind":"owner_confirmed"}`**; `run_memory_decay.py --revert-stamp <stamp>` undoes a pass. Consolidation is hourly, merges by hard delete (never the owner's heard/owner rows), writes at most five contradiction flags a cycle, never retires a sensitive, knowledge-tier or `owner_confirmed` row, and asks one "Which is right?" question at a time. Never delete the `Edward: state` document (rename or archive). Verified forget previews, then deletes exactly the plan. The knowledge graph (Graphiti + Kuzu) is optional: `GRAPHITI_ENABLED=true` queues each new memory, and its own worker fills the graph only with `GRAPHITI_INGEST_ENABLED=true`.
+
+**The heartbeat** ([heartbeat.md](docs/architecture/heartbeat.md)): `services/heartbeat/`: listeners for iMessage (`chat.db`, every 10 s), Mail (its Envelope Index) and Gmail (`listener_gmail.py`), **each off until the owner turns it on** in Listening (`heartbeat_config.imessage_enabled`, `email_enabled`, `gmail_enabled`), store events and nothing else. Each cycle (`triage_service.py`, now a small cycle) hands the batch to the mind path (`mind_path.run_mind_cycle`: `identity_filter`, then a `messages` wake for the noticer). **The mind path is the only path**: the legacy triage engine and its sub-engines are gone, and `mind_enabled` no longer chooses. Escalations collapse to one Today need per thread; "Done" stamps them `owner:done`. The owner's verdicts (`POST /api/heartbeat/events/{id}/feedback`) are stored for the mind to read. Owner-facing copy says **Listening**, never "heartbeat" or "triage".
+
+**Pings** ([pings.md](docs/architecture/pings.md)): `services/pings/`. **Edward reads and sends iMessages as the owner's own Apple ID signed into the host Mac** (`is_from_me` means the owner; see the `ADAPT:` note in `services/pings/detect.py`). The listener records a ping as it stores the message (`@Edward` from anyone, the owner included, the owner's self-chat, a reply to Edward's message), in a SAVEPOINT that can't cost the message; pings never enter the heartbeat cycle. The runner answers each in its own turn in `ping-<id>`. **Friends' pings get no shell, editor, Chrome or screens, and `look` only at what was sent or a URL** (`scope.friends_default_refusal`: their text would drive a shell that runs as the owner) unless `EDWARD_FRIENDS_FULL_TOOLSET=on`; they run in Edward's own spend share, 6 turns an hour per chat, carrying the owner's standing instructions, never starting a conversation with someone who asked nothing: any send goes into that chat or one that addressed him in 24 h, and no task or reminder is left behind (`services/pings/scope.py`, asked by `tool_loop._boundary_check` for every call); unknown numbers are held for the owner. A ping closes on a delivered send (read back from chat.db) or a recorded decline; **a send followed by a failure or a restart was progress**: a "cut off" note follows, never a re-run. The runner posts the final text otherwise, never after a failure, refusal or `max_tokens` cut, never twice. Echoes are recognised by ROWID (`services/imessage_sent.py`); more than 3 friends' pings (12 of the owner's) in a chat in 5 min stops the runner there. `EDWARD_PINGS=off` stops the runner; the mind's `mention` wake answers instead.
+
+**Media** ([media.md](docs/architecture/media.md)): `services/media/`: attachments are `attachment:<chat.db rowid>`; `media.view(ref)` backs `look` and the ping turn: `sips` to JPEG (≤ 1600 px, never upscaled), PDFs whole (≤ 15 MB, ≤ 100 pages), voice messages and video through `afconvert`/`avconvert` + Scribe and the Swift helper (`backend/scripts/build_mediatool.sh`), links read first (`services/netguard.py`: public addresses only, never a sign-in link). ≤ 40 images and ≤ 15 MB of media per turn (the API's 32 MB body limit); images leave saved history as a line with their ref (`services/media/dehydrate.py`). `EDWARD_MEDIA=off` restores placeholders.
+
+**Scheduler** ([scheduler.md](docs/architecture/scheduler.md)): `scheduled_events_service.py`, `scheduler_service.py`: an in-process 30 s poll, `SELECT … FOR UPDATE` pickup, each due event its own tracked task (600 s). **Cron results and tool times are the owner's zone, never the host's** (`timezone_utils.local_naive_to_utc`; a settings zone that differed from the host's once fired the pulse 10,214 times in a week). Routed events (the pulse, the nightly and free-time ticks, `wake_me`, `proactive_sweep`, widget refresh) are plumbing and never show on Today. An ordinary event runs in the thread that made it (else `edward-mind`) and extracts under the `scheduled_event` profile.
+
+**Push and notes** ([push-and-notes.md](docs/architecture/push-and-notes.md)): `push_service.py`, `push_ledger.py`, `notes_service.py`, `owner_channel.py`, `public/sw-push.js`, `lib/notificationNav.ts`. Every push is in `push_log`, carries a URL, and the tap goes there (`resolveNotificationNav` → `router.push`); **do not go back to loading chat state from the click handler.** Reaches go to the owner's channel (`EDWARD_OWNER_CHANNEL`: push, their self-chat or Edward's Twilio number; links from `EDWARD_PUBLIC_BASE_URL`). **Whispers never push.** Notes (`tell_owner`, whispers) land on Today; **do not turn notes back into pushes.** Quiet hours hold the templated senders too.
+
+**Edward's computer** ([computer.md](docs/architecture/computer.md)): limits are the turn's policy, never hidden tools; every failure reads `Tool error:`. **His shell** (`services/computer/`): `~/edward-home` is his; one persistent `bash` per thread under Seatbelt (`computer/profile.py`, rendered from `computer/rails.py`, which the in-process editor checks too): reads everywhere but his own credentials (`rails.SECRET_FILES`: the session key, the setup code and `.env`, in this checkout and `EDWARD_LIVE_REPO`; the profile, the editor, `look` and `send_message` files refuse them: code in the shell uses a key the model never sees, so redaction can't be the protection), compared by inode, not spelling (`rails.identity`; the editor and `look` open through `rails.open_checked`), every output redacted (`secret_scan.redact_secrets`); no TCP to :8000, :3000 or the WhatsApp bridge (`rails.denied_ports`); no writes to the live repo or the running checkout, `~/.edward-computer`, either cluster's data or the python@3.12 / postgresql@16 kegs and `opt/` links (under `HOMEBREW_PREFIX`), nor renaming a directory above them (`rails.protected_ancestors`); no scripting Chrome or any app; signals only to his own processes; never :5432 or :5433 (no `DATABASE_URL` in his env); 180 s a command, an RSS and disk watchdog; if the sandbox can't apply, `bash` fails closed. **Not a containment boundary**: the shell runs as the owner's macOS user and can write their home (shell rc files, `~/Library/LaunchAgents`) and Homebrew; for isolation, a separate macOS user ([computer.md](docs/architecture/computer.md#what-the-sandbox-is-and-isnt)). **Two browsers**: `browser` is his own headless shell (`services/headless_browser.py`: http(s) only, SSRF-guarded on every request and redirect); `chrome` is the owner's Chrome through the extension (`services/toolset/browsers.py`; off unless `EDWARD_CHROME_HANDS=on`; Chrome shows its "being debugged" bar unless `EDWARD_CHROME_SILENT_DEBUGGER=on`). **Chrome's rails**: typing off a search site, or a click labelled send/post/delete/accept/…, acts as the owner and needs the owner asking in the turn; a payment step is refused in every turn. **Web**: Anthropic's basic server tools on Claude (never the `_20260209` pair; a local fetch on the small model), else Brave + `brave_search_service.fetch_page`. **The owner's calendar and Reminders** are read from their own SQLite databases (`calendar_service.py`, `reminders_service.py`; unreadable is never an empty day), apple-mcp the fallback; writes go through the signed EventKit helper (`eventkit_service.py`, `backend/scripts/build_eventkit.sh`).
+
+**Surfaces: the pulse, the widget, the screen** ([screen-and-browser.md](docs/architecture/screen-and-browser.md)): `expression_service.py` (the surfaces pulse: a `wake("surfaces")` under a policy that reaches nobody, run by a `*/15` code check only when the board, calendar, a screen or the widget changed): Edward decides on his own what the widget, the household screen and the host Mac's screen show. **Do not replace this with a deterministic composer** (judgment, not a menu, 2026-09-03); `compose_widget_sections` is only the fallback, and the no-state card (`widget_service._generate_default_content`) shows the owner's events in their zone. `screen_service.py` / `screen_window_service.py`: the `/screen` **stage**, one scene of up to eight pieces on 24×12 cells plus where Edward stands (`compose_screen`; placement is the backend's), the lines he says (`say_on_screen`, never aloud in quiet hours), overlays. **The owner's ask holds the screen** until the hold lapses. **There is no desk mode**: while the owner is at the desk only what raises Chrome stays off unless they asked. `screen_thoughts.py` shows his thinking while a wake or the pulse runs (tool names only, reasoning scrubbed fail-closed; past thoughts labelled with their time; a `speak` wake shows one fixed line). `browser_hands.py` / `browser_ext_service.py`: the extension over `ws://127.0.0.1:8000/api/browser/ext`, refused while hands are off, through a proxy or tunnel (any forwarding header), from a non-loopback peer, or from any extension but Edward's own (the manifest's public `key` fixes its ID, `routers/browser_ext.EDWARD_EXTENSION_ID`; `EDWARD_CHROME_EXTENSION_ID` replaces it; a refusal logs the offered ID; a clone built with the same key, or a local program, can still pass); a dead link is recovered after 90 s by relaunching a renderer-less Chrome, never one with windows.
+
+**Design and presence** ([design-and-presence.md](docs/architecture/design-and-presence.md); contract `docs/design-system-2026-09-25.md`: read it before changing a screen). One live Edward per screen with one plain line. **The animation is a claim, so it must be true**: every mood comes from a real signal (`lib/edwardMood.ts::deriveMood`; `GET /api/mind/now`). **Emerald means Edward**; the owner's own primary actions are neutral (`variant="primary"`), and status colours never borrow emerald. One loop per screen; loading is Edward's breathing pip, never `Loader2 animate-spin`; reduced motion is ≤ 120 ms fades; 44 pt targets. Copy is his voice, first person, sentence case; **one clock format, "7:34 pm"** (`lib/time.ts`). **No `[class*=` selectors in global CSS**. `/login`, `AuthGuard`, `/hub` and `/screen` import primitives by leaf path, never the `components/ui` barrel; `cn` lives in `components/ui/cn.ts`.
+
+**Today and Chat** ([app-shell-today-chat.md](docs/architecture/app-shell-today-chat.md)): `today_service.compose_today()` is pure and pinned; the page paints from cache and revalidates; needs never flood (one card per thread); "Sent" only when `delivered`; **no key ever acts on a held send**: a send goes out from the owner's number, so it is always a deliberate tap. Chat: **the URL is the source of truth** (`/chat?c=<id>`): **never call `loadConversation` from a click handler; push the URL.** The API emits Z-suffixed UTC; **never `new Date(iso)` directly** (`lib/time.ts::parseIso`). **Thinking and tool use are always visible: never hide them behind a debug flag.** Every backend tool needs a label in `lib/toolLabels.ts`. `lib/turnModel.ts` folds every SSE event into one live bubble. Drafts and attachments stay with their thread (`lib/drafts.ts`); typed text queues while a turn runs. A new build reloads the app only when the owner is idle.
+
+**The Edward tab** ([settings.md](docs/architecture/settings.md)): `/settings`; five rooms (Mind, Memory, Attention, Work, House). Every slug lives in exactly one room: adding a panel means adding it to `ROOM_SLUGS` in `settingsRooms.ts` **and** `settingsIndex.ts`. Titles speak to the owner (`heartbeat` is Listening). Only the panel page imports `settingsConfig.tsx`.
+
+**The household hub** ([hub.md](docs/architecture/hub.md)): `backend/services/hub_*.py`, `routers/hub.py`, `frontend/app/(display)/hub/`; pure logic in `hub/lib/*.ts`, tested. Pets and care come from a seed file (`EDWARD_HUB_SEED`, see `backend/hub_seed.example.json`) planted once into an empty board; people from `EDWARD_HOUSEHOLD` (`GET /api/hub/who`; themes by position); the care day is in the settings time zone. **Design rules that must not be "improved" away:**
+1. **Alert fatigue is the top risk.** `schedule_type="window"` items (a cat's wet food, "twice daily, whenever") NEVER go overdue. Only `timed` items (a dog's 06:00/18:00 medication) alert.
+2. **`missed` (>4h late) stops alerting** but is still recorded.
+3. **Status colours are fixed across user themes**: "Overdue" means the same thing whoever is at the screen.
+4. **A photo in a visible slideshow slot is never mutated.** New photos go into the hidden slot, then visibility flips.
+5. **`needs_review` items render with a badge** rather than looking authoritative (a dose copied from a pet-sitter's note).
+
+`/hub/settings` deliberately has no "Restart Edward" button on a shared-password wall panel. Photos live in `EDWARD_PHOTOS_DIR`. **The household photo door** (`/photos`, `/api/photo-door/*`, `services/photo_door_auth.py`) is a photos-only login with its own cookie, off unless `PHOTO_DOOR_PASSWORD_HASH` holds a bcrypt hash.
+
+**Voice** ([voice.md](docs/architecture/voice.md)): ElevenLabs end to end (`voice_service.py`, `services/voice/`, `routers/voice_ws.py`): memos (batch Scribe) and live voice (`WS /api/voice/ws`: Scribe realtime + PCM TTS) on the `voice` route; bridges when the first token is late; barge-in on ≥ 2 words; long tool turns hand off and continue detached. `/hub/ask`'s turns run as `hub_voice` (someone in the home), never as the owner.
+
+**Integrations** ([integrations.md](docs/architecture/integrations.md)): skills (`skills_service.py`) gate messaging (iMessage AppleScript, Twilio, WhatsApp MCP), Brave search, Apple Services (apple-mcp: a clone at `MCP_APPLE_DIR` run by bun) and the widget. Removed: the code sandboxes, Find My, USPS tracking, LangSmith. Every MCP call is bounded (`MCP_CALL_TIMEOUT_SECONDS`). Every send goes through `_send_guard` (already-sent, stand-downs, never the owner from the mind). **Twilio webhooks fail closed**: 403 unless `X-Twilio-Signature` is valid for `TWILIO_AUTH_TOKEN`; then **only the owner's handles get a turn** (`EDWARD_OWNER_HANDLES`), anyone else's text is held (ledger `twilio_inbound`, no reply, no push) unless `EDWARD_TWILIO_ANSWER_ANYONE=on`. The widget token is owner-equivalent (`POST /api/widget/chat` runs owner turns). **Alexa inbound is not signature-verified** (only the skill id, and an Alexa turn counts as the owner): leave `ALEXA_SKILL_ID` unset unless you use it (see the `ADAPT:` note in `routers/alexa.py`). Custom MCP servers (`custom_mcp_service.py`: npx/uvx, prefixed tools, an allowlisted environment) are outward tools; `env_vars` are plaintext.
+
+**Ledgers and health** ([ledgers.md](docs/architecture/ledgers.md)): `turn_log` (one row per LLM turn, no text), `self_observations` (tool failures), `user_signals`, `ledger_events`; 30-day retention; `llm_calls` kept 400 days. **Start a health check at `GET /api/health/report`** (pings, calendar, proactivity's trust line), then `GET /api/health/spend`, then psql. The watchdog (`scripts/health_check.sh`) checks bottom-up (Postgres → backend → frontend → the tunnel if `EDWARD_TUNNEL_LABEL` → the graph worker if enabled → scheduler liveness) and never restarts the app onto a dead dependency; daily: disk, backup freshness, the memory pipeline, and with `EDWARD_HEALTH_HUB_KIOSK` / `EDWARD_HEALTH_EMAIL` the kiosk and mail. Max 3 restarts per component per hour; `EDWARD_HEALTH_NOTIFY_CMD` runs when something needs a human.
+
+**Data** ([data-model.md](docs/architecture/data-model.md)): `services/database.py` is the source of truth; `init_db` migrates in place and drops retired tables. Every naive timestamp is UTC stamped from Python. The legacy heartbeat sub-engine tables are still created but nothing writes them.
+
+## Frontend routes
 
 | Route | Auth | Description |
 |-------|------|-------------|
-| `/` | Public | Redirects to `/login` |
-| `/login` | Public | Password login (AuthProvider only, no app shell) |
-| `/chat` | Protected | Main chat interface (full app shell) |
-| `/settings` | Protected | Settings page |
+| `/` | Public | Redirects to `/login` (`app/(public)/page.tsx`), which sends the owner on to `/today` |
+| `/login` | Public | The password (or first-time setup), then `?redirect=` or `/today` (`lib/loginFlow.ts`) |
+| `/today` | Protected | Front door (PWA `start_url`): what needs the owner, today's digest, "What I did", conversations |
+| `/inbox` | Protected | Redirects to `/today` |
+| `/chat` | Protected | Chat. `?c=<id>` is the conversation, `?prompt=` fills the composer, `?voice=1` opens live voice once |
+| `/settings`, `/settings/room/{room}`, `/settings/all`, `/settings/{slug}` | Protected | The Edward tab, a room, every panel A–Z, one panel (retired slugs redirect, `settingsRedirects.ts`) |
+| `/screen` | Protected | Edward's stage on the host Mac's screen (`/display`, `/fullscreen` are aliases) |
+| `/hub`, `/hub/pets`, `/hub/today`, `/hub/lists`, `/hub/ask`, `/hub/timers`, `/hub/health`, `/hub/settings`, `/hub/idle` | Protected | The household hub: home, feeding and meds, calendar, lists, voice, timers, vitals, the panel's controls, the photo screensaver |
+| `/photos` | Photo door | The household photo door: the hub's photos, its own password (`PHOTO_DOOR_PASSWORD_HASH`) |
+| `/build-id` | Public | Next route (not the backend): `{"build_id": …}`, no-store |
 
-Route wrappers controlled by `ConditionalLayout.tsx`:
-- `/` → redirects to `/login`
-- `/login` → `<AuthProvider>` only
-- Everything else → `<AuthProvider>` → `<AuthGuard>` → `<ChatProvider>` → `<ClientLayout>`
+Each route group's `layout.tsx` owns its wrappers: `app/layout.tsx` (root: fonts, the theme boot script, the one `ToastProvider`, `metadataBase` from `NEXT_PUBLIC_BASE_URL`); `(public)` → the `/` redirect; `(auth)` → `<AuthProvider>`; `(app)` → `<AuthProvider>` → `<AuthGuard>` → `<TimezoneProvider>` → `<ChatProvider>` → `<AppBuildReload>` + `<EdwardPresenceProvider>` → `<ClientLayout>`; `(display)` → `useBuildReload("display")`, `<AuthProvider>` → `<AuthGuard>` → `<TimezoneProvider>` (no shell, no chat); `app/photos/` → its own layout and manifest. The optimistic `localStorage` hint (`edward_auth_hint`) keeps a cold open from waiting; `AuthGuard` waits as a still Edward, never a spinner.
 
-Single `AuthProvider` shared across `/login` and authenticated routes to preserve auth state during navigation. `AuthContext` uses sessionStorage hint for optimistic rendering (eliminates spinner flash on refresh).
+## API endpoints
 
-### Startup Order (`main.py` lifespan)
+Everything is under `/api` and needs the `edward_token` cookie unless marked public. Descriptions and the full list are in [api.md](docs/architecture/api.md). Gone: `/api/waitlist`, the LangSmith and trace debug routes, `/api/wakeup/*`.
 
-Init order matters — tool registry must come after skills/MCP:
+| Area | Routes |
+|---|---|
+| Chat | `POST /api/chat` (SSE), `POST /api/chat/simple`, `GET /api/chat/{id}/processing`, `GET /api/greeting/stream?fresh=1`, `POST /api/greeting` |
+| Conversations | `GET /api/conversations` (`?group=yours\|edwards`), `GET/PATCH/DELETE /api/conversations/{id}` |
+| Today | `GET /api/today`, `POST /api/today/heartbeat/{event_id}/done`, `GET /api/notes`, `POST /api/notes/{id}/dismiss`, `GET /api/journal/week` |
+| Mind | `GET /api/mind/now`, `POST /api/mind/wake` (202), `GET /api/mind/recent`, `GET /api/mind/log`, `GET /api/mind/intentions`, `POST /api/mind/verdict` |
+| Approvals, signals | `GET /api/approvals`, `GET/POST /api/approvals/{id}`, `GET/POST /api/signals` |
+| Memory | `GET /api/memories`, `GET/PATCH/DELETE /api/memories/{id}`, `GET /api/memories/{id}/provenance`, `POST /api/memories/forget`, `GET /api/memories/context`, `POST /api/memories/backfill-temporal\|backfill-tiers` |
+| Documents | `GET/POST /api/documents`, `GET/PATCH/DELETE /api/documents/{id}` |
+| Consolidation | `GET /api/consolidation/status`, `PATCH /api/consolidation/config`, `GET /api/consolidation/cycles`, `POST /api/consolidation/trigger`, `GET /api/consolidation/connections`, `GET /api/consolidation/flags`, `GET/PATCH /api/consolidation/flags/{id}`, `POST /api/consolidation/flags/{id}/resolve` |
+| Memory graph | `POST /api/memory/graph/backfill`, `GET /api/memory/graph/backfill/status`, `GET /api/memory/graph/status` |
+| Events | `GET/POST /api/events`, `GET/PATCH/DELETE /api/events/{id}` |
+| Workers | `GET /api/orchestrator/tasks`, `GET /api/orchestrator/tasks/{id}`, `GET …/{id}/events`, `POST …/{id}/message`, `POST …/{id}/cancel`, `GET /api/orchestrator/status`, `GET/PATCH /api/orchestrator/config` |
+| Wishlist | `GET/POST /api/wishlist`, `PATCH/DELETE /api/wishlist/{id}` |
+| Settings, health | `GET/POST /api/settings`, `GET /api/settings/models`, `GET /api/settings/codex-usage`, `GET /api/health/report`, `GET /api/health/spend`, `GET /api/health/email`, `GET /api/usage`, `GET /api/proactive/status`, `GET/PATCH /api/proactive/config`, `GET /api/proactive/entities`, `GET /api/proactive/open-loops`, `PATCH /api/proactive/open-loops/{id}` |
+| Skills, MCP, storage | `GET /api/skills`, `PATCH /api/skills/{id}`, `POST /api/skills/reload`, `GET /api/custom-mcp`, `PATCH/DELETE /api/custom-mcp/{id}`, `POST /api/custom-mcp/{id}/restart`, `GET /api/files`, `POST /api/files/upload`, `GET/PATCH/DELETE /api/files/{id}`, `GET /api/files/{id}/download`, `GET /api/databases`, `GET/DELETE /api/databases/{name}`, `GET /api/databases/{name}/tables`, `GET …/tables/{table}/columns` |
+| Debug | `GET /api/debug/graph`, `GET /api/debug/health`, `GET /api/debug/memories`, `GET /api/debug/memories/stats`; `GET /health`, `GET /` (outside `/api`) |
+| Heartbeat | `GET /api/heartbeat/status`, `PATCH /api/heartbeat/config`, `GET /api/heartbeat/events`, `GET /api/heartbeat/triage`, `POST /api/heartbeat/triage/run`, `GET /api/heartbeat/act-queue` (retired, empty), `GET /api/heartbeat/recent-senders`, `GET /api/heartbeat/jarvis-metrics`, `POST /api/heartbeat/events/{id}/feedback`, `GET /api/heartbeat/feedback` |
+| Email, Gmail, Alexa | `GET /api/email/actions\|preferences\|sender-stats\|unsub-queue`, `PUT/DELETE /api/email/preferences/{domain}`, `POST /api/email/unsub-queue/{id}/approve\|skip`, `GET /api/gmail/status`, `GET /api/gmail/oauth/url`, `GET /api/gmail/oauth/callback` (public), `POST /api/gmail/disconnect`, `POST /api/alexa` (public), `GET /api/alexa/status`, `POST /api/alexa/test` |
+| Presence, webhooks | `POST /api/presence/beacon` (public, token in body), `GET /api/presence/state`, `GET /api/presence/stream` (public, token-checked), `POST /api/webhook/twilio`, `POST /api/webhook/twilio/whatsapp` (both public, Twilio-signed), `GET /api/webhook/twilio/status` |
+| Push | `GET /api/push/vapid-key` (public), `GET /api/push/status` (public), `POST /api/push/subscribe\|unsubscribe\|test`, `GET /api/push/log`, `POST /api/push/ack`, `POST /api/push/snooze` |
+| Widget | `GET /api/widget?token=` (public), `POST /api/widget/chat` (public, token-checked), `GET /api/widget/token`, `POST /api/widget/token/regenerate`, `POST /api/widget/refresh`, `POST /api/widget/pulse` |
+| Voice | `GET /api/voice/status`, `POST /api/voice/transcribe`, `POST /api/voice/synthesize`, `WS /api/voice/ws` |
+| Screen, display, browser | `GET /api/screen`, `POST/DELETE /api/screen/show`, `PUT/DELETE /api/screen/scene`, `GET /api/screen/live`, `GET /api/screen/look`, `POST /api/screen/window`, `GET /api/display/{signals,alerts,calendar,memory_ticker,now_thinking,recents,vitals,workers}`, `GET/PATCH /api/display/settings`, `GET /api/browser/status`, `GET /api/browser/ext/status`, `POST /api/browser/act`, `WS /api/browser/ext` (the extension, direct from this Mac) |
+| Hub | `GET /api/hub/board`, `POST/DELETE /api/hub/care/{item_id}/log`, `GET /api/hub/lists`, `POST /api/hub/lists/{name}/items`, `PATCH/DELETE /api/hub/lists/items/{id}`, `GET/POST/DELETE /api/hub/canvas`, `GET/POST /api/hub/who`, `GET /api/hub/health`, `GET/PATCH /api/hub/settings`, `GET/POST /api/hub/photos`, `GET/DELETE /api/hub/photos/{name}` |
+| Photo door | `GET /api/photo-door/auth/status`, `POST /api/photo-door/auth/login\|logout` (public), `GET/POST /api/photo-door/photos`, `GET/DELETE /api/photo-door/photos/{name}`, `GET /api/photo-door/photos/{name}/thumb`, `POST /api/photo-door/photos/{name}/rotate`, `GET/PATCH /api/photo-door/settings` |
+| Auth | `GET /api/auth/status`, `POST /api/auth/setup`, `POST /api/auth/login` (all three public), `POST /api/auth/logout`, `POST /api/auth/change-password` |
 
-1. `init_db()` + `initialize_graph()` — DB tables + LangGraph checkpoint store
-2. `init_skills()` — Load skill enabled states
-3. MCP clients — WhatsApp, Apple Services subprocesses
-4. Custom MCP servers — User-added servers from DB
-5. Tool registry — Must be after all tool sources are initialized
-6. Scheduler — Polls every 30s for due scheduled events
-7. Heartbeat — iMessage listener + triage loop
-8. Consolidation — Hourly memory clustering
-9. Evolution — Check for pending deploys after restart
-10. Orchestrator — Recover crashed worker tasks
+## Environment variables
 
-All have matching shutdown hooks in reverse order.
+In `.env` at the repo root (`./setup.sh` creates it from `.env.example`, which describes every setting; never commit it). The backend and the scripts read it with the environment winning; nothing exports it whole. Most values are read per call. The main ones, with their defaults:
 
-### LangGraph Flow
 ```
-preprocess → retrieve_memory → respond → extract_memory → END
-                  ↓                ↓              ↓
-            [pgvector search]  [tool loop]  [LLM extraction]
-                  ↓                ↓              ↓
-            ┌───────────────────────────────────────────────────────┐
-            │              memories table (pgvector)                │
-            └───────────────────────────────────────────────────────┘
-
-Tool loop (in respond node):
-┌─────────────────────────────────────────┐
-│  LLM response                           │
-│       ↓                                 │
-│  tool_calls? ──yes──> execute tools     │
-│       │                     ↓           │
-│       no              add ToolMessage   │
-│       ↓                     ↓           │
-│    stream response    loop (max 5x)     │
-└─────────────────────────────────────────┘
-```
-
-### Key Components
-
-**LangGraph Agent** (`backend/services/graph/`)
-- `state.py` - AgentState with messages, memories, node tracking
-- `nodes.py` - preprocess, retrieve_memory, respond, extract_memory nodes
-- `graph.py` - Graph construction and structure export
-- `streaming.py` - SSE streaming with tool call loop and PostgreSQL checkpointing
-- `tools.py` - Memory, document, messaging, search, code execution, and scheduled event tool definitions
-
-**Tool Registry** (`backend/services/tool_registry.py`)
-- Central tool management - dynamically loads tools based on skill state
-- Uses short-lived cache (5s TTL) to avoid DB queries per request
-- `get_available_tools()` returns filtered list for LLM binding
-- Call `refresh_registry()` after skill enable/disable changes
-- Memory, document, and scheduled event tools always available; other tools gated by skills
-
-**Memory System** (`backend/services/memory_service.py`)
-- Embedding: sentence-transformers (all-MiniLM-L6-v2, 384 dims)
-- Search: Hybrid 70% vector similarity + 30% BM25 keyword
-- Memory types: `fact`, `preference`, `context`, `instruction`
-- Extraction: Uses Claude Haiku 4.5 to identify memorable info from conversations
-
-**Document Store** (`backend/services/document_service.py`)
-- Persistent storage for full documents (recipes, notes, reference guides, pet records, etc.)
-- Embedding: same sentence-transformers model as memories, embeds `title + content[:500]`
-- Search: Hybrid 70% vector + 30% BM25 (same weights as memories)
-- Automatically surfaces relevant document titles in LLM context (title + ID only)
-- LLM reads full content on demand via `read_document` tool
-- Tools: `save_document`, `read_document`, `edit_document`, `search_documents`, `list_documents`, `delete_document`
-- Always available (not skill-gated)
-- REST API: `GET/POST /api/documents`, `GET/PATCH/DELETE /api/documents/{id}`
-- Frontend: DocumentBrowser in settings page
-
-**Custom MCP Servers** (`backend/services/custom_mcp_service.py`, `backend/services/custom_mcp_tools.py`)
-- Self-service: Edward can discover, install, and use MCP servers autonomously at runtime
-- Servers run as subprocesses via `npx` (Node.js) or `uvx` (Python) — no git clone needed
-- Tool prefixing: each server's tools get prefixed with server name to avoid collisions
-- Hot-reload: new tools available immediately via `refresh_registry()`
-- LLM tools (always available): `search_mcp_servers`, `add_mcp_server`, `list_custom_servers`, `remove_mcp_server`
-- REST API: `GET /api/custom-mcp`, `PATCH /api/custom-mcp/{id}`, `DELETE /api/custom-mcp/{id}`
-- Frontend: CustomMCPPanel in settings page ("Edward's Servers")
-- DB table: `custom_mcp_servers` (separate from hardcoded skills)
-- GitHub search uses `GITHUB_TOKEN` env var for API access
-
-**Skills System** (`backend/services/skills_service.py`)
-- Manages integrations (iMessage AppleScript, Twilio SMS, Twilio WhatsApp, WhatsApp MCP, Brave Search, Code Interpreter, JavaScript Interpreter, SQL Database, Shell/Bash, Apple Services, HTML Hosting)
-- Tracks enabled/disabled state in database
-- Reports connection status for each skill
-- Initializes MCP client on skill enable (not just DB toggle)
-- Supports hot-reload via `POST /api/skills/reload`
-
-**Brave Search** (`backend/services/brave_search_service.py`)
-- Web search via Brave Search API
-- Page content extraction using trafilatura
-- Tools: `web_search`, `fetch_page_content`
-
-**HTML Hosting** (`backend/services/html_hosting_service.py`)
-- Create, update, and delete hosted HTML pages on html.zyroi.com
-- Uses v2 JSON API with `X-API-Key` authentication
-- Tools: `create_hosted_page`, `update_hosted_page`, `delete_hosted_page`, `check_hosted_slug`
-
-**Execution System** (`backend/services/execution/`)
-- Shared base: `base.py` with `ExecutionResult`, sandbox management, `run_subprocess()` helper
-- **Python** (`python_execution.py`): Sandboxed via subprocess, blocked dangerous modules
-- **JavaScript** (`javascript_execution.py`): Node.js subprocess, blocked network/child_process modules
-- **SQL** (`sql_execution.py`): Per-conversation SQLite database, 500 row limit, 50MB max DB
-- **Shell** (`shell_execution.py`): Bash with blocklist (sudo, curl, docker, etc.), restricted env
-- `code_execution_service.py` is a thin re-export shim for backwards compatibility
-- Per-conversation working directories (persisted between turns)
-- 30-second timeout, 100KB output limit, automatic cleanup (24h)
-
-**Scheduled Events** (`backend/services/scheduled_events_service.py`, `backend/services/scheduler_service.py`)
-- Self-triggering system: Edward can schedule future actions (reminders, messages, tasks)
-- Events stored in PostgreSQL `scheduled_events` table
-- In-process asyncio loop polls every 30s for due events
-- Executes events via `chat_with_memory()` — Edward has full tool access when processing
-- Supports one-time and recurring events (cron patterns via `croniter`)
-- Atomic pickup: `SELECT ... FOR UPDATE` prevents double-firing
-- Failed recurring events still advance to next fire time
-- LLM tools: `schedule_event`, `list_scheduled_events`, `cancel_scheduled_event` (always available)
-- REST API: `GET/POST /api/events`, `GET/PATCH/DELETE /api/events/{id}`
-
-**LangSmith Trace Inspection** (`backend/services/langsmith_service.py`)
-- Lazy singleton LangSmith `Client`, returns `None` if not configured
-- Queries traces by `thread_id` metadata using `and(in(metadata_key, ["thread_id"]), eq(metadata_value, "..."))` filter
-- LangGraph creates flat root-level runs (not nested) — groups runs into conversation turns by timestamp proximity
-- `get_latest_trace()` returns all runs in the most recent turn with aggregated latency/tokens
-- Frontend: `TraceInspector` component in Debug Panel shows per-run timing bars, token counts, type badges
-- Hidden entirely when LangSmith env vars are not configured
-
-**Frontend State** (`frontend/lib/ChatContext.tsx`)
-- React Context for chat state management
-- Handles conversation selection, message history, streaming state
-
-**Database** (`backend/services/database.py`)
-- `settings` - Assistant configuration (includes `password_hash` for auth)
-- `memories` - Long-term memory with vector embeddings (includes `temporal_nature`, `updated_at`)
-- `conversations` - Conversation metadata and titles (includes `source`, `channel`, `notified_user`, `search_tags`)
-- `checkpoints` - LangGraph persistence (managed by langgraph-checkpoint-postgres)
-- `external_contacts` - SMS/WhatsApp contact to conversation mapping (with `last_channel` for reply routing)
-- `skills` - Integration enabled state
-- `scheduled_events` - Scheduled reminders, messages, and tasks
-- `documents` - Persistent document store with vector embeddings
-- `memory_enrichments` - Reflection service output (Haiku-generated queries + results)
-- `memory_connections` - Links between related memories (from consolidation)
-- `memory_flags` - Memory quality/staleness markers (from consolidation)
-- `consolidation_cycles` - Consolidation run metrics
-- `consolidation_config` - Consolidation settings (enabled, interval, etc.)
-- `heartbeat_events` - iMessage/external message events
-- `triage_results` - Heartbeat triage cycle metrics
-- `heartbeat_config` - Heartbeat configuration
-- `push_subscriptions` - Web Push subscription endpoints and keys
-- `files` - Persistent file storage metadata
-- `widget_state` - iOS Scriptable widget content and theme
-- `widget_tokens` - Widget access tokens
-- `persistent_databases` - Named PostgreSQL schema metadata
-- `custom_mcp_servers` - User-added MCP server configurations
-- `claude_code_sessions` - Claude Code session execution tracking
-- `evolution_config` - Self-evolution settings
-- `evolution_history` - Evolution cycle records and outcomes
-- `orchestrator_tasks` - Worker agent task queue
-- `orchestrator_config` - Orchestrator settings
-
-**Messaging Services** (`backend/services/`)
-- `twilio_service.py` - SMS and WhatsApp send/receive via Edward's phone number
-- `mcp_client.py` - MCP client management for multiple integrations:
-  - WhatsApp via whatsapp-mcp bridge
-  - Apple Services via apple-mcp (Calendar, Reminders, Notes, Mail, Contacts, Maps, Messages)
-- `imessage_service.py` - iMessage via AppleScript (macOS)
-- `routers/webhooks.py` - Twilio inbound webhooks for SMS and WhatsApp (processes async, responds via API not TwiML)
-
-Messaging tools available to LLM:
-- `send_message` - Smart routing (default: Twilio SMS, WhatsApp if contact last used WhatsApp, or iMessage when requested)
-- `send_sms` - Direct Twilio SMS
-- `send_whatsapp` - Direct Twilio WhatsApp
-- `send_imessage` - Send as user via iMessage
-- `get_recent_messages` - Read user's iMessage history
-- WhatsApp MCP tools (prefixed `whatsapp_*`) - Read/send WhatsApp as user via whatsapp-mcp bridge
-
-Code execution tools available to LLM (when skill enabled):
-- `execute_code` - Execute Python code and return results
-- `execute_javascript` - Execute JavaScript code via Node.js
-- `execute_sql` - Execute SQL queries against per-conversation SQLite
-- `execute_shell` - Execute shell commands in sandbox
-- `list_sandbox_files` - List files in the conversation's sandbox (shared across execution skills)
-- `read_sandbox_file` - Read a file from the sandbox (shared across execution skills)
-
-Document tools available to LLM (always available):
-- `save_document` - Save a new document to the store
-- `read_document` - Read full content of a stored document
-- `edit_document` - Update a document's title, content, or tags
-- `search_documents` - Semantic search across documents
-- `list_documents` - List all stored documents
-- `delete_document` - Remove a document
-
-Scheduled event tools available to LLM (always available):
-- `schedule_event` - Schedule a future action, reminder, or message
-- `list_scheduled_events` - List upcoming/past events
-- `cancel_scheduled_event` - Cancel a scheduled event
-
-Search tools available to LLM (when skill enabled):
-- `web_search` - Search the web using Brave Search
-- `fetch_page_content` - Get full content of a web page
-
-HTML hosting tools available to LLM (when skill enabled):
-- `create_hosted_page` - Publish an HTML page to html.zyroi.com
-- `update_hosted_page` - Update an existing hosted page
-- `delete_hosted_page` - Delete a hosted page
-- `check_hosted_slug` - Check if a URL slug is available
-
-Apple Services tools available to LLM (when apple_services skill enabled):
-- Calendar tools - Read/manage calendar events
-- Reminders tools - Manage user's Apple Reminders (NOT for Edward's internal scheduling)
-- Notes tools - Read/create notes
-- Mail tools - Read/send emails via Apple Mail.app
-- Contacts tools - Search/read contacts
-- Maps tools - Location and directions
-
-Custom MCP tools available to LLM (always available):
-- `search_mcp_servers` - Search GitHub for MCP server packages
-- `add_mcp_server` - Install and start a new MCP server (npx/uvx)
-- `list_custom_servers` - List all custom servers with status
-- `remove_mcp_server` - Stop and remove a custom server
-
-File storage tools available to LLM (always available):
-- `save_to_storage` - Move sandbox file to persistent storage
-- `list_storage_files` - List stored files with filters (category, tags)
-- `get_storage_file_url` - Get download URL for a file
-- `read_storage_file` - Read text file contents
-- `tag_storage_file` - Update file metadata (description, tags, category)
-- `delete_storage_file` - Delete a stored file
-
-Persistent database tools available to LLM (always available):
-- `create_persistent_db` - Create a named PostgreSQL schema
-- `query_persistent_db` - Execute SQL against a persistent database
-- `list_persistent_dbs` - List all persistent databases
-- `delete_persistent_db` - Delete a persistent database
-
-Widget tools available to LLM (always available):
-- `update_widget` - Update iOS widget state (title, subtitle, sections, theme)
-- `get_widget_state_tool` - Get current widget state
-- `update_widget_code` - Store raw Scriptable JavaScript
-- `clear_widget_code` - Clear custom script, revert to structured data
-
-Push notification tools available to LLM (always available):
-- `send_push_notification` - Send Web Push notification to all subscribed devices
-
-Contact tools available to LLM (always available on macOS):
-- `lookup_contact` - Search macOS Contacts by name
-- `lookup_phone` - Reverse phone number lookup
-
-**Heartbeat System** (`backend/services/heartbeat/`)
-- Monitors iMessage, Apple Calendar, and Apple Mail for incoming items requiring attention
-- Multi-track listener architecture with per-track enable/disable and polling intervals
-- Multi-layer triage: Layer 1 rules (zero cost) → Layer 2 Haiku classification → Layer 3 execute (memory/chat/push)
-- `listener_imessage.py` - Polls `~/Library/Messages/chat.db` every 10s (Apple timestamps = date/1e9 + 978307200)
-- `listener_calendar.py` - Polls Apple Calendar via MCP tools for upcoming events (configurable lookahead)
-- `listener_email.py` - Polls Apple Mail via MCP tools for unread emails (filters by `@edward` mentions)
-- `triage_service.py` - Classifies messages and decides action (ignore, remember, respond, push)
-- `heartbeat_service.py` - Orchestrates all listeners + triage, injects briefing into system prompt
-- DB tables: `heartbeat_events`, `triage_results`, `heartbeat_config`
-- `heartbeat_config` supports per-track fields: `calendar_enabled`, `calendar_poll_seconds`, `calendar_lookahead_minutes`, `email_enabled`, `email_poll_seconds`
-- REST API: `GET /api/heartbeat/status`, `GET /api/heartbeat/events`, `GET /api/heartbeat/triage`, `PATCH /api/heartbeat/config`
-- Frontend: HeartbeatPanel in settings page (timeline view + config)
-
-**Memory Reflection** (`backend/services/reflection_service.py`)
-- Post-turn fire-and-forget enrichment of conversation context
-- Generates 3-5 Haiku queries to find related memories, stores results in `memory_enrichments` table
-- Enrichments loaded on the next turn to provide deeper context
-- Runs asynchronously after each conversation turn (no latency impact)
-
-**Deep Retrieval** (`backend/services/deep_retrieval_service.py`)
-- Pre-turn gated multi-query memory search for complex conversations
-- Runs 4 parallel queries (original + 3 Haiku-rewritten) when message is short or turn_count >= 3
-- Context budget: MAX_MEMORY_CONTEXT_CHARS=8000
-
-**Memory Consolidation** (`backend/services/consolidation_service.py`)
-- Hourly background loop that clusters related memories via Haiku
-- Creates `memory_connections` (links between related memories) and `memory_flags` (quality/staleness markers)
-- DB tables: `memory_connections`, `memory_flags`, `consolidation_cycles`, `consolidation_config`
-- Disabled by default (`consolidation_config.enabled = False`), enable via `PATCH /api/consolidation/config`
-- REST API: `GET/PATCH /api/consolidation/config`, `GET /api/consolidation/status`
-
-**Push Notifications** (`backend/services/push_service.py`, `backend/routers/push.py`)
-- Self-hosted Web Push via VAPID authentication
-- Tracks failed deliveries, auto-deactivates subscriptions after 3 failures
-- DB table: `push_subscriptions` (endpoint, keys, is_active, failed_count)
-- LLM tool: `send_push_notification(title, body, url?)` (always available)
-- REST API: `GET /api/push/vapid-key`, `POST /api/push/subscribe`, `POST /api/push/unsubscribe`, `GET /api/push/status`, `POST /api/push/test`
-- Requires `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` environment variables
-
-**File Storage** (`backend/services/file_storage_service.py`, `backend/routers/files.py`)
-- Persistent file storage with categories, tags, and metadata tracking
-- Hex-prefix sharding on disk (`{id[0:2]}/{id}_{filename}`)
-- Supports upload, download, sandbox-to-storage move, text file reading
-- DB table: `files` (filename, stored_path, mime_type, size_bytes, category, tags, source)
-- 50 MB max file size, whitelist of allowed MIME types
-- LLM tools (always available): `save_to_storage`, `list_storage_files`, `get_storage_file_url`, `read_storage_file`, `tag_storage_file`, `delete_storage_file`
-- REST API: `GET/POST /api/files`, `GET/PATCH/DELETE /api/files/{id}`, `GET /api/files/{id}/download`
-- `FILE_STORAGE_ROOT` env var (default: `./storage`)
-
-**Persistent Databases** (`backend/services/persistent_db_service.py`, `backend/routers/databases.py`)
-- Named PostgreSQL schemas that persist across conversations (unlike per-conversation SQLite)
-- Each "database" is a schema `edward_db_<name>` within the main PostgreSQL database
-- SQL query validation with blocked patterns (DROP SCHEMA, GRANT, pg_* functions, etc.)
-- Max 10 databases per user, 500 row limit, 30s query timeout
-- LLM tools (always available): `create_persistent_db`, `query_persistent_db`, `list_persistent_dbs`, `delete_persistent_db`
-- REST API: `GET /api/databases`, `GET/DELETE /api/databases/{name}`, `GET /api/databases/{name}/tables`
-
-**Widget Service** (`backend/services/widget_service.py`, `backend/routers/widget.py`)
-- iOS home screen widget via Scriptable app with token-based public access
-- Supports structured data (sections with title/items) or raw Scriptable JavaScript
-- Auto-generates content from scheduled events + memory stats when no custom state set
-- DB tables: `widget_state` (title, subtitle, theme, sections, script), `widget_tokens` (token, is_active)
-- LLM tools (always available): `update_widget`, `get_widget_state_tool`, `update_widget_code`, `clear_widget_code`
-- REST API: `GET /api/widget?token=<token>` (public), `POST /api/widget/chat`, `GET /api/widget/token`, `POST /api/widget/token/regenerate`
-
-**Authentication** (`backend/services/auth_service.py`, `backend/routers/auth.py`)
-- Single-user password auth with JWT tokens and HttpOnly cookie sessions
-- bcrypt password hashing, 30-day JWT expiration, HS256 algorithm
-- Password stored in `settings.password_hash` (one-time setup, then changeable)
-- Middleware validates `edward_token` cookie on protected endpoints
-- REST API: `GET /api/auth/status`, `POST /api/auth/setup`, `POST /api/auth/login`, `POST /api/auth/logout`, `POST /api/auth/change-password`
-- `JWT_SECRET_KEY` env var (defaults to dev key -- change in production)
-
-**Contacts** (`backend/services/contacts_service.py`)
-- macOS Contacts.app lookup via AppleScript (name search + phone reverse lookup)
-- Phone normalization: strips non-digits, keeps last 10 digits
-- LLM tools (always available on macOS): `lookup_contact`, `lookup_phone`
-- No database tables (reads directly from macOS Contacts.app)
-
-**Search Tags** (`backend/services/search_tag_service.py`)
-- Auto-generated search keywords per conversation using Claude Haiku 4.5
-- Generates 5-10 keywords (topics, entities, intents) from last 5 messages
-- Stored in `conversations.search_tags` for full-text search
-- Runs post-turn automatically (fire-and-forget, no LLM tools exposed)
-
-**Orchestrator** (`backend/services/orchestrator_service.py`, `backend/services/orchestrator_models.py`, `backend/routers/orchestrator.py`)
-- Spawns lightweight worker agents (mini-Edwards) that run within Edward's process via `chat_with_memory()`
-- Workers have full tool access, memory retrieval, and state persistence
-- Worker conversations appear in sidebar with distinct source (`source: "orchestrator_worker"`)
-- DB tables: `orchestrator_tasks`, `orchestrator_config`
-- REST API: `GET/POST /api/orchestrator/tasks`, `GET/PATCH /api/orchestrator/tasks/{id}`, `POST /api/orchestrator/tasks/{id}/cancel`, `GET /api/orchestrator/status`, `GET/PATCH /api/orchestrator/config`
-- Frontend: OrchestratorPanel in settings page (task browser, spawning, cancellation, streaming events)
-
-**Evolution Service** (`backend/services/evolution_service.py`, `backend/services/evolution_models.py`, `backend/routers/evolution.py`)
-- Self-evolution engine: manages pipeline branch -> code -> validate -> test -> review -> merge using Claude Code
-- Merging to main triggers `uvicorn --reload` automatically
-- DB tables: `evolution_config`, `evolution_history`
-- REST API: `GET /api/evolution/status`, `GET /api/evolution/history`, `PATCH /api/evolution/config`, `POST /api/evolution/trigger`, `POST /api/evolution/rollback`
-- Frontend: EvolutionPanel in settings page (evolution cycle history, config, trigger/rollback controls)
-
-**Claude Code Service** (`backend/services/claude_code_service.py`, `backend/services/cc_manager_service.py`)
-- Delegates coding tasks to Claude Code via `claude-agent-sdk`
-- CC Manager bridges Claude Code with orchestrator task system
-- Separate concurrency semaphore from internal workers (prevents starvation)
-- DB table: `claude_code_sessions` (tracks session execution, events streamed to frontend)
-- Frontend: CCSessionBlock component renders inline CC session events in chat UI
-
-### API Endpoints
-
-| Endpoint | Description |
-|----------|-------------|
-| `POST /api/chat` | Streaming chat (SSE) |
-| `POST /api/chat/simple` | Non-streaming chat |
-| `GET/POST /api/settings` | Settings CRUD |
-| `GET /api/conversations` | List conversations |
-| `GET/PATCH/DELETE /api/conversations/{id}` | Conversation CRUD |
-| `GET /api/memories` | List/search memories (with filters) |
-| `GET/PATCH/DELETE /api/memories/{id}` | Memory CRUD |
-| `GET/POST /api/documents` | List/search/create documents |
-| `GET/PATCH/DELETE /api/documents/{id}` | Document CRUD |
-| `GET /api/skills` | List all skills with status |
-| `PATCH /api/skills/{id}` | Enable/disable a skill |
-| `POST /api/skills/reload` | Reinitialize all skills |
-| `POST /api/webhook/twilio` | Twilio SMS inbound webhook |
-| `POST /api/webhook/twilio/whatsapp` | Twilio WhatsApp inbound webhook |
-| `GET/POST /api/events` | List/create scheduled events |
-| `GET/PATCH/DELETE /api/events/{id}` | Event CRUD |
-| `GET /api/debug/graph` | Graph structure for visualization |
-| `GET /api/debug/health` | Component health check |
-| `GET /api/debug/langsmith/status` | Check if LangSmith is configured |
-| `GET /api/debug/traces/{conversation_id}` | List trace summaries for a conversation |
-| `GET /api/debug/traces/{conversation_id}/latest` | Latest trace with all runs |
-| `GET /api/debug/trace/{trace_id}` | All runs in a specific trace |
-| `GET /api/custom-mcp` | List custom MCP servers |
-| `PATCH /api/custom-mcp/{id}` | Enable/disable custom MCP server |
-| `DELETE /api/custom-mcp/{id}` | Remove custom MCP server |
-| `GET /api/auth/status` | Check auth configured + authenticated |
-| `POST /api/auth/setup` | Set initial password |
-| `POST /api/auth/login` | Authenticate with password |
-| `POST /api/auth/logout` | Clear session cookie |
-| `POST /api/auth/change-password` | Change password |
-| `GET /api/push/vapid-key` | Get VAPID public key for subscription |
-| `POST /api/push/subscribe` | Save push subscription |
-| `POST /api/push/unsubscribe` | Remove push subscription |
-| `GET /api/push/status` | Push status + subscription count |
-| `POST /api/push/test` | Send test notification |
-| `GET/POST /api/files` | List/upload files |
-| `GET/PATCH/DELETE /api/files/{id}` | File metadata CRUD |
-| `GET /api/files/{id}/download` | Download file |
-| `GET /api/databases` | List persistent databases |
-| `GET/DELETE /api/databases/{name}` | Database info/delete |
-| `GET /api/databases/{name}/tables` | List tables in database |
-| `GET /api/widget` | Fetch widget JSON (token-authenticated) |
-| `POST /api/widget/chat` | Send message from widget |
-| `GET /api/widget/token` | Get widget token |
-| `POST /api/widget/token/regenerate` | Regenerate widget token |
-| `GET /api/heartbeat/status` | Heartbeat service status |
-| `GET /api/heartbeat/events` | List heartbeat events |
-| `GET /api/heartbeat/triage` | List triage results |
-| `PATCH /api/heartbeat/config` | Update heartbeat config |
-| `GET/PATCH /api/consolidation/config` | Consolidation config |
-| `GET /api/consolidation/status` | Consolidation status |
-| `GET/POST /api/orchestrator/tasks` | List/create orchestrator tasks |
-| `GET/PATCH /api/orchestrator/tasks/{id}` | Task detail/update |
-| `POST /api/orchestrator/tasks/{id}/cancel` | Cancel running task |
-| `GET /api/orchestrator/status` | Orchestrator status |
-| `GET/PATCH /api/orchestrator/config` | Orchestrator config |
-| `GET /api/evolution/status` | Evolution service status |
-| `GET /api/evolution/history` | Evolution cycle history |
-| `PATCH /api/evolution/config` | Evolution config |
-| `POST /api/evolution/trigger` | Trigger evolution cycle |
-| `POST /api/evolution/rollback` | Rollback evolution change |
-
-## Environment Variables
-
-Required in `.env`:
-```
-ANTHROPIC_API_KEY=sk-ant-...
+# Essentials (setup.sh asks)
+EDWARD_OWNER_NAME=                        # unset = "the owner"
+ANTHROPIC_API_KEY=
+EDWARD_LLM_PROVIDER=anthropic             # also when unset; codex = the unofficial fallback
+TIMEZONE=                                 # IANA zone until the app's own setting loads
+# The owner (services/owner.py) and this Mac (services/host_config.py)
+EDWARD_OWNER_FULL_NAME=  EDWARD_OWNER_ALIASES=  EDWARD_OWNER_HANDLES=  EDWARD_OWNER_EMAILS=
+EDWARD_HOUSEHOLD=                         # hub people, owner first
+EDWARD_PUBLIC_BASE_URL=http://localhost:3000   # links, CORS, Edward's own hosts
+EDWARD_PUBLIC_SCREEN_URL=  EDWARD_CORS_ORIGINS=  EDWARD_LIVE_REPO=   # default: base + /screen, -, this checkout
+EDWARD_LAUNCHD_PREFIX=com.meet-edward  EDWARD_TUNNEL_LABEL=  EDWARD_BACKEND_HOST=0.0.0.0
+EDWARD_COOKIE_SECURE=on                   # off = a plain-HTTP LAN you trust
+NEXT_PUBLIC_BASE_URL=  NEXT_PUBLIC_API_URL=      # the frontend's build-time origin / API target
+DATABASE_URL=postgresql+asyncpg://edward:edward@localhost:5432/edward   # tests: TEST_DATABASE_URL on :5433
+# Claude routes and spend
+EDWARD_CLAUDE_CHAT_MODEL=                 # and _EFFORT _MAX_TOKENS _THINKING_DISPLAY _CACHE_TTL, per purpose
+EDWARD_DAILY_SPEND_CAP_USD=5  EDWARD_BACKGROUND_SPEND_SHARE=0.6  EDWARD_INTERACTIVE_RESERVE_USD=3
+EDWARD_CREDITS_START_USD=  EDWARD_CREDITS_START_DATE=   # both set = count prepaid credits down
+EDWARD_TURN_MAX_USD=3.00  EDWARD_AUTONOMOUS_TURN_MAX_USD=1.00
+OPENAI_API_KEY=  CODEX_AUTH_PATH=         # the Codex fallback only
+# Trust, toolset, computer
+EDWARD_EGRESS_SECRET_SCAN=on  EDWARD_TAINT_APPROVALS=off  EDWARD_DRY_RUN_OUTWARD=
+EDWARD_TOOLSET=v2  EDWARD_MAX_TOOL_ROUNDS=60  EDWARD_NATIVE_COMPUTER_TOOLS=on  EDWARD_SERVER_WEB_TOOLS=on
+EDWARD_HOME=~/edward-home  EDWARD_COMPUTER_SANDBOX=on  EDWARD_SHELL_TIMEOUT_S=180  HOMEBREW_PREFIX=
+EDWARD_CHROME_HANDS=off  EDWARD_CHROME_SILENT_DEBUGGER=off
+EDWARD_CHROME_EXTENSION_ID=               # unset: only the manifest key's ID (appf…)
+EDWARD_CALENDAR_SQLITE=on  EDWARD_REMINDERS_SQLITE=on  EDWARD_EVENTKIT=~/edward-eventkit/bin/edward-eventkit
+# Pings, media, noticing
+EDWARD_PINGS=on  EDWARD_PING_FRIEND_TURNS_PER_HOUR=6  EDWARD_MEDIA=on
+EDWARD_FRIENDS_FULL_TOOLSET=off           # on = friends' pings get the shell, Chrome, screens
+EDWARD_MEDIATOOL=~/edward-media/bin/edward-mediatool
+EDWARD_PROACTIVITY=off                    # shadow | notice
+EDWARD_QUIET_HOURS=22-7  EDWARD_NOTICE_PUSH=floor  EDWARD_SPEAK_BUDGET=8  EDWARD_PUSH_BUDGET=
+EDWARD_OWNER_CHANNEL=push                 # push | imessage_self | edward_number
+EDWARD_CARE_WATCH=on
+# Memory and the hub
+EDWARD_SENSITIVE_NAMES=  EDWARD_INSTRUCTION_HORIZON_SINCE=   # unset = no extra names / every instruction
+GRAPHITI_ENABLED=false  GRAPHITI_INGEST_ENABLED=false   # the graph takes both
+EDWARD_HUB_SEED=  EDWARD_PHOTOS_DIR=~/edward-photos  PHOTO_DOOR_PASSWORD_HASH=   # unset = empty board / door off
+# Integrations
+IMESSAGE_ENABLED=true                     # the send path; reading is heartbeat_config.imessage_enabled
+MCP_APPLE_ENABLED=false  MCP_APPLE_DIR=~/apple-mcp  BUN_PATH=~/.bun/bin/bun  MCP_WHATSAPP_ENABLED=false
+EDWARD_MAIL_ENVELOPE_INDEX=~/Library/Mail/V10/MailData/Envelope Index
+TWILIO_ACCOUNT_SID=  TWILIO_AUTH_TOKEN=  TWILIO_PHONE_NUMBER=  TWILIO_WEBHOOK_URL=
+EDWARD_TWILIO_ANSWER_ANYONE=off           # on = strangers' texts get turns too (a risk)
+GMAIL_CLIENT_ID=  GMAIL_CLIENT_SECRET=  GMAIL_ACCOUNT=  ALEXA_SKILL_ID=  BRAVE_SEARCH_API_KEY=
+HTML_HOSTING_URL=  HTML_HOSTING_API_KEY=  # unset = no hosted pages
+ELEVENLABS_API_KEY=  ELEVENLABS_VOICE_ID=
+VAPID_PUBLIC_KEY=  VAPID_PRIVATE_KEY=  VAPID_CONTACT_EMAIL=   # default mailto:admin@localhost
+JWT_SECRET_KEY=                           # else the generated backend/.jwt_secret
+# Backups and the watchdog
+EDWARD_BACKUP_DIR=~/edward-backups  EDWARD_FDA_PYTHON=  EDWARD_HEALTH_STATE=~/.edward-health
+EDWARD_HEALTH_NOTIFY_CMD=  EDWARD_HEALTH_HUB_KIOSK=  EDWARD_HEALTH_EMAIL=
+EDWARD_PG_BIN=                            # default postgresql@16's bin; on PATH after the system's
+# Tests and tooling only, never on the running backend
+EDWARD_FAKE_EMBEDDINGS=1  EDWARD_TEST_PGDATA=~/.edward-test-pg  EDWARD_TEST_BROWSER=1
+EDWARD_HARNESS=1  EDWARD_HARNESS_PYTHON=  EDWARD_BUILD_ID=
 ```
 
-Optional:
-```
-# LangSmith observability
-LANGCHAIN_TRACING_V2=true
-LANGCHAIN_API_KEY=lsv2_pt_...
-LANGCHAIN_PROJECT=edward
+Nothing reads `GITHUB_TOKEN`, `USPS_API_USER_ID` or the LangSmith variables any more.
 
-# Twilio SMS & WhatsApp
-TWILIO_ACCOUNT_SID=AC...
-TWILIO_AUTH_TOKEN=...
-TWILIO_PHONE_NUMBER=+1...
-TWILIO_WEBHOOK_URL=https://your-domain.com/api/webhook/twilio
-TWILIO_WHATSAPP_WEBHOOK_URL=https://your-domain.com/api/webhook/twilio/whatsapp
+## SSE event protocol
 
-# WhatsApp via MCP (requires whatsapp-mcp Go bridge running)
-MCP_WHATSAPP_ENABLED=false
-MCP_WHATSAPP_SERVER_DIR=/path/to/whatsapp-mcp/whatsapp-mcp-server
-
-# Web search via Brave Search API
-BRAVE_SEARCH_API_KEY=BSA...
-
-# Apple Services MCP (macOS only - Calendar, Reminders, Notes, Mail, Contacts, Maps)
-MCP_APPLE_ENABLED=true
-
-# HTML Hosting (html.zyroi.com)
-HTML_HOSTING_API_KEY=...
-HTML_HOSTING_URL=https://html.zyroi.com  # Optional: defaults to this
-
-# Custom MCP server search (GitHub API)
-GITHUB_TOKEN=ghp_...
-
-# Authentication (single-user password)
-JWT_SECRET_KEY=your-secret-key  # Default: dev key -- change in production
-
-# Push Notifications (Web Push via VAPID)
-VAPID_PUBLIC_KEY=...
-VAPID_PRIVATE_KEY=...
-
-# File Storage
-FILE_STORAGE_ROOT=./storage  # Optional: defaults to ./storage
-
-# Claude Code (for evolution service + orchestrator CC tasks)
-# Requires `claude-agent-sdk` in requirements.txt
-# Claude Code CLI must be installed and authenticated on the host
-```
-
-Database defaults to `edward`/`edward`/`edward` (user/password/database).
-
-## Key Integration Points
-
-- Chat streaming uses `ChatAnthropic.astream()` with tool call loop (up to 5 iterations)
-- Frontend parses SSE via `lib/api.ts:streamChatEvents()` async generator (structured events)
-- Memories are retrieved before responding and extracted after
-- LLM tools are bound dynamically via `ToolRegistry.get_available_tools()`
-- Tool availability depends on skill enabled state in database
-- Memory tools (`remember_update`, `remember_forget`, `remember_search`) are always available
-- Document tools (`save_document`, `read_document`, etc.) are always available
-- Scheduled event tools (`schedule_event`, `list_scheduled_events`, `cancel_scheduled_event`) are always available
-- File storage tools (`save_to_storage`, `list_storage_files`, etc.) are always available
-- Persistent database tools (`create_persistent_db`, `query_persistent_db`, etc.) are always available
-- Widget tools (`update_widget`, `get_widget_state_tool`, etc.) are always available
-- Push notification tool (`send_push_notification`) is always available
-- Contact tools (`lookup_contact`, `lookup_phone`) are always available on macOS
-- Scheduler runs in-process, polls every 30s, executes events via `chat_with_memory()`
-- Messaging tools filtered by skill state: twilio_sms, twilio_whatsapp, imessage_applescript, whatsapp_mcp
-- Search tools filtered by skill state: brave_search
-- Code execution tools filtered by skill state: code_interpreter, javascript_interpreter, sql_interpreter, shell_interpreter
-- Apple Services tools filtered by skill state: apple_services
-- HTML hosting tools filtered by skill state: html_hosting
-- Twilio inbound webhooks process SMS and WhatsApp asynchronously to avoid timeouts, responds via API not TwiML
-- WhatsApp and SMS from same phone number share the same external contact and conversation; `last_channel` tracks reply channel
-- MCP client manages multiple subprocess servers: WhatsApp, Apple Services (includes Messages)
-- Conversation state persisted to PostgreSQL via langgraph-checkpoint-postgres
-- Edward's name is fixed (read-only in settings UI)
-- **Reflection**: Fire-and-forget post-turn -- generates Haiku queries to find related memories, stores enrichments for next turn
-- **Deep Retrieval**: Pre-turn gate -- when message is short or turn_count >= 3, runs 4 parallel memory queries for richer context
-- **Consolidation**: Hourly background loop -- clusters memories via Haiku, creates connections and quality flags
-- **Heartbeat**: Multi-track listeners (iMessage, Calendar, Email) poll for events, triage classifies urgency, briefing injected into system prompt
-- **Search Tags**: Post-turn Haiku generates 5-10 keywords per conversation for full-text search
-- **Authentication**: Cookie-based JWT middleware protects all endpoints except `/api/auth/*` and `/api/widget` (token-authenticated)
-- **Orchestrator**: Spawns worker agents via `chat_with_memory()`, workers have full tool access, conversations tracked with `source: "orchestrator_worker"`
-- **Evolution**: Self-coding pipeline using Claude Code (`claude-agent-sdk`), auto-deploys via `uvicorn --reload` on merge
-- **Claude Code**: Separate concurrency from orchestrator workers; sessions tracked in DB and streamed to frontend
-
-## SSE Event Protocol
-
-The chat endpoint emits structured events for real-time UI updates:
+`POST /api/chat` streams `data: {json}\n\n` events (plus a `: heartbeat` comment every 10 s idle). Every event has `type` and `conversation_id` (`services/graph/streaming.py::create_event`, `EventType`); `frontend/lib/api.ts` types them (`StreamEventType`) and `lib/turnModel.ts::reduceTurn` folds them. A crash mid-stream becomes an LLM-voiced `content` + `done`; a client that leaves gets nothing more. Details: [api.md](docs/architecture/api.md#the-chat-stream-sse).
 
 | Event Type | Fields | Description |
 |------------|--------|-------------|
+| `user_message` | `content`, `attachments` | A voice memo's transcript and audio, before the answer (router) |
+| `progress` | `step`, `status`, `message`, `count?`, `tool_name?` | `memory_search`, `dream`, `tool_execution`, `search`, `generating` (+ `retrying`); `tool_loop` + `exhausted` when the rounds ran out |
+| `memory_match` | `memory_id`, `memory_type`, `content_preview`, `score` | One per retrieved memory (only with `debug_streaming`) |
 | `thinking` | `content` | LLM is processing (between tool calls) |
-| `tool_start` | `tool_name` | Tool execution beginning |
-| `code` | `code`, `language` | Code/query/command to execute (python/javascript/sql/bash) |
+| `reasoning` | `content` | Reasoning-summary deltas (Claude's summarized thinking, or Codex's) |
+| `tool_args_delta` | `tool_name`, `call_id`, `delta` | Partial JSON of a tool call being written |
+| `tool_start` | `tool_name`, `args_summary?` | Tool execution beginning |
+| `code` | `code`, `language` | Code/query/command to execute |
 | `execution_output` | `output`, `stream` | stdout/stderr from code execution |
 | `execution_result` | `success`, `duration_ms` | Code execution completed |
-| `tool_end` | `tool_name`, `result` | Tool execution finished |
-| `content` | `content` | Text content from LLM response |
-| `done` | - | Stream complete |
+| `tool_end` | `tool_name`, `result` | Tool execution finished (result ≤ 500 chars) |
+| `plan_created` / `plan_updated` | `plan_steps` | A plan was made / revised |
+| `plan_step_update` | `step_id`, `step_status`, `step_result` | A plan step moved |
+| `plan_completed` | `plan_steps`, `plan_summary` | The plan finished |
+| `cc_session_start` | `task_id`, `task_description` | An inline Codex session began |
+| `cc_text` / `cc_tool_result` | `task_id`, `text` | Codex output / a Codex tool's result |
+| `cc_tool_use` | `task_id`, `cc_tool_name`, `tool_input` | Codex used a tool |
+| `cc_session_end` | `task_id`, `status`, `result_summary` | The session ended |
+| `content` | `content` | Text content from the LLM response |
+| `done` | — | Stream complete: the checkpoint is written, the thread is free |
+| `interrupted` | `content` | Declared and typed, not emitted by the backend today |

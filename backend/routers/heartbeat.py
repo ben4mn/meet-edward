@@ -3,7 +3,10 @@
 import json
 from typing import Optional
 
+from pydantic import BaseModel
 from fastapi import APIRouter, HTTPException, Query
+
+from services.timezone_utils import format_iso_utc
 
 from services.heartbeat.models import (
     HeartbeatEventSchema,
@@ -35,7 +38,7 @@ def _event_to_schema(event) -> HeartbeatEventSchema:
         summary=event.summary,
         raw_data=raw,
         is_from_user=event.is_from_user or False,
-        created_at=event.created_at.strftime("%Y-%m-%dT%H:%M:%SZ") if event.created_at else "",
+        created_at=format_iso_utc(event.created_at) if event.created_at else "",
         triage_status=event.triage_status or "pending",
         briefed=event.briefed or False,
     )
@@ -58,7 +61,7 @@ def _triage_to_schema(result) -> TriageCycleSchema:
         sonnet_wakes=result.sonnet_wakes or 0,
         duration_ms=result.duration_ms or 0,
         summary=result.summary,
-        created_at=result.created_at.strftime("%Y-%m-%dT%H:%M:%SZ") if result.created_at else "",
+        created_at=format_iso_utc(result.created_at) if result.created_at else "",
     )
 
 
@@ -69,6 +72,21 @@ async def get_status():
 
     status = await get_heartbeat_status()
     return status
+
+
+@router.post("/heartbeat/triage/run")
+async def run_triage_now():
+    """Ask the running heartbeat loop for an immediate triage cycle.
+
+    Goes through ``request_triage`` (same path an inbound message uses) so
+    the request coalesces with listener bursts and never runs a cycle
+    concurrently with the loop. Use after re-opening a failed event
+    (``triage_status='pending'``) instead of pinging the thread again.
+    """
+    from services.heartbeat import heartbeat_service
+
+    heartbeat_service.request_triage("operator request")
+    return {"requested": True, "reason": "operator request"}
 
 
 @router.get("/heartbeat/events")
@@ -176,8 +194,8 @@ async def update_config(body: HeartbeatConfigUpdate):
 
         # Snapshot previous enabled states for hot-start/stop
         prev_imessage = config.imessage_enabled
-        prev_calendar = config.calendar_enabled
         prev_email = config.email_enabled
+        prev_gmail = config.gmail_enabled
 
         if body.enabled is not None:
             config.enabled = body.enabled
@@ -190,6 +208,9 @@ async def update_config(body: HeartbeatConfigUpdate):
             config.triage_interval_seconds = body.triage_interval_seconds
         if body.digest_token_cap is not None:
             config.digest_token_cap = body.digest_token_cap
+        # Stored for compatibility; the mind path is the only path now.
+        if getattr(body, "mind_enabled", None) is not None:
+            config.mind_enabled = body.mind_enabled
         if body.allowed_senders is not None:
             config.allowed_senders = json.dumps(
                 [s.model_dump() for s in body.allowed_senders]
@@ -198,6 +219,20 @@ async def update_config(body: HeartbeatConfigUpdate):
             config.imessage_enabled = body.imessage_enabled
         if body.imessage_poll_seconds is not None:
             config.imessage_poll_seconds = body.imessage_poll_seconds
+        if body.imessage_thread_limit_direct is not None:
+            if body.imessage_thread_limit_direct < 1:
+                raise HTTPException(
+                    status_code=400,
+                    detail="imessage_thread_limit_direct must be at least 1",
+                )
+            config.imessage_thread_limit_direct = body.imessage_thread_limit_direct
+        if body.imessage_thread_limit_group is not None:
+            if body.imessage_thread_limit_group < 1:
+                raise HTTPException(
+                    status_code=400,
+                    detail="imessage_thread_limit_group must be at least 1",
+                )
+            config.imessage_thread_limit_group = body.imessage_thread_limit_group
         if body.calendar_enabled is not None:
             config.calendar_enabled = body.calendar_enabled
         if body.calendar_poll_seconds is not None:
@@ -208,12 +243,19 @@ async def update_config(body: HeartbeatConfigUpdate):
             config.email_enabled = body.email_enabled
         if body.email_poll_seconds is not None:
             config.email_poll_seconds = body.email_poll_seconds
+        # Gmail's "watch my inbox" (GmailPanel): the PATCH ignored both until
+        # 2026-10-11, so the switch never reached the listener.
+        if body.gmail_enabled is not None:
+            config.gmail_enabled = body.gmail_enabled
+        if body.gmail_poll_seconds is not None:
+            config.gmail_poll_seconds = body.gmail_poll_seconds
 
         await session.commit()
         await session.refresh(config)
+        await _sync_gmail_listener(config, prev_gmail)
 
         # Hot-start/stop listeners when enabled state changes
-        await _sync_listeners(config, prev_imessage, prev_calendar, prev_email)
+        await _sync_listeners(config, prev_imessage, prev_email)
 
         # Parse allowed_senders back for response
         allowed_senders = []
@@ -230,18 +272,22 @@ async def update_config(body: HeartbeatConfigUpdate):
             allowed_senders=allowed_senders,
             imessage_enabled=config.imessage_enabled,
             imessage_poll_seconds=config.imessage_poll_seconds,
+            imessage_thread_limit_direct=config.imessage_thread_limit_direct,
+            imessage_thread_limit_group=config.imessage_thread_limit_group,
             calendar_enabled=config.calendar_enabled,
             calendar_poll_seconds=config.calendar_poll_seconds,
             calendar_lookahead_minutes=config.calendar_lookahead_minutes,
             email_enabled=config.email_enabled,
             email_poll_seconds=config.email_poll_seconds,
+            gmail_enabled=config.gmail_enabled,
+            gmail_poll_seconds=config.gmail_poll_seconds,
         )
 
 
-async def _sync_listeners(config, prev_imessage: bool, prev_calendar: bool, prev_email: bool) -> None:
-    """Start or stop listeners when their enabled state changes."""
+async def _sync_listeners(config, prev_imessage: bool, prev_email: bool) -> None:
+    """Start or stop listeners when their enabled state changes. (The
+    calendar track is gone, 2026-10-11: its columns still save.)"""
     from services.heartbeat.listener_imessage import start_imessage_listener, stop_imessage_listener
-    from services.heartbeat.listener_calendar import start_calendar_listener, stop_calendar_listener
     from services.heartbeat.listener_email import start_email_listener, stop_email_listener
 
     # iMessage
@@ -250,14 +296,74 @@ async def _sync_listeners(config, prev_imessage: bool, prev_calendar: bool, prev
     elif not config.imessage_enabled and prev_imessage:
         await stop_imessage_listener()
 
-    # Calendar
-    if config.calendar_enabled and not prev_calendar:
-        await start_calendar_listener(config)
-    elif not config.calendar_enabled and prev_calendar:
-        await stop_calendar_listener()
-
     # Email
     if config.email_enabled and not prev_email:
         await start_email_listener(config)
     elif not config.email_enabled and prev_email:
         await stop_email_listener()
+
+
+@router.get("/heartbeat/jarvis-metrics")
+async def get_jarvis_metrics(days: int = Query(7, ge=1, le=90)):
+    """Owner-preempt rate: how often Edward acted on a thread the owner was
+    already answering (``decision_trail``)."""
+    from services.heartbeat.decision_trail import compute_preempt_metric, load_preempt_inputs
+
+    actions, replies = await load_preempt_inputs(days)
+    return {"days": days, **compute_preempt_metric(actions, replies).as_dict()}
+
+
+@router.get("/heartbeat/act-queue")
+async def get_act_queue_status():
+    """Settle-before-act worker: retired with the legacy triage engine (the
+    mind path holds nothing), so always empty. The shape stays for old
+    clients."""
+    return {
+        "worker_alive": False,
+        "queued": 0,
+        "queued_ids": [],
+        "pending_batch": 0,
+        "next_due_at": None,
+        "last_orphan_sweep_age_s": None,
+        "settle": {},
+        "retired": True,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Feedback — "right call?" from the heartbeat digest view
+# ---------------------------------------------------------------------------
+
+class FeedbackBody(BaseModel):
+    verdict: str
+    note: Optional[str] = None
+
+
+@router.post("/heartbeat/events/{event_id}/feedback")
+async def event_feedback(event_id: str, body: FeedbackBody):
+    from services.heartbeat_feedback_service import record_feedback
+
+    try:
+        return await record_feedback(event_id, body.verdict, body.note)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except LookupError:
+        raise HTTPException(status_code=404, detail="event not found")
+
+
+@router.get("/heartbeat/feedback")
+async def feedback_list(limit: int = Query(200, ge=1, le=1000)):
+    from services.heartbeat_feedback_service import list_feedback
+
+    return await list_feedback(limit=limit)
+
+
+async def _sync_gmail_listener(config, prev_gmail: Optional[bool]) -> None:
+    """Start or stop the Gmail listener when "watch my inbox" changes. It
+    starts only once Gmail is connected (``listener_gmail.ensure_started``)."""
+    from services.heartbeat import listener_gmail
+
+    if config.gmail_enabled and not prev_gmail:
+        await listener_gmail.ensure_started()
+    elif not config.gmail_enabled and prev_gmail:
+        await listener_gmail.stop_gmail_listener()

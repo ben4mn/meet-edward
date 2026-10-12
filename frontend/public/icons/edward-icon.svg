@@ -1,0 +1,42 @@
+<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <!-- Edward — matte 2D bot. Flat colours only; content stays inside the
+       central 80% so maskable (round / squircle) crops never cut him. -->
+  <rect width="512" height="512" fill="#1b2230"/>
+  <!-- soft matte halo behind him -->
+  <circle cx="256" cy="268" r="176" fill="#232c3d"/>
+
+  <!-- antenna -->
+  <rect x="249" y="96" width="14" height="46" rx="7" fill="#d9d4c7"/>
+  <circle cx="256" cy="90" r="20" fill="#2fb98a"/>
+  <circle cx="250" cy="84" r="6" fill="#5fd3ab"/>
+
+  <!-- ears -->
+  <rect x="86" y="196" width="34" height="76" rx="17" fill="#c9c3b4"/>
+  <rect x="392" y="196" width="34" height="76" rx="17" fill="#c9c3b4"/>
+
+  <!-- head: matte cream with a flat darker underside -->
+  <rect x="112" y="140" width="288" height="196" rx="72" fill="#c9c3b4"/>
+  <rect x="112" y="140" width="288" height="180" rx="72" fill="#e9e4d8"/>
+
+  <!-- visor -->
+  <rect x="148" y="176" width="216" height="118" rx="52" fill="#20262f"/>
+  <!-- eyes: soft emerald with a matte highlight -->
+  <rect x="186" y="210" width="44" height="52" rx="22" fill="#2fb98a"/>
+  <rect x="282" y="210" width="44" height="52" rx="22" fill="#2fb98a"/>
+  <rect x="196" y="218" width="12" height="16" rx="6" fill="#7fe0bf"/>
+  <rect x="292" y="218" width="12" height="16" rx="6" fill="#7fe0bf"/>
+  <!-- smile -->
+  <path d="M232 274 Q256 290 280 274" stroke="#2fb98a" stroke-width="9" stroke-linecap="round" fill="none"/>
+
+  <!-- neck -->
+  <rect x="236" y="334" width="40" height="18" fill="#c9c3b4"/>
+
+  <!-- body -->
+  <rect x="166" y="350" width="180" height="82" rx="34" fill="#c9c3b4"/>
+  <rect x="166" y="350" width="180" height="70" rx="34" fill="#e9e4d8"/>
+  <!-- chest light -->
+  <circle cx="256" cy="386" r="13" fill="#2fb98a"/>
+  <!-- arms -->
+  <rect x="118" y="360" width="40" height="54" rx="20" fill="#e9e4d8"/>
+  <rect x="354" y="360" width="40" height="54" rx="20" fill="#e9e4d8"/>
+</svg>

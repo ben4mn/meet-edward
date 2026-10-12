@@ -9,7 +9,7 @@ class OrchestratorConfigResponse(BaseModel):
     enabled: bool = False
     max_concurrent_workers: int = 5
     max_concurrent_cc_sessions: int = 2
-    default_worker_model: str = "claude-haiku-4-5-20251001"
+    default_worker_model: str = "gpt-5.6-terra"
     default_worker_timeout: int = 300
 
 
@@ -27,7 +27,7 @@ class OrchestratorTaskResponse(BaseModel):
     worker_conversation_id: Optional[str] = None
     task_description: str
     task_type: str = "internal_worker"
-    model: Optional[str] = "claude-haiku-4-5-20251001"
+    model: Optional[str] = "gpt-5.6-terra"
     status: str = "pending"
     context_mode: str = "scoped"
     result_summary: Optional[str] = None

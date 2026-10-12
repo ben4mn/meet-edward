@@ -1,499 +1,504 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+// Settings → Memory → Documents (2026-09-26, Jarvis polish).
+//
+// The pages Edward keeps whole: recipes, protocols, trip plans, his own
+// state page and the owner's goals. His state page ("Edward: state") and the
+// goals ("Goal: …") are pinned to the top. Search is debounced; tag chips
+// filter. A document opens as a reading view — rendered markdown at full
+// height, no inner scroll box — and ?id= opens one directly. Deleting is
+// undoable. Words live in lib/documentView.ts.
+
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { FileText, Plus, Target, Sparkles } from "lucide-react";
 import {
-  ChevronDown,
-  ChevronRight,
-  FileText,
-  Search,
-  Trash2,
-  RefreshCw,
-  AlertCircle,
-  ChevronLeft,
-  ChevronRightIcon,
-  X,
-  Plus,
-  ArrowLeft,
-  Tag,
-} from "lucide-react";
-import {
-  searchDocuments,
-  deleteDocument,
   createDocument,
-  DocumentItem,
-  DocumentStats,
+  deleteDocument,
+  getDocument,
+  searchDocuments,
+  type DocumentItem,
+  type DocumentStats,
 } from "@/lib/api";
-import { cn } from "@/lib/utils";
+import {
+  docDisplay,
+  docKind,
+  docPreview,
+  opensWithTitle,
+  splitPinned,
+  tagList,
+  tagOptions,
+} from "@/lib/documentView";
+import { normalizeQuery } from "@/lib/memoryView";
+import { clearUrlParams, readParam } from "@/lib/deepLink";
+import { pendingDeletes } from "@/lib/pendingDeletes";
+import { scheduleUndoableDelete } from "@/lib/undoableDelete";
+import { formatRelative } from "@/lib/time";
+import { MarkdownContent } from "@/components/chat/MarkdownContent";
+import {
+  Button,
+  Card,
+  EmptyState,
+  Field,
+  Input,
+  Notice,
+  Pill,
+  SectionLabel,
+  Sheet,
+  Skeleton,
+  Textarea,
+  cn,
+  useToast,
+} from "@/components/ui";
+import { SearchField } from "./panelBits";
 
-const TAG_COLORS = [
-  "bg-blue-500/20 text-blue-400 border-blue-500/30",
-  "bg-purple-500/20 text-purple-400 border-purple-500/30",
-  "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
-  "bg-green-500/20 text-green-400 border-green-500/30",
-  "bg-pink-500/20 text-pink-400 border-pink-500/30",
-  "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
-  "bg-orange-500/20 text-orange-400 border-orange-500/30",
-];
+const PAGE_SIZE = 50;
+const deleteKey = (id: string) => `document:${id}`;
 
-function getTagColor(tag: string): string {
-  let hash = 0;
-  for (let i = 0; i < tag.length; i++) {
-    hash = tag.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return TAG_COLORS[Math.abs(hash) % TAG_COLORS.length];
-}
-
-interface DocumentBrowserProps {
+export interface DocumentBrowserProps {
+  /** Tests; the page reads ?id=. */
+  initialId?: string | null;
   isExpanded?: boolean;
   hideHeader?: boolean;
 }
 
-export function DocumentBrowser({ isExpanded: initialExpanded = false, hideHeader = false }: DocumentBrowserProps) {
-  const [isExpanded, setIsExpanded] = useState(initialExpanded);
-  const [documents, setDocuments] = useState<DocumentItem[]>([]);
+export function DocumentBrowser(props: DocumentBrowserProps) {
+  return (
+    <Suspense fallback={<ListSkeleton />}>
+      <DocumentsBody initialId={props.initialId} />
+    </Suspense>
+  );
+}
+
+function ListSkeleton() {
+  return (
+    <div className="space-y-2" aria-hidden>
+      {[0, 1, 2].map((i) => (
+        <Card key={i} className="p-4">
+          <Skeleton lines={2} />
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+function useHiddenIds(): ReadonlySet<string> {
+  const [snap, setSnap] = useState(pendingDeletes.pending());
+  useEffect(() => pendingDeletes.subscribe(() => setSnap(pendingDeletes.pending())), []);
+  return snap;
+}
+
+/** The nearest scrolling ancestor (the settings column scrolls, not the window). */
+function scrollParent(el: HTMLElement | null): HTMLElement | null {
+  let p = el?.parentElement ?? null;
+  while (p) {
+    const y = getComputedStyle(p).overflowY;
+    if (y === "auto" || y === "scroll") return p;
+    p = p.parentElement;
+  }
+  return null;
+}
+
+/** Opening a document is a step: its own history entry (Next's router
+ *  picks the pushed URL up), so Back or the edge swipe returns to the list
+ *  instead of leaving the panel. */
+function pushUrlId(id: string) {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  url.searchParams.set("id", id);
+  window.history.pushState(null, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
+function DocumentsBody({ initialId }: { initialId?: string | null }) {
+  const params = useSearchParams();
+  const deepId = initialId ?? readParam(params, "id");
+  const { toast } = useToast();
+  const hidden = useHiddenIds();
+
+  const [query, setQuery] = useState("");
+  const [debounced, setDebounced] = useState("");
+  const [tag, setTag] = useState<string | null>(null);
+  const [docs, setDocs] = useState<DocumentItem[]>([]);
   const [stats, setStats] = useState<DocumentStats | null>(null);
   const [total, setTotal] = useState(0);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Filters
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedTag, setSelectedTag] = useState<string>("all");
-  const [page, setPage] = useState(0);
-  const pageSize = 10;
-
-  // View states
-  const [viewingDoc, setViewingDoc] = useState<DocumentItem | null>(null);
-  const [showNewForm, setShowNewForm] = useState(false);
-  const [newTitle, setNewTitle] = useState("");
-  const [newContent, setNewContent] = useState("");
-  const [newTags, setNewTags] = useState("");
-  const [isCreating, setIsCreating] = useState(false);
-
-  // Delete confirmation
-  const [deleteTarget, setDeleteTarget] = useState<DocumentItem | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-
-  const loadDocuments = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const result = await searchDocuments(
-        searchQuery || undefined,
-        selectedTag === "all" ? undefined : selectedTag,
-        pageSize,
-        page * pageSize
-      );
-      setDocuments(result.documents);
-      setStats(result.stats);
-      setTotal(result.pagination.total);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load documents");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [searchQuery, selectedTag, page]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [viewId, setViewId] = useState<string | null>(null);
+  const [newOpen, setNewOpen] = useState(false);
+  const seq = useRef(0);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const listScroll = useRef(0);
 
   useEffect(() => {
-    if (isExpanded) {
-      loadDocuments();
-    }
-  }, [isExpanded, loadDocuments]);
+    const t = setTimeout(() => setDebounced(normalizeQuery(query)), 300);
+    return () => clearTimeout(t);
+  }, [query]);
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    setPage(0);
-    loadDocuments();
-  };
-
-  const handleDelete = async () => {
-    if (!deleteTarget) return;
-    setIsDeleting(true);
+  const load = useCallback(async () => {
+    const mine = ++seq.current;
+    setLoading(true);
+    setError(false);
     try {
-      await deleteDocument(deleteTarget.id);
-      setDeleteTarget(null);
-      if (viewingDoc?.id === deleteTarget.id) setViewingDoc(null);
-      loadDocuments();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete document");
+      const res = await searchDocuments(debounced || undefined, tag ?? undefined, PAGE_SIZE, 0);
+      if (mine !== seq.current) return;
+      setDocs(res.documents);
+      setStats(res.stats);
+      setTotal(res.pagination.total);
+    } catch {
+      if (mine === seq.current) setError(true);
     } finally {
-      setIsDeleting(false);
+      if (mine === seq.current) setLoading(false);
     }
+  }, [debounced, tag]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const restoreListScroll = () => {
+    const top = listScroll.current;
+    requestAnimationFrame(() => scrollParent(rootRef.current)?.scrollTo?.({ top }));
   };
 
-  const handleCreate = async () => {
-    if (!newTitle.trim() || !newContent.trim()) return;
-    setIsCreating(true);
-    setError(null);
-    try {
-      await createDocument({
-        title: newTitle.trim(),
-        content: newContent.trim(),
-        tags: newTags.trim() || undefined,
-      });
-      setShowNewForm(false);
-      setNewTitle("");
-      setNewContent("");
-      setNewTags("");
-      loadDocuments();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create document");
-    } finally {
-      setIsCreating(false);
+  // The URL's ?id= is what is open: a deep link opens it, and when the param
+  // goes away (Back after a tap pushed it) the list comes back.
+  const openedDeep = useRef<string | null>(null);
+  const pushedOpen = useRef(false);
+  useEffect(() => {
+    if (deepId && openedDeep.current !== deepId) {
+      openedDeep.current = deepId;
+      setViewId(deepId);
+    } else if (!deepId && openedDeep.current && params) {
+      openedDeep.current = null;
+      pushedOpen.current = false;
+      setViewId(null);
+      restoreListScroll();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deepId]);
+
+  const open = (id: string) => {
+    const scroller = scrollParent(rootRef.current);
+    listScroll.current = scroller?.scrollTop ?? 0;
+    openedDeep.current = id;
+    setViewId(id);
+    pushUrlId(id);
+    pushedOpen.current = true;
+    scroller?.scrollTo?.({ top: 0 });
   };
 
-  const formatDate = (dateStr: string | null) => {
-    if (!dateStr) return "N/A";
-    const date = new Date(dateStr);
-    return date.toLocaleDateString(undefined, {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
+  const back = () => {
+    // A tap pushed this entry: go back through history, so the browser's
+    // Back and this button agree (the router clears ?id=, the effect above
+    // shows the list). Outside the app router (tests) there is no router to
+    // tell us, so close directly.
+    if (pushedOpen.current && params && typeof window !== "undefined") {
+      pushedOpen.current = false;
+      window.history.back();
+      return;
+    }
+    openedDeep.current = null;
+    setViewId(null);
+    clearUrlParams(["id"]);
+    restoreListScroll();
+  };
+
+  const remove = (d: DocumentItem) => {
+    back();
+    scheduleUndoableDelete({
+      key: deleteKey(d.id),
+      commit: () => deleteDocument(d.id),
+      onCommit: () => {
+        setDocs((ds) => ds.filter((x) => x.id !== d.id));
+        setTotal((t) => Math.max(0, t - 1));
+      },
+      onError: () => {
+        toast({ title: "I couldn't delete that document. It's back.", tone: "bad" });
+        void load();
+      },
+      toast,
+      title: "Document deleted",
+      body: docDisplay(d.title).title,
+      tooLate: "Too late — that document is already deleted.",
     });
   };
 
-  const renderTags = (tags: string | null) => {
-    if (!tags) return null;
+  const visible = useMemo(() => docs.filter((d) => !hidden.has(deleteKey(d.id))), [docs, hidden]);
+  const chips = tagOptions(stats?.by_tag);
+  const searching = Boolean(debounced || tag);
+  const { pinned, rest } = splitPinned(visible);
+
+  if (viewId) {
     return (
-      <div className="flex flex-wrap gap-1">
-        {tags.split(",").map((tag) => {
-          const trimmed = tag.trim();
-          if (!trimmed) return null;
-          return (
-            <span
-              key={trimmed}
-              className={cn(
-                "px-2 py-0.5 rounded text-xs font-mono border cursor-pointer",
-                getTagColor(trimmed)
-              )}
-              onClick={(e) => {
-                e.stopPropagation();
-                setSelectedTag(trimmed);
-                setPage(0);
-              }}
-            >
-              {trimmed}
-            </span>
-          );
-        })}
+      <div ref={rootRef}>
+        <DocumentView
+          id={viewId}
+          fromList={docs.find((d) => d.id === viewId) ?? null}
+          onDelete={remove}
+          onTag={(t) => {
+            setTag(t);
+            back();
+          }}
+        />
       </div>
     );
-  };
-
-  const totalPages = Math.ceil(total / pageSize);
-  const allTags = stats ? Object.keys(stats.by_tag).sort() : [];
+  }
 
   return (
-    <div className={cn("border border-input-border rounded-lg overflow-hidden", !hideHeader && "mt-8")}>
-      {!hideHeader && (
-        <button
-          onClick={() => setIsExpanded(!isExpanded)}
-          className="w-full px-4 py-3 flex items-center justify-between bg-surface hover:bg-surface/80 transition-colors"
+    <div ref={rootRef} className="space-y-4">
+      <div className="flex items-center gap-2">
+        <SearchField value={query} onChange={setQuery} label="Search documents" placeholder="Search documents" />
+        <Button variant="secondary" size="icon" aria-label="New document" onClick={() => setNewOpen(true)} className="h-11 w-11 flex-none rounded-full md:h-11 md:w-11">
+          <Plus aria-hidden />
+        </Button>
+      </div>
+
+      {chips.length ? (
+        <div
+          role="radiogroup"
+          aria-label="Tags"
+          className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] md:mx-0 md:flex-wrap md:overflow-visible md:px-0 [&::-webkit-scrollbar]:hidden"
         >
-          <div className="flex items-center gap-2 text-text-primary">
-            <FileText className="w-4 h-4 text-terminal" />
-            <span className="font-medium text-sm">Document Store</span>
-            {stats && (
-              <span className="text-xs text-text-muted">({stats.total} documents)</span>
-            )}
-          </div>
-          {isExpanded ? (
-            <ChevronDown className="w-4 h-4 text-text-muted" />
-          ) : (
-            <ChevronRight className="w-4 h-4 text-text-muted" />
-          )}
-        </button>
-      )}
-
-      {(isExpanded || hideHeader) && (
-        <div className="p-4 space-y-4 bg-primary-bg border-t border-input-border">
-          {/* Viewing a single document */}
-          {viewingDoc ? (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setViewingDoc(null)}
-                  className="p-1 text-text-muted hover:text-text-primary transition-colors"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                </button>
-                <h3 className="text-sm font-medium text-text-primary flex-1 truncate">
-                  {viewingDoc.title}
-                </h3>
-                <button
-                  onClick={() => setDeleteTarget(viewingDoc)}
-                  className="p-2 text-text-muted hover:text-red-500 transition-colors rounded-lg hover:bg-red-500/10"
-                  title="Delete document"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-              {viewingDoc.tags && (
-                <div className="flex items-center gap-2">
-                  <Tag className="w-3 h-3 text-text-muted" />
-                  {renderTags(viewingDoc.tags)}
-                </div>
-              )}
-              <div className="text-xs text-text-muted flex gap-3">
-                <span>Created: {formatDate(viewingDoc.created_at)}</span>
-                {viewingDoc.updated_at && viewingDoc.updated_at !== viewingDoc.created_at && (
-                  <span>Updated: {formatDate(viewingDoc.updated_at)}</span>
-                )}
-                <span>Accessed: {viewingDoc.access_count}x</span>
-              </div>
-              <div className="p-4 bg-surface rounded-lg border border-input-border max-h-96 overflow-y-auto">
-                <pre className="text-sm text-text-primary whitespace-pre-wrap font-mono break-words">
-                  {viewingDoc.content}
-                </pre>
-              </div>
-            </div>
-          ) : showNewForm ? (
-            /* New document form */
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setShowNewForm(false)}
-                  className="p-1 text-text-muted hover:text-text-primary transition-colors"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                </button>
-                <h3 className="text-sm font-medium text-text-primary">New Document</h3>
-              </div>
-              <input
-                type="text"
-                value={newTitle}
-                onChange={(e) => setNewTitle(e.target.value)}
-                placeholder="Document title..."
-                className="w-full px-4 py-2 rounded-lg border border-input-border bg-input-bg text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-terminal"
-              />
-              <textarea
-                value={newContent}
-                onChange={(e) => setNewContent(e.target.value)}
-                placeholder="Document content (markdown supported)..."
-                rows={10}
-                className="w-full px-4 py-2 rounded-lg border border-input-border bg-input-bg text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-terminal font-mono resize-y"
-              />
-              <input
-                type="text"
-                value={newTags}
-                onChange={(e) => setNewTags(e.target.value)}
-                placeholder="Tags (comma-separated, e.g. recipe,italian,dinner)..."
-                className="w-full px-4 py-2 rounded-lg border border-input-border bg-input-bg text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-terminal"
-              />
-              <div className="flex justify-end gap-2">
-                <button
-                  onClick={() => setShowNewForm(false)}
-                  className="px-4 py-2 rounded-lg border border-input-border text-sm text-text-primary hover:bg-surface transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleCreate}
-                  disabled={isCreating || !newTitle.trim() || !newContent.trim()}
-                  className="px-4 py-2 rounded-lg bg-terminal text-white text-sm hover:opacity-80 disabled:opacity-50 transition-opacity"
-                >
-                  {isCreating ? "Saving..." : "Save Document"}
-                </button>
-              </div>
-            </div>
-          ) : (
-            /* Document list view */
-            <>
-              {/* Search and filters */}
-              <div className="flex flex-col sm:flex-row gap-3">
-                <form onSubmit={handleSearch} className="flex-1 flex gap-2">
-                  <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
-                    <input
-                      type="text"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="Search documents..."
-                      className="w-full pl-9 pr-4 py-2 rounded-lg border border-input-border bg-input-bg text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-terminal"
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    disabled={isLoading}
-                    className="px-4 py-2 rounded-lg bg-terminal text-white text-sm hover:opacity-80 disabled:opacity-50 transition-opacity"
-                  >
-                    Search
-                  </button>
-                </form>
-
-                <div className="flex gap-2 items-center">
-                  <select
-                    value={selectedTag}
-                    onChange={(e) => {
-                      setSelectedTag(e.target.value);
-                      setPage(0);
-                    }}
-                    className="px-3 py-2 rounded-lg border border-input-border bg-input-bg text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-terminal"
-                  >
-                    <option value="all">All Tags</option>
-                    {allTags.map((tag) => (
-                      <option key={tag} value={tag}>
-                        {tag} ({stats?.by_tag[tag] || 0})
-                      </option>
-                    ))}
-                  </select>
-
-                  <button
-                    onClick={() => setShowNewForm(true)}
-                    className="p-2 rounded-lg border border-input-border bg-input-bg text-text-muted hover:text-terminal transition-colors"
-                    title="New Document"
-                  >
-                    <Plus className="w-4 h-4" />
-                  </button>
-
-                  <button
-                    onClick={loadDocuments}
-                    disabled={isLoading}
-                    className="p-2 rounded-lg border border-input-border bg-input-bg text-text-muted hover:text-text-primary transition-colors disabled:opacity-50"
-                    title="Refresh"
-                  >
-                    <RefreshCw className={cn("w-4 h-4", isLoading && "animate-spin")} />
-                  </button>
-                </div>
-              </div>
-
-              {error && (
-                <div className="flex items-center gap-2 text-red-500 text-sm p-3 bg-red-500/10 rounded-lg">
-                  <AlertCircle className="w-4 h-4" />
-                  {error}
-                </div>
-              )}
-
-              {/* Document list */}
-              <div className="space-y-2">
-                {isLoading && documents.length === 0 ? (
-                  <div className="text-center py-8 text-text-muted">Loading documents...</div>
-                ) : documents.length === 0 ? (
-                  <div className="text-center py-8 text-text-muted">
-                    {searchQuery || selectedTag !== "all"
-                      ? "No documents match your search"
-                      : "No documents stored yet"}
-                  </div>
-                ) : (
-                  documents.map((doc) => (
-                    <div
-                      key={doc.id}
-                      onClick={() => setViewingDoc(doc)}
-                      className="p-4 bg-surface rounded-lg border border-input-border hover:border-terminal/30 transition-colors cursor-pointer"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <FileText className="w-4 h-4 text-terminal flex-shrink-0" />
-                            <span className="text-sm font-medium text-text-primary truncate">
-                              {doc.title}
-                            </span>
-                            {doc.score != null && doc.score > 0 && (
-                              <span className="text-xs text-terminal">
-                                {(doc.score * 100).toFixed(0)}%
-                              </span>
-                            )}
-                          </div>
-                          {doc.tags && <div className="mb-2 ml-6">{renderTags(doc.tags)}</div>}
-                          <p className="text-xs text-text-muted ml-6 line-clamp-2">
-                            {doc.content.slice(0, 200).replace(/\n/g, " ")}
-                            {doc.content.length > 200 ? "..." : ""}
-                          </p>
-                          <div className="mt-2 ml-6 flex flex-wrap gap-3 text-xs text-text-muted">
-                            <span>Updated: {formatDate(doc.updated_at)}</span>
-                            <span>Accessed: {doc.access_count}x</span>
-                          </div>
-                        </div>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setDeleteTarget(doc);
-                          }}
-                          className="p-2 text-text-muted hover:text-red-500 transition-colors rounded-lg hover:bg-red-500/10"
-                          title="Delete document"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-
-              {/* Pagination */}
-              {totalPages > 1 && (
-                <div className="flex items-center justify-between pt-2">
-                  <span className="text-xs text-text-muted">
-                    Showing {page * pageSize + 1}-{Math.min((page + 1) * pageSize, total)} of {total}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setPage((p) => Math.max(0, p - 1))}
-                      disabled={page === 0}
-                      className="p-2 rounded-lg border border-input-border bg-input-bg text-text-muted hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                      <ChevronLeft className="w-4 h-4" />
-                    </button>
-                    <span className="text-sm text-text-muted">
-                      {page + 1} / {totalPages}
-                    </span>
-                    <button
-                      onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-                      disabled={page >= totalPages - 1}
-                      className="p-2 rounded-lg border border-input-border bg-input-bg text-text-muted hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                      <ChevronRightIcon className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
+          <TagChip label="All" on={tag === null} onClick={() => setTag(null)} />
+          {chips.map((c) => (
+            <TagChip key={c.tag} label={c.tag} count={c.count} on={tag === c.tag} onClick={() => setTag(tag === c.tag ? null : c.tag)} />
+          ))}
         </div>
-      )}
+      ) : null}
 
-      {/* Delete confirmation modal */}
-      {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-primary-bg border border-input-border rounded-lg p-6 max-w-md mx-4 shadow-xl">
-            <div className="flex items-start justify-between mb-4">
-              <h3 className="text-lg font-medium text-text-primary">Delete Document</h3>
-              <button
-                onClick={() => setDeleteTarget(null)}
-                className="p-1 text-text-muted hover:text-text-primary transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <p className="text-sm text-text-muted mb-4">
-              Are you sure you want to delete this document? This action cannot be undone.
+      {error ? (
+        <Notice tone="bad" action={<Button size="sm" variant="secondary" onClick={load}>Try again</Button>}>
+          I couldn&apos;t open my documents just now.
+        </Notice>
+      ) : null}
+
+      {loading && docs.length === 0 ? (
+        <ListSkeleton />
+      ) : !error && visible.length === 0 ? (
+        <EmptyState title={searching ? "No documents match." : "No documents yet."}>
+          {searching
+            ? "Try other words or another tag."
+            : "When something deserves to be kept whole — a recipe, a plan, a protocol — I save it here."}
+        </EmptyState>
+      ) : (
+        <div className={cn("space-y-5 transition-opacity duration-fast", loading && "opacity-60")}>
+          {!searching && pinned.length ? (
+            <section className="space-y-2" aria-label="Pinned">
+              <SectionLabel>Pinned</SectionLabel>
+              {pinned.map((d) => (
+                <DocCard key={d.id} doc={d} onOpen={() => open(d.id)} />
+              ))}
+            </section>
+          ) : null}
+          <section className="space-y-2" aria-label="Documents">
+            {!searching && pinned.length ? <SectionLabel action={rest.length ? String(rest.length) : undefined}>Everything else</SectionLabel> : null}
+            {(searching ? [...pinned, ...rest] : rest).map((d) => (
+              <DocCard key={d.id} doc={d} onOpen={() => open(d.id)} />
+            ))}
+          </section>
+          {total > docs.length ? (
+            <p className="text-center text-caption text-text-muted">
+              Showing the newest {docs.length} of {total}. Search to find older ones.
             </p>
-            <div className="p-3 bg-surface rounded-lg mb-4">
-              <p className="text-sm font-medium text-text-primary">{deleteTarget.title}</p>
-              <p className="text-xs text-text-muted mt-1">
-                {deleteTarget.content.slice(0, 100)}
-                {deleteTarget.content.length > 100 ? "..." : ""}
-              </p>
-            </div>
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => setDeleteTarget(null)}
-                className="px-4 py-2 rounded-lg border border-input-border text-sm text-text-primary hover:bg-surface transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDelete}
-                disabled={isDeleting}
-                className="px-4 py-2 rounded-lg bg-red-500 text-white text-sm hover:bg-red-600 disabled:opacity-50 transition-colors"
-              >
-                {isDeleting ? "Deleting..." : "Delete"}
-              </button>
-            </div>
-          </div>
+          ) : null}
         </div>
       )}
+
+      <NewDocumentSheet open={newOpen} onClose={() => setNewOpen(false)} onSaved={load} />
     </div>
+  );
+}
+
+function TagChip({ label, count, on, onClick }: { label: string; count?: number; on: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={on}
+      onClick={onClick}
+      className={cn(
+        "inline-flex min-h-[44px] md:min-h-[36px] flex-none items-center gap-1.5 rounded-full border px-3 text-footnote font-medium transition-[background-color,color,border-color,transform] duration-fast ease-out active:scale-[.97]",
+        on ? "border-transparent bg-text-primary text-primary-bg" : "border-border bg-surface text-text-secondary hover:text-text-primary",
+      )}
+    >
+      {label}
+      {count != null ? <span className="tabular-nums opacity-60">{count}</span> : null}
+    </button>
+  );
+}
+
+const KIND_ICON = { state: Sparkles, goal: Target, doc: FileText } as const;
+
+function DocCard({ doc, onOpen }: { doc: DocumentItem; onOpen: () => void }) {
+  const kind = docKind(doc.title);
+  const shown = docDisplay(doc.title);
+  const Icon = KIND_ICON[kind];
+  const tags = tagList(doc.tags).filter((t) => !["state", "self", "goal", "active"].includes(t));
+  return (
+    <Card onClick={onOpen} className="p-4">
+      <span className="flex items-start gap-3">
+        <span
+          className={cn(
+            "mt-0.5 flex h-8 w-8 flex-none items-center justify-center rounded-sm",
+            kind === "state" ? "bg-terminal-soft text-terminal-strong" : "bg-surface-3 text-text-secondary",
+          )}
+        >
+          <Icon className="h-4 w-4" aria-hidden />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-2">
+            <span data-testid="doc-title" className="min-w-0 truncate text-callout text-text-primary">
+              {shown.title}
+            </span>
+            {shown.badge ? <Pill tone={kind === "state" ? "edward" : "neutral"}>{shown.badge}</Pill> : null}
+          </span>
+          <span className="mt-0.5 line-clamp-2 text-footnote text-text-muted">{docPreview(doc.content, 180)}</span>
+          <span className="mt-1.5 block text-caption text-text-muted">
+            {doc.updated_at ? `Updated ${formatRelative(doc.updated_at)}` : null}
+            {tags.length ? ` · ${tags.slice(0, 3).join(", ")}` : null}
+          </span>
+        </span>
+      </span>
+    </Card>
+  );
+}
+
+// ------------------------------------------------------------ reading view
+function DocumentView({
+  id,
+  fromList,
+  onDelete,
+  onTag,
+}: {
+  id: string;
+  fromList: DocumentItem | null;
+  onDelete: (d: DocumentItem) => void;
+  onTag: (tag: string) => void;
+}) {
+  const [doc, setDoc] = useState<DocumentItem | null>(fromList);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    setFailed(false);
+    // Always read the full document: the list may be a search page.
+    getDocument(id)
+      .then((d) => alive && setDoc(d))
+      .catch(() => alive && !fromList && setFailed(true));
+    return () => {
+      alive = false;
+    };
+    // fromList only seeds the first paint.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
+  const shown = doc ? docDisplay(doc.title) : null;
+  const tags = doc ? tagList(doc.tags) : [];
+
+  return (
+    <article className="max-w-3xl space-y-4">
+      {/* The way back is the page's breadcrumb ("‹ Documents"): one back, not two. */}
+      {doc ? (
+        <div className="flex items-center justify-end gap-2">
+          <Button variant="ghost" size="sm" className="text-bad hover:text-bad" onClick={() => onDelete(doc)}>
+            Delete
+          </Button>
+        </div>
+      ) : null}
+
+      {failed ? (
+        <Notice tone="bad">I couldn&apos;t find that document. It may have been deleted.</Notice>
+      ) : !doc ? (
+        <Skeleton lines={6} />
+      ) : (
+        <>
+          <header className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2 text-caption text-text-muted">
+              {shown?.badge ? <Pill tone={docKind(doc.title) === "state" ? "edward" : "neutral"}>{shown.badge}</Pill> : null}
+              {doc.updated_at ? <span>Updated {formatRelative(doc.updated_at)}</span> : null}
+              {doc.access_count ? <span>· read {doc.access_count}×</span> : null}
+            </div>
+            {opensWithTitle(doc.content) ? null : <h1 className="text-title2 text-text-primary">{shown?.title}</h1>}
+          </header>
+          <div className="text-body text-text-primary">
+            <MarkdownContent content={doc.content} />
+          </div>
+          {tags.length ? (
+            <div className="flex flex-wrap gap-2 border-t border-border pt-4">
+              {tags.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => onTag(t)}
+                  className="inline-flex min-h-[44px] items-center rounded-full border border-border bg-surface px-3 text-footnote text-text-secondary transition-colors duration-fast hover:text-text-primary md:min-h-[36px]"
+                >
+                  #{t}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </>
+      )}
+    </article>
+  );
+}
+
+// ------------------------------------------------------------ new document
+function NewDocumentSheet({ open, onClose, onSaved }: { open: boolean; onClose: () => void; onSaved: () => void }) {
+  const [title, setTitle] = useState("");
+  const [content, setContent] = useState("");
+  const [tags, setTags] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
+
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await createDocument({ title: title.trim(), content: content.trim(), tags: tags.trim() || undefined });
+      toast({ title: "Saved", body: title.trim(), tone: "ok" });
+      setTitle("");
+      setContent("");
+      setTags("");
+      onClose();
+      onSaved();
+    } catch {
+      setError("I couldn't save it just now. Your text is still here.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Sheet
+      open={open}
+      onClose={onClose}
+      title="New document"
+      description="Markdown works. I'll find it by its title and first lines."
+      footer={
+        <div className="flex gap-2">
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button className="flex-1" loading={busy} disabled={!title.trim() || !content.trim()} onClick={save}>
+            Save
+          </Button>
+        </div>
+      }
+    >
+      <div className="space-y-4 pb-2">
+        <Field label="Title">
+          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Biscuit — med protocol" />
+        </Field>
+        <Field label="Text">
+          <Textarea value={content} onChange={(e) => setContent(e.target.value)} rows={8} className="font-mono text-[15px]" />
+        </Field>
+        <Field label="Tags" hint="Comma-separated, e.g. pets, biscuit">
+          <Input value={tags} onChange={(e) => setTags(e.target.value)} autoCapitalize="none" />
+        </Field>
+        {error ? <Notice tone="bad">{error}</Notice> : null}
+      </div>
+    </Sheet>
   );
 }

@@ -1,10 +1,41 @@
 from langchain_core.messages import SystemMessage, AIMessage, HumanMessage
-from langchain_anthropic import ChatAnthropic
+from services.llm_utils import build_chat_llm
+from services.owner import owner_text
 from .state import AgentState, Memory
 
 
 async def preprocess_node(state: AgentState) -> dict:
-    """Preprocess the incoming message and prepare state."""
+    """Preprocess the incoming message and prepare state.
+
+    Side effect: scans the latest user turn for correction signal and
+    fires off a self_observation if it looks like one. Used to feed
+    the dream-synthesis judge with real learn-loop input.
+    """
+    import asyncio
+    from langchain_core.messages import HumanMessage
+
+    try:
+        last_user = next(
+            (m for m in reversed(state.get("messages", []))
+             if isinstance(m, HumanMessage)),
+            None,
+        )
+        if last_user is not None:
+            content = last_user.content
+            if isinstance(content, list):
+                content = " ".join(
+                    part.get("text", "") if isinstance(part, dict) else str(part)
+                    for part in content
+                )
+            from services.observation_emitters import (
+                emit_correction_observation,
+                is_correction_signal,
+            )
+            if is_correction_signal(content):
+                asyncio.create_task(emit_correction_observation(content))
+    except Exception:
+        pass
+
     return {
         "is_complete": False,
         "error": None,
@@ -67,25 +98,61 @@ async def retrieve_memory_node(state: AgentState) -> dict:
 
 
 async def respond_node(state: AgentState) -> dict:
-    """Generate a response using the Claude model."""
+    """Generate a response using the chat LLM (llm_utils.build_chat_llm)."""
     try:
-        llm = ChatAnthropic(
+        llm = build_chat_llm(
             model=state["model"],
             temperature=state["temperature"],
-            max_tokens=4096
+            max_tokens=4096,
         )
 
-        # Build system prompt with memory context
-        system_prompt = state["system_prompt"]
+        # Build system prompt with memory context. The base prompt may name
+        # the owner with the {OWNER} token (settings.system_prompt).
+        system_prompt = owner_text(state["system_prompt"])
+
+        # Context pack: when the owner replies in an edward_thought conversation,
+        # hand Edward back the original wake-up signals so he remembers
+        # what he was talking about. Only inject on the first user reply
+        # (1 human message in state) — after that, chat history carries it.
+        try:
+            from langchain_core.messages import HumanMessage as _HM
+            user_msgs = [m for m in state.get("messages", []) if isinstance(m, _HM)]
+            conv_id = state.get("conversation_id")
+            if conv_id and len(user_msgs) <= 1:
+                import json as _json
+                from sqlalchemy import select as _select
+                from services.database import (
+                    async_session as _async_session,
+                    ConversationModel as _ConvModel,
+                )
+                async with _async_session() as _s:
+                    _row = (await _s.execute(
+                        _select(_ConvModel).where(_ConvModel.id == conv_id)
+                    )).scalar_one_or_none()
+                if _row and _row.context_pack:
+                    try:
+                        _pack = _json.loads(_row.context_pack)
+                        _pack_str = _json.dumps(_pack, indent=2, default=str)[:4000]
+                    except (ValueError, TypeError):
+                        _pack_str = (_row.context_pack or "")[:4000]
+                    system_prompt = (
+                        system_prompt
+                        + "\n\n## What I was thinking about (signal pack from when I pinged you):\n"
+                        + "```json\n" + _pack_str + "\n```\n"
+                        + owner_text("Use these specifics when {OWNER} asks about them.")
+                    )
+        except Exception:
+            # Context-pack injection is best-effort; never fail the chat.
+            pass
 
         # Inject retrieved memories if available
         retrieved_memories = state.get("retrieved_memories", [])
         if retrieved_memories:
+            from services.graph.streaming import format_memory_line
+
             memory_context = "\n\n## Relevant Context from Previous Conversations:\n"
             for memory in retrieved_memories:
-                tn = memory.get('temporal_nature', 'timeless')
-                tn_tag = f" [{tn}]" if tn != "timeless" else ""
-                memory_context += f"- [{memory['memory_type']}] {memory['content']}{tn_tag}\n"
+                memory_context += format_memory_line(memory) + "\n"
             system_prompt = system_prompt + memory_context
 
         messages = [SystemMessage(content=system_prompt)] + list(state["messages"])

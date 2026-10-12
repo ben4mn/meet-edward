@@ -4,8 +4,13 @@ Twilio SMS service for Edward's messaging capabilities.
 Handles both outbound SMS (Edward's phone number) and inbound webhook processing.
 """
 
+import asyncio
 import os
-from typing import Optional
+import time
+from typing import Any, List, Mapping, Optional, Tuple
+from urllib.parse import urlsplit, urlunsplit
+
+import httpx
 from twilio.rest import Client
 from twilio.request_validator import RequestValidator
 
@@ -116,6 +121,62 @@ def validate_webhook_signature(
         return False
 
 
+def _first_header(value: Optional[str]) -> str:
+    """The first of a comma-separated proxy header (``https, http`` → ``https``)."""
+    return (value or "").split(",", 1)[0].strip()
+
+
+def received_webhook_url(request_url: str, headers: Mapping[str, str]) -> str:
+    """The URL Twilio POSTed to, as this request was received: the path and
+    query of ``request_url`` with the scheme and host a proxy or tunnel in
+    front saw — ``X-Forwarded-Proto`` and ``X-Forwarded-Host`` (else
+    ``Host``), so ``http://localhost:8000/api/webhook/twilio`` behind a
+    tunnel checks as ``https://edward.example.com/api/webhook/twilio``."""
+    h = {str(k).lower(): str(v) for k, v in (headers or {}).items()}
+    parts = urlsplit(request_url)
+    scheme = _first_header(h.get("x-forwarded-proto")) or parts.scheme or "https"
+    host = _first_header(h.get("x-forwarded-host")) or (h.get("host") or "").strip() or parts.netloc
+    return urlunsplit((scheme, host, parts.path, parts.query, ""))
+
+
+def check_webhook_signature(
+    *,
+    request_url: str,
+    headers: Mapping[str, str],
+    params: Mapping[str, Any],
+    configured_url: Optional[str] = None,
+) -> Tuple[bool, str]:
+    """``(accepted, why)`` for an inbound Twilio webhook. Fails closed.
+
+    A request is accepted only when its ``X-Twilio-Signature`` is valid for
+    ``TWILIO_AUTH_TOKEN`` and one of the URLs Twilio may have signed: the
+    configured webhook URL (``TWILIO_WEBHOOK_URL`` …) when there is one,
+    then the URL as received (``received_webhook_url``). Without a token
+    nothing can be checked, so nothing is accepted: an inbound webhook runs
+    a model turn, and an unchecked one let anyone who found the URL start
+    one (it used to be accepted whenever ``TWILIO_WEBHOOK_URL`` was unset).
+    ``why`` is for the log; it never carries the token or the signature."""
+    token = (TWILIO_AUTH_TOKEN or "").strip()
+    if not token:
+        return False, "TWILIO_AUTH_TOKEN isn't set, so the signature can't be checked"
+    h = {str(k).lower(): str(v) for k, v in (headers or {}).items()}
+    signature = (h.get("x-twilio-signature") or "").strip()
+    if not signature:
+        return False, "the request has no X-Twilio-Signature header"
+    candidates: List[str] = []
+    for url in ((configured_url or "").strip(), received_webhook_url(request_url, h)):
+        if url and url not in candidates:
+            candidates.append(url)
+    validator = RequestValidator(token)
+    for url in candidates:
+        try:
+            if validator.validate(url, dict(params or {}), signature):
+                return True, f"signed for {url}"
+        except Exception:  # noqa: BLE001 — a malformed request is a mismatch
+            continue
+    return False, "the signature doesn't match " + " or ".join(candidates)
+
+
 def normalize_phone_number(number: str) -> str:
     """
     Normalize a phone number to E.164 format.
@@ -180,6 +241,72 @@ async def send_whatsapp(to_number: str, message: str) -> dict:
         "to": to_number,
         "from": TWILIO_PHONE_NUMBER
     }
+
+
+# ----------------------------------------------------- the account check --
+#
+# Three env vars said "connected" while the account behind them was
+# inactive (2026-10-11, the integrations audit): the Settings rows now ask
+# Twilio. One small GET, 3 s, the answer kept 10 minutes, one request in
+# flight; the SID never goes in a message or a log line (an httpx error's
+# text carries the URL, so only its type is logged).
+
+ACCOUNT_STATUS_TTL_S = 600
+ACCOUNT_STATUS_TIMEOUT_S = 3.0
+_now = time.monotonic
+_account_cache: Optional[tuple] = None          # (at, verdict)
+_account_inflight: Optional["asyncio.Task"] = None
+
+
+async def _fetch_account() -> httpx.Response:
+    """``GET /2010-04-01/Accounts/<sid>.json`` with the account's own
+    credentials (conftest refuses it in tests)."""
+    url = f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_ACCOUNT_SID}.json"
+    async with httpx.AsyncClient(timeout=ACCOUNT_STATUS_TIMEOUT_S) as client:
+        return await client.get(url, auth=(TWILIO_ACCOUNT_SID or "", TWILIO_AUTH_TOKEN or ""))
+
+
+async def _check_account() -> dict:
+    global _account_cache
+    try:
+        resp = await _fetch_account()
+    except Exception as exc:  # noqa: BLE001 - a timeout, a refused connection, DNS
+        print(f"[Twilio] account check failed ({type(exc).__name__})")
+        verdict = {"status": "error", "status_message": "couldn't reach Twilio"}
+    else:
+        if resp.status_code in (401, 403):
+            verdict = {"status": "error",
+                       "status_message": "Twilio rejected the credentials — the account looks inactive"}
+        elif resp.status_code != 200:
+            verdict = {"status": "error", "status_message": f"couldn't reach Twilio (HTTP {resp.status_code})"}
+        else:
+            try:
+                state = str((resp.json() or {}).get("status") or "unknown")
+            except ValueError:
+                state = "unknown"
+            verdict = ({"status": "connected", "status_message": "Twilio account active"} if state == "active"
+                       else {"status": "error", "status_message": f"Twilio account inactive ({state})"})
+    _account_cache = (_now(), verdict)
+    return verdict
+
+
+async def account_status() -> dict:
+    """``{"status": "connected"|"error", "status_message"}`` for the Twilio
+    account: active, inactive (suspended/closed), credentials rejected, or
+    unreachable. Cached ``ACCOUNT_STATUS_TTL_S``; concurrent callers share
+    one request."""
+    global _account_inflight
+    if not is_configured():
+        return {"status": "error", "status_message": "Twilio isn't configured"}
+    cached = _account_cache
+    if cached is not None and _now() - cached[0] < ACCOUNT_STATUS_TTL_S:
+        return dict(cached[1])
+    loop = asyncio.get_running_loop()
+    task = _account_inflight
+    if task is None or task.done() or task.get_loop() is not loop:
+        task = loop.create_task(_check_account())
+        _account_inflight = task
+    return dict(await asyncio.shield(task))
 
 
 def get_phone_number() -> Optional[str]:

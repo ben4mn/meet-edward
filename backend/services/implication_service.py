@@ -9,14 +9,13 @@ Follows reflection_service.py pattern: fire-and-forget, run_*_safe() wrapper.
 """
 
 import asyncio
-import json
-import re
 import uuid
 from typing import List, Optional
 
 from langchain_core.messages import HumanMessage
 
 from services.llm_utils import build_background_llm, make_background_system_message
+from services.json_parsing import extract_json_payload
 
 
 IMPLICATION_PROMPT = """Given these recently stored memories from a conversation, identify:
@@ -102,19 +101,9 @@ async def run_implication_analysis(
             )
         response_text = response_text.strip()
 
-        # Extract JSON
-        if "```json" in response_text:
-            response_text = response_text.split("```json")[1].split("```")[0].strip()
-        elif "```" in response_text:
-            parts = response_text.split("```")
-            if len(parts) >= 2:
-                response_text = parts[1].strip()
-
-        json_match = re.search(r'\{[\s\S]*\}', response_text)
-        if json_match:
-            response_text = json_match.group()
-
-        data = json.loads(response_text)
+        data = extract_json_payload(
+            response_text, expected="object", subsystem="implication_analysis"
+        )
 
     except asyncio.TimeoutError:
         print("[IMPLICATION] Analysis timed out (8s)")

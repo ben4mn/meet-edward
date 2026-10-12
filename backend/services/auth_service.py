@@ -1,5 +1,10 @@
-"""Authentication service for single-user password authentication."""
+"""Authentication service for single-user password authentication.
 
+bcrypt (cost 12, about a quarter of a second) runs off the event loop
+(``asyncio.to_thread``): on the loop, a burst of guesses froze every turn,
+the scheduler and every stream for as long as it lasted."""
+
+import asyncio
 import logging
 import os
 import secrets
@@ -62,6 +67,21 @@ def _resolve_jwt_secret() -> str:
 
 JWT_SECRET_KEY = _resolve_jwt_secret()
 
+# Whoever holds this key can mint the owner's session. Edward's shell and
+# editor cannot read backend/.jwt_secret or .env, and his shell cannot reach
+# the backend's or the frontend's port (services/computer/rails.py) — those
+# are the bar: code run in the shell never shows the key to the model, so
+# redaction alone could not stop it. The key is still one of the secrets the
+# egress scan blocks and tool output redacts, as defence in depth;
+# secret_scan also reads the file itself, for processes that never import
+# this module.
+try:
+    from services import secret_scan as _secret_scan
+
+    _secret_scan.register_known_secret("JWT_SECRET_KEY", JWT_SECRET_KEY)
+except Exception as _exc:  # noqa: BLE001 — a scan that can't learn the key must not stop auth
+    logger.warning("could not register the session key with the secret scan: %s", _exc)
+
 
 def hash_password(password: str) -> str:
     """Hash a password using bcrypt."""
@@ -102,6 +122,59 @@ def verify_token(token: str) -> bool:
         return False
 
 
+# The session cookie, shared by the login/setup routes and the middleware's
+# renewal so the three never drift apart.
+COOKIE_NAME = "edward_token"
+COOKIE_MAX_AGE = JWT_EXPIRATION_DAYS * 24 * 60 * 60
+# Re-issue the cookie once a valid token has less than half its life left.
+# Sessions used to last exactly 30 days from login with nothing renewing
+# them, so every device hit a cliff (2026-09-20: the /screen tab went from
+# 200s to 85,000 401s a day; the phone was next). A device used weekly
+# now never expires; one left in a drawer still does.
+SESSION_RENEW_BELOW_SECONDS = COOKIE_MAX_AGE / 2
+
+
+def token_seconds_remaining(token: str) -> Optional[float]:
+    """Seconds until a valid token expires; ``None`` for an invalid or expired one."""
+    try:
+        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+    except JWTError:
+        return None
+    if payload.get("sub") != "user" or "exp" not in payload:
+        return None
+    remaining = float(payload["exp"]) - datetime.now(timezone.utc).timestamp()
+    return remaining if remaining > 0 else None
+
+
+def should_renew_session(token: str) -> bool:
+    """Pure decision: renew when the token is valid and past half its life."""
+    remaining = token_seconds_remaining(token)
+    return remaining is not None and remaining < SESSION_RENEW_BELOW_SECONDS
+
+
+# ADAPT: the session cookie is Secure, which assumes HTTPS in front of Edward.
+#   How it works here: Edward is reached over an HTTPS tunnel or proxy; browsers
+#   also accept Secure cookies from http://localhost, and a LAN kiosk over plain
+#   HTTP needs a browser flag that treats its origin as secure.
+#   To adapt: serve Edward over HTTPS (a tunnel or a reverse proxy), or set
+#   EDWARD_COOKIE_SECURE=off for a plain-HTTP LAN setup you trust.
+def cookie_secure() -> bool:
+    """Whether session cookies carry ``Secure`` (``EDWARD_COOKIE_SECURE``, default on)."""
+    return (os.getenv("EDWARD_COOKIE_SECURE") or "on").strip().lower() not in ("off", "0", "false", "no")
+
+
+def set_session_cookie(response, token: str) -> None:
+    """The one way a session cookie is written (login, setup, renewal)."""
+    response.set_cookie(
+        key=COOKIE_NAME,
+        value=token,
+        max_age=COOKIE_MAX_AGE,
+        httponly=True,
+        secure=cookie_secure(),
+        samesite="lax",
+    )
+
+
 _password_configured_cache: Optional[bool] = None
 
 
@@ -138,11 +211,12 @@ async def setup_password(session: AsyncSession, password: str) -> bool:
     )
     settings = result.scalar_one_or_none()
 
+    password_hash = await asyncio.to_thread(hash_password, password)
     if settings:
-        settings.password_hash = hash_password(password)
+        settings.password_hash = password_hash
     else:
         # Create settings with password
-        settings = SettingsModel(id="default", password_hash=hash_password(password))
+        settings = SettingsModel(id="default", password_hash=password_hash)
         session.add(settings)
 
     await session.commit()
@@ -161,7 +235,7 @@ async def authenticate(session: AsyncSession, password: str) -> Optional[str]:
     if row is None or row[0] is None:
         return None
 
-    if not verify_password(password, row[0]):
+    if not await asyncio.to_thread(verify_password, password, row[0]):
         return None
 
     return create_access_token()
@@ -181,9 +255,9 @@ async def change_password(
     if settings is None or settings.password_hash is None:
         return False
 
-    if not verify_password(current_password, settings.password_hash):
+    if not await asyncio.to_thread(verify_password, current_password, settings.password_hash):
         return False
 
-    settings.password_hash = hash_password(new_password)
+    settings.password_hash = await asyncio.to_thread(hash_password, new_password)
     await session.commit()
     return True

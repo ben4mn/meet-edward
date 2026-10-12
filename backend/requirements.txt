@@ -1,9 +1,19 @@
+# Edward's backend. Install with the pins: setup.sh runs
+#   pip install -r requirements.txt -c constraints.txt
+# (backend/start.sh does the same whenever either file changes).
 fastapi==0.109.2
 uvicorn[standard]>=0.31.1
+# The Claude API: every model call goes through services/claude_chat_model.py.
 anthropic>=0.40.0
 sqlalchemy==2.0.25
 asyncpg==0.29.0
 psycopg2-binary==2.9.9
+# psycopg 3 (the LangGraph checkpointer, langgraph-checkpoint-postgres) with
+# its own libpq. postgresql@16 is keg-only, so on a fresh Mac pure-python
+# psycopg finds no libpq and the backend dies at import. Keep it equal to
+# psycopg's pin in constraints.txt (psycopg's own [binary] extra pins the
+# two together; a mismatched pair is not supported).
+psycopg-binary==3.3.3
 python-dotenv==1.0.1
 pydantic>=2.10.0
 pydantic-settings>=2.6.1
@@ -12,7 +22,7 @@ langgraph>=0.2.60
 langgraph-checkpoint-postgres>=2.0.11
 langchain-core>=0.3.36,<0.4.0
 langchain-anthropic>=0.3.5
-langsmith>=0.1.0
+langchain-openai>=0.3.0
 pgvector>=0.2.0
 sentence-transformers>=2.2.0
 # Messaging integrations
@@ -25,6 +35,11 @@ langchain-mcp-adapters>=0.1.14,<0.2.0
 # Web search
 httpx>=0.25.0
 trafilatura>=1.6.0
+# Edward's own headless browser (services/headless_browser.py, 2026-10-11):
+# Playwright's bundled chrome-headless-shell, never Google Chrome.
+# `python -m playwright install chromium-headless-shell` (setup.sh runs it)
+# puts the shell under ~/Library/Caches/ms-playwright.
+playwright==1.58.0
 # Scheduled events (cron pattern parsing)
 croniter>=1.3.0
 # Authentication
@@ -32,7 +47,27 @@ python-jose[cryptography]>=3.3.0
 bcrypt>=4.0.0
 # Push notifications
 pywebpush>=1.14.0
-# Browser automation (optional — requires Lightpanda binary)
-playwright>=1.40.0
-# Claude Code integration (agent SDK)
-claude-agent-sdk>=0.1.35
+# The Codex fallback provider (EDWARD_LLM_PROVIDER=codex) and langchain-openai.
+openai>=1.0.0
+# Gmail API
+google-api-python-client>=2.100.0
+google-auth-httplib2>=0.2.0
+google-auth-oauthlib>=1.2.0
+# Knowledge-graph memory (optional): Graphiti + Kuzu embedded graph DB.
+# Both use the local sentence-transformers embedder and Edward's
+# build_background_llm() adapter — no OpenAI API key required. Installed
+# always, used only with GRAPHITI_ENABLED=true (and the graph worker:
+# scripts/install-launchagents.sh --with-graph).
+graphiti-core>=0.28.0
+kuzu>=0.11.0
+# Host stats for /display vitals panel (CPU/mem/disk/net/uptime).
+psutil>=5.9
+
+# Test-only (versions from constraints.txt). Run the suite on the test
+# cluster: scripts/with-test-db-lock.sh .venv/bin/python -m pytest tests/…
+pytest
+pytest-asyncio
+# Without this the `timeout` setting in pytest.ini is silently ignored, and a
+# single hung test stalls the whole run with no output — which is exactly
+# what happened on 2026-08-22.
+pytest-timeout==2.4.0
