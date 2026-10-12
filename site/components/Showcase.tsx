@@ -3,7 +3,16 @@
 import { ScrollReveal, StaggerContainer, StaggerItem } from "./ScrollReveal";
 
 // Screenshots from the repository's UX harness (invented data only).
-const shots = [
+const shots: { src: string; width: number; height: number; title: string; caption: string; alt: string; wide?: boolean }[] = [
+  {
+    src: "/screenshots/today-desktop.png",
+    width: 1600,
+    height: 1000,
+    title: "Today",
+    caption: "The front door: what needs you, with the action on the card, and what he did on his own.",
+    alt: "Edward's Today page: late pet doses to log, a call starting soon, a reply held for approval, and what he did today",
+    wide: true,
+  },
   {
     src: "/screenshots/chat-desktop.png",
     width: 1600,
@@ -59,7 +68,7 @@ export function Showcase() {
 
         <StaggerContainer className="grid grid-cols-1 md:grid-cols-2 gap-8" staggerDelay={0.1}>
           {shots.map((shot) => (
-            <StaggerItem key={shot.src}>
+            <StaggerItem key={shot.src} className={shot.wide ? "md:col-span-2" : undefined}>
               <figure>
                 <div className="rounded-xl border border-[#334155]/80 overflow-hidden bg-[#0b1120] shadow-xl shadow-black/30">
                   {/* eslint-disable-next-line @next/next/no-img-element -- static export, no image optimizer */}
