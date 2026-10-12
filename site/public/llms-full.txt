@@ -1,1351 +1,1481 @@
 # Edward — Complete Documentation
 
-> Self-hosted AI assistant with long-term memory, extensible skills, and proactive monitoring.
+> An open-source AI assistant that remembers, notices what matters and works on your Mac, for one person. The Claude API for every model call; macOS on Apple silicon only.
 
 Website: https://meet-edward.com
 GitHub: https://github.com/ben4mn/meet-edward
+Operating guide for AI assistants: https://github.com/ben4mn/meet-edward/blob/main/CLAUDE.md
 License: Apache 2.0
 
 ---
 
 ## Introduction
 
-Meet Edward — an open-source AI assistant that remembers everything.
+*An open-source AI assistant that remembers, notices what matters and works on your Mac, for one person: you.*
 
-### What is Edward?
+### What Edward is
 
-Edward is a full-stack AI assistant built for personal use. He runs on your Mac, stores memories in PostgreSQL, and gets smarter the more you talk to him. Think of him as a private ChatGPT that actually knows who you are.
+Edward is a personal assistant you run yourself, on a Mac that stays on. You talk to him in an app you can install on your phone, by voice, and in iMessage, where anyone can write `@Edward` in a chat. He keeps what he learns in your own PostgreSQL database, with a record of where each memory came from. He has a small computer of his own (a sandboxed shell, a file editor and a headless browser), he schedules his own follow-ups when he promises to check back, and he keeps a journal of what he did on his own and why.
 
-Edward is powered by Claude (Anthropic), orchestrated with LangGraph, and extended through a modular skills system that includes messaging (iMessage, SMS, WhatsApp), code execution, web search, Apple services integration, and more.
+Every model call goes to the Claude API, with a model chosen per purpose and a daily spend cap you set ($5 by default). The code is Apache-2.0 on [GitHub](https://github.com/ben4mn/meet-edward).
 
-### What Does Edward Stand For?
+This release is a snapshot of a build that ran every day for one person for months. The parts that were bespoke to that home are marked `ADAPT:` in the code and collected in [Adapting to your Mac](https://meet-edward.com/docs/adapting).
 
-**E**nhanced **D**igital **W**orkflow **A**ssistant for **R**outine **D**ecisions
+![Edward's Today page: late pet doses to log, a call starting soon, a reply held for approval, and a list of what he did today](https://meet-edward.com/screenshots/today-desktop.png)
+*Today: what needs you, with the action on each card, and what he did. (Invented data from the repository's UX harness.)*
 
-- **Enhanced** — learns from every conversation with long-term memory
-- **Digital** — lives on your machine, integrates with your apps
-- **Workflow** — automates messaging, scheduling, research, and coding tasks
-- **Assistant** — proactive, not just reactive — monitors messages and acts on your behalf
-- **Routine** — handles the repetitive stuff so you can focus on what matters
-- **Decisions** — provides context-aware answers informed by your history
+### What makes him different
 
-### Default Personality
+- **He remembers, and knows where he heard it.** Every memory records who said it (you, someone in your messages, or Edward himself), what it is about and how sure he is. Ask him “how do you know that?” and he answers from the record. Only your own words make a standing instruction, and only you can change what you said.
+- **He works for one person.** Edward runs on your Mac and keeps everything he knows in your Postgres. The one outside service he needs is the Claude API, which sees what each model call sends it.
+- **He has his own computer.** A persistent shell, a file editor and a headless browser of his own, with rails against accidents: he can’t write his own running code, read his own keys, reach your database or launch other apps. The sandbox guards those things, not your whole account (see [Guard rails](https://meet-edward.com/docs/guard-rails)).
+- **He follows through.** When he says he will check back, he schedules it and comes back. Whatever he does on his own goes in a journal entry, and you can mark each one right or wrong.
+- **He speaks up once, or not at all.** Noticing what matters in your messages is opt-in. When it is on, he says a thing once, through one door, outside your quiet hours.
+- **He has limits you set.** A daily spend cap in dollars, a per-turn cap, a secret scan on everything that leaves, and approvals when you want them.
 
-Out of the box, Edward's system prompt includes the instruction:
+### How a conversation works
 
-```
-Be concise, friendly, helpful, and a tad cheeky when you feel like it.
-```
+1. You write (or say) something in the app, in iMessage, or through the iPhone widget.
+2. Edward searches his memories (vector similarity and keywords, blended 70/30) and the documents he keeps for you.
+3. Claude answers with the same fourteen tools on every surface: his shell and editor, web search and fetch, his own browser, your Chrome if you allow it, `look` for pictures and PDFs, your messages, one guarded send, a way to tell you something, memory, scheduling, his screens and a visible plan. The app shows his reasoning and every tool call as it happens.
+4. After the answer, a small model extracts what is worth remembering and files it with its source.
 
-You can customize this in the Settings page to match your preferred communication style.
+### When nobody is talking to him
 
-### Key Differentiators
+- **Follow-through.** A promise to check back is a scheduled wake; when it fires, he does the checking.
+- **A silent nightly** at 03:00 tidies his memory and his state, and is skipped when nothing happened.
+- **Free time**: one small, budgeted run a day at 13:00 for his own screen and projects. It reaches nobody.
+- **Noticing** (off until you turn it on): he reads new messages and mail for what matters to you, decides whether it is worth a word, and says it once.
 
-- **Long-term memory** — hybrid vector + keyword search across facts, preferences, context, and instructions. Edward remembers what you told him last week, last month, or last year.
-- **Self-hosted** — your data stays on your machine. No third-party storage, no vendor lock-in. Just PostgreSQL and your Anthropic API key.
-- **Extensible skills** — enable and disable integrations from the settings UI. Edward can send texts, search the web, execute code, manage your calendar, and install new MCP servers at runtime.
-- **Proactive heartbeat** — monitors your iMessage, calendar, and email for items that need attention, triaging and responding autonomously when appropriate.
-- **Scheduled actions** — Edward can schedule reminders, messages, and tasks for the future. He fires them himself using the same tool loop he uses in conversation.
+More in [The mind](https://meet-edward.com/docs/mind).
 
-### How It Works (High Level)
+### What leaves your Mac
 
-1. You send a message through the web UI (or iMessage, SMS, WhatsApp)
-2. Edward retrieves relevant memories from your history
-3. The LangGraph agent processes your message with full tool access
-4. Edward responds, then extracts any new memories to store
-5. Background systems enrich, reflect on, and consolidate memories over time
+Edward’s memories, conversations, documents and files live in your Postgres and your home folder. What goes out:
 
-### Choose Your Path
+- **The Claude API** receives what each model call sends: the conversation, the memories retrieved for it and the tool results.
+- Only if you set them up: ElevenLabs (voice), Google (Gmail), Twilio (SMS), Brave Search, Home Assistant, and whatever a page or a send he makes for you reaches.
 
-- **[Beginner Guide](https://meet-edward.com/docs/beginner-guide)** — never used a terminal? Start here.
-- **[Setup with AI](https://meet-edward.com/docs/setup-with-ai)** — paste one block into an AI coding assistant and let it handle everything.
-- **[Getting Started](https://meet-edward.com/docs/getting-started)** — comfortable with the terminal? Quick 5-minute path.
+### What you need
+
+- A Mac with Apple silicon that can stay on (a Mac mini makes a good host)
+- The Xcode command-line tools, [Homebrew](https://brew.sh) and an [Anthropic API key](https://console.anthropic.com/)
+
+Intel Macs, Linux and Windows are not supported. See [Platform support](https://meet-edward.com/docs/platform-support) for why.
+
+### Choose your path
+
+- **[Beginner guide](https://meet-edward.com/docs/beginner-guide)** — never used a terminal? Start here.
+- **[Set up with AI](https://meet-edward.com/docs/setup-with-ai)** — let Claude Code (or another coding assistant) walk you through it.
+- **[Quick start](https://meet-edward.com/docs/getting-started)** — comfortable in a terminal? Four commands.
+- **[Upgrading from March](https://meet-edward.com/docs/upgrading)** — already running the March 2026 release? Move to this one without losing what he knows.
+
+The repository’s own docs go deeper: the [README](https://github.com/ben4mn/meet-edward/blob/main/README.md), [CLAUDE.md](https://github.com/ben4mn/meet-edward/blob/main/CLAUDE.md) (the operating guide) and one page per subsystem in [docs/architecture](https://github.com/ben4mn/meet-edward/blob/main/docs/architecture/README.md).
+
+Source: https://meet-edward.com/docs/introduction
 
 ---
 
-## Beginner Guide
+## Beginner guide
 
-A complete walkthrough from zero to a running Edward — no experience required.
+*From a Mac to a running Edward, one step at a time. No experience needed.*
 
-### What You Will Need
+### What you will need
 
-- **A Mac** — Edward relies on macOS for iMessage, Apple Calendar, and other integrations. Windows and Linux are not supported.
-- **An internet connection** — to download software and talk to the Claude AI API.
-- **About 20 minutes** — most of that is waiting for things to install.
-- **An Anthropic API key** — this is how Edward connects to Claude. We'll walk you through getting one in Step 6. It costs a few cents per conversation (typically under $0.10/day for casual use).
+- **A Mac with Apple silicon** (an M1 or later) that can stay on and stay logged in. Edward runs on this Mac, so when it sleeps, he does too. A Mac mini makes a good always-on host. Intel Macs are not supported.
+- **An Anthropic API key**, which is how Edward talks to Claude. You pay Anthropic for what he uses, and Edward stops himself at a daily cap ($5 by default; you can change it).
+- **About 30 minutes**, most of it waiting for things to download and install.
 
 ### Step 1: Open Terminal
 
-Terminal is a built-in app on your Mac that lets you type commands. You don't need to know how it works in detail — just type (or paste) exactly what this guide shows you.
+Terminal is the Mac app for typing commands. You don’t need to know how it works: paste exactly what this guide shows and press Return.
 
-To open it:
+1. Press `Cmd + Space` to open Spotlight
+2. Type **Terminal** and press Return
 
-1. Press `Cmd + Space` to open Spotlight search
-2. Type **Terminal** and press Enter
+### Step 2: Install Apple’s command-line tools
 
-A window with a blinking cursor will appear. This is where you'll paste commands for the rest of this guide.
+```
+xcode-select --install
+```
 
-### Step 2: Install Homebrew
+A window asks to install the tools. Click **Install** and wait for it to finish. If Terminal says they are already installed, move on.
 
-Homebrew is a package manager for macOS — it makes installing developer tools easy. Paste this command into Terminal and press Enter:
+### Step 3: Install Homebrew
+
+Homebrew installs the software Edward is built on (Python, PostgreSQL and Node). Paste this and press Return:
 
 ```
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 ```
 
-It will ask for your Mac password (the one you use to log in). When you type it, nothing will appear on screen — that's normal. Just type it and press Enter.
-
-This can take 5-10 minutes. When it finishes, it may show instructions to add Homebrew to your PATH. If so, copy and paste those commands too.
-
-Verify it worked:
+It asks for your Mac password. Nothing appears while you type it; that is normal. When it finishes, it prints **Next steps** with two or three commands that add Homebrew to your path: paste those too. Then check:
 
 ```
 brew --version
 ```
 
-You should see something like `Homebrew 4.x.x`.
+### Step 4: Get an Anthropic API key
 
-### Step 3: Install Git, Node.js, and Python
+1. Go to [console.anthropic.com](https://console.anthropic.com/) and sign in or create an account
+2. Add a payment method or credits under Billing
+3. Open **API Keys** and click **Create Key**
+4. Copy the key (it starts with `sk-ant-`). The setup script asks for it in the next steps. Treat it like a password: don’t paste it into a chat or an email.
 
-Edward needs these three tools. Install them all at once:
-
-```
-brew install git node python@3.11
-```
-
-This takes a few minutes. When it finishes, verify each one:
+### Step 5: Get the Edward code
 
 ```
-git --version      # Should show git version 2.x+
-node --version     # Should show v18+ or v20+
-python3 --version  # Should show Python 3.11+
-```
-
-### Step 4: Get the Edward Code
-
-"Cloning" a repository means downloading a copy of the code to your computer. Run these commands to clone Edward to your Desktop:
-
-```
-cd ~/Desktop
+cd ~
 git clone https://github.com/ben4mn/meet-edward.git
 cd meet-edward
 ```
 
-You should now have a `meet-edward` folder on your Desktop.
+This puts Edward in a `meet-edward` folder in your home folder. Keep it there rather than on the Desktop or in Documents, which macOS guards from background programs like Edward’s services.
 
-### Step 5: Run the Setup Script
-
-Edward comes with a setup script that installs everything it needs — PostgreSQL (the database), Python packages, and frontend dependencies.
+### Step 6: Run the setup script
 
 ```
 ./setup.sh
 ```
 
-This will take a few minutes. You'll see a lot of output scrolling by — that's normal. Wait until you see a message indicating setup is complete.
+It asks three things:
 
-**If you see "Permission denied":**
+- **Your name**, which Edward calls you by
+- **Your Anthropic API key** from step 4
+- **Your time zone**, which reminders, quiet hours and “today” follow
 
-```
-chmod +x setup.sh
-./setup.sh
-```
+Then it installs Python 3.12, PostgreSQL 16 and Node, builds the memory search extension, creates Edward’s database, downloads his Python and web packages and his headless browser, and builds two small helpers. It takes a while, and a lot of text scrolls past. It is safe to run again if anything stops it.
 
-### Step 6: Get an Anthropic API Key
+At the end it prints the path of a `python3.12`. Copy it somewhere: you need it if you want Edward to read your messages or calendar (step 10).
 
-Edward uses Claude (made by Anthropic) as his brain. You need an API key to connect them.
-
-1. Go to [console.anthropic.com](https://console.anthropic.com)
-2. Create an account or sign in
-3. Go to **API Keys** in the left sidebar
-4. Click **Create Key**
-5. Copy the key — it starts with `sk-ant-`
-
-You'll need to add a payment method. Typical personal usage costs a few cents per conversation — well under $5/month for most people.
-
-### Step 7: Add Your API Key
-
-Edward stores its settings in a file called `.env` (short for "environment"). Open it in TextEdit:
+### Step 7: Start Edward
 
 ```
-open -e backend/.env
+bash scripts/install-launchagents.sh
 ```
 
-Find the line that says `ANTHROPIC_API_KEY=` and paste your key after the equals sign:
+This keeps Edward running: macOS starts him now and every time you log in, and restarts him if he stops. It also sets up a health check every five minutes and a nightly backup to `~/edward-backups`.
+
+The first start takes a few minutes: the backend downloads its small memory model and the app builds itself. To watch it, run `tail -f /tmp/edward-backend.log` (press `Ctrl + C` to stop watching).
+
+### Step 8: Choose your password
+
+On the Mac that runs Edward, open your browser and go to `http://localhost:3000`. The first visit asks for a password and a **one-time setup code**. Get the code in Terminal:
 
 ```
-ANTHROPIC_API_KEY=sk-ant-your-key-here
+cat backend/.setup_code
 ```
 
-Save the file (Cmd + S) and close TextEdit.
+Type it in (capitals and dashes don’t matter) and choose your password. The code is deleted once the password is set. It exists so nobody else on your network can claim your Edward first, which is also why the first password can only be set on this Mac.
 
-### Step 8: Start Edward
+### Step 9: Turn on what he may use
 
-Back in Terminal, make sure you're in the meet-edward folder, then run:
+On a fresh install Edward can use none of his skills until you turn them on. Open the **Edward** tab, then:
 
-```
-./restart.sh
-```
+1. **Mind → Skills**: turn on what you want him to have. Shell/Bash is his own computer (a shell and a file editor), Web Search lets him search and read pages, iMessage lets him read and send messages, Push Notifications lets him reach your phone, and iOS Widget lets him fill the iPhone widget.
+2. **House → Locale**: check the time zone.
 
-You should see output indicating both the backend and frontend are starting. Wait about 10 seconds for everything to initialize.
+Then go to **Chat** and say hello. If he answers, Edward is running.
 
-### Step 9: Open in Browser
+### Step 10 (optional): Let him read your Mac’s apps
 
-Open your web browser (Safari, Chrome, etc.) and go to:
+Edward reads Messages, Mail, Calendar, Reminders and Contacts from their own databases, which macOS protects. Grant access only for what you will use:
 
-```
-http://localhost:3000
-```
+- **Full Disk Access**: System Settings → Privacy & Security → Full Disk Access → **+**, press `Cmd + Shift + G`, paste the python path from step 6, and turn it on.
+- **Calendars and Reminders** (so he can add and change events when you ask): sitting at the Mac, run `bash backend/scripts/eventkit_request_access.sh` and click Allow.
+- **Automation**: macOS asks the first time Edward sends a message. Answer it at the Mac.
 
-`localhost` means "this computer" — Edward is running right here on your Mac, not on someone else's server.
+Reading your messages is still off until you turn on **Attention → Listening → Configuration → Messages** in the Edward tab. Read [Listening & pings](https://meet-edward.com/docs/listening) first: with it on, anyone can write `@Edward` in a chat with you and he answers from your own iMessage account.
 
-1. You'll be asked to **set a password** — this protects your Edward instance
-2. After logging in, type a message like **"Hi, who are you?"**
-3. Edward should respond. If he does, you're all set!
+### Keeping the Mac awake
 
-### Why Does My Mac Need to Stay On?
+Edward runs as your user, so the Mac must be on and you must be logged in. In System Settings → Energy, turn on “Prevent automatic sleeping when the display is off” (on a laptop, keep it plugged in). After a restart, log in and Edward starts by himself.
 
-Edward runs on your Mac. When your Mac sleeps or shuts down, Edward stops too. This is normal — he'll pick up right where he left off when you restart.
+### Using Edward from your phone
 
-To start Edward again after a reboot:
+Installing the app on your phone, push notifications and the microphone all need an `https://` address. The usual way is a tunnel to port 3000 on your Mac:
 
-```
-cd ~/Desktop/meet-edward
-./restart.sh
-```
+- [Tailscale](https://tailscale.com/) keeps Edward private to your own devices.
+- [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) gives him a public address. To try it: `brew install cloudflared`, then `cloudflared tunnel --url http://localhost:3000`, which prints a temporary `https://…trycloudflare.com` address. For a lasting one, set up a named tunnel and run it as a LaunchAgent.
 
-### Accessing Edward from Your Phone
+Then tell Edward where he lives: add `EDWARD_PUBLIC_BASE_URL=https://your-address` to the `.env` file in the `meet-edward` folder (links in his pushes use it), and the tunnel’s LaunchAgent label as `EDWARD_TUNNEL_LABEL` so the health check watches it. Run `./restart.sh` to apply.
 
-If your phone is on the same Wi-Fi network as your Mac, you can access Edward from your phone's browser.
+Open the address on your phone and sign in. On iPhone, tap Share → **Add to Home Screen**; on Android, the ⋮ menu → **Add to Home screen**.
 
-First, find your Mac's local IP address:
+### Common problems
 
-```
-ipconfig getifaddr en0
-```
+#### “brew: command not found”
 
-This will print something like `192.168.1.42`. On your phone, open a browser and go to:
+The Homebrew installer’s “Next steps” weren’t run. Close Terminal, open a new window and try again; if it still fails, run the commands Homebrew printed at the end of step 3.
 
-```
-http://192.168.1.42:3000
-```
+#### Setup stops with an Intel or Rosetta message
 
-(Use the actual number your Mac showed, not the example above.)
+Edward needs Apple silicon. If your Mac is Apple silicon, your Terminal is running under Rosetta: quit it, then in Finder → Applications → Utilities, select Terminal, press `Cmd + I` and untick “Open using Rosetta”.
 
-### Save as Home Screen App (PWA)
+#### The page says “still starting”, or won’t load
 
-Edward works as a Progressive Web App — you can save it to your phone's home screen for an app-like experience.
+The first start can take several minutes. Watch `tail -f /tmp/edward-backend.log` and `tail -f /tmp/edward-frontend.log`, then try again. `./restart.sh` restarts both.
 
-#### iPhone (Safari)
+#### I signed in but keep landing back on the login page
 
-1. Open Edward in Safari
-2. Tap the **Share** button (square with arrow)
-3. Scroll down and tap **Add to Home Screen**
+You are probably on a plain `http://` address other than `localhost`. Use the Mac itself, or an `https://` tunnel (above). On a home network you trust, `EDWARD_COOKIE_SECURE=off` in `.env` also works.
 
-#### Android (Chrome)
+#### He says he can’t read my messages or calendar
 
-1. Open Edward in Chrome
-2. Tap the **three-dot menu** (top right)
-3. Tap **Add to Home screen**
+Full Disk Access is missing, or went to a different python. The path changes when Homebrew upgrades Python, so grant the new one (setup and the LaunchAgent installer both print it) and run `bash scripts/install-launchagents.sh` again.
 
-### Accessing Edward from Anywhere
+#### Is everything working?
 
-By default, Edward is only accessible on your local network. To access him from anywhere (outside your home), you can use a tunnel service.
+Open `http://localhost:3000/api/health/report` while signed in: it lists what works and what doesn’t.
 
-#### Cloudflare Tunnel (recommended, free)
+Next: [Configuration](https://meet-edward.com/docs/configuration) lists the settings, and what ships switched off. The repository’s [README](https://github.com/ben4mn/meet-edward/blob/main/README.md#quick-start) has the same steps in brief.
 
-```
-brew install cloudflared
-cloudflared tunnel --url http://localhost:3000
-```
-
-This gives you a public URL like `https://random-name.trycloudflare.com` that works from anywhere. The tunnel runs as long as your Terminal window is open.
-
-#### ngrok (alternative)
-
-```
-brew install ngrok
-ngrok http 3000
-```
-
-### Common Issues
-
-#### "brew: command not found"
-
-Homebrew wasn't added to your PATH. Close Terminal, open a new one, and try again. If it still doesn't work, re-run the Homebrew install command from Step 2.
-
-#### "Permission denied"
-
-The script needs to be marked as executable:
-
-```
-chmod +x setup.sh restart.sh
-./setup.sh
-```
-
-#### Port already in use
-
-Something else is using port 3000 or 8000. Find and stop it:
-
-```
-lsof -i :3000
-lsof -i :8000
-```
-
-The output will show a PID number. Stop the process with `kill <PID>`.
-
-#### API key errors
-
-Double-check that your `backend/.env` file has the correct key with no extra spaces or quotes. The line should look exactly like:
-
-```
-ANTHROPIC_API_KEY=sk-ant-your-actual-key
-```
-
-#### PostgreSQL not running
-
-If Edward can't connect to the database:
-
-```
-brew services list          # Check if postgresql is running
-brew services start postgresql@16  # Start it
-```
-
-#### Checking logs
-
-If something isn't working, check the logs for error messages:
-
-```
-cat /tmp/edward-backend.log
-cat /tmp/edward-frontend.log
-```
-
-Once Edward is running, head to the [Configuration](https://meet-edward.com/docs/configuration) guide to customize your setup.
+Source: https://meet-edward.com/docs/beginner-guide
 
 ---
 
-## Setup with AI
+## Set up with AI
 
-Paste one block into your AI coding assistant and let it handle the rest.
+*Let an AI coding assistant walk you through the install, one step at a time.*
 
-### Why Use an AI Assistant?
+### Why it works
 
-If terms like git, Python virtual environments, or PostgreSQL feel unfamiliar, let an AI assistant walk you through the setup. Tools like [Claude Code](https://claude.com/claude-code), [Cursor](https://cursor.com), or similar can read the instructions, run the commands, and troubleshoot errors — all from a single paste.
+Edward’s repository carries its own operating guide, [CLAUDE.md](https://github.com/ben4mn/meet-edward/blob/main/CLAUDE.md), written for AI assistants working in it. Its section “Helping someone set up Edward”, lists the steps in order: prerequisites, the setup script, your settings, the macOS permissions, starting him, choosing your password, and the optional features. An assistant that can run commands, such as [Claude Code](https://claude.com/claude-code), can follow it with you, explain each step and fix what goes wrong.
 
-### What You Need
+### What you need
 
-- **A Mac** — Edward requires macOS
-- **An AI coding assistant** — Claude Code, Cursor, Windsurf, or any tool that can run terminal commands
-- **An Anthropic API key** — get one at [console.anthropic.com](https://console.anthropic.com) (the AI will help if you don't have one yet)
+- **A Mac with Apple silicon** that can stay on
+- **An AI coding assistant** that can run terminal commands on that Mac: Claude Code, or a similar tool
+- **An Anthropic API key** from [console.anthropic.com](https://console.anthropic.com/) (your assistant can show you where to make one)
 
-### Paste This to Your AI
+### Paste this to your assistant
 
-Copy the entire block below and paste it into your AI assistant:
+Open your assistant in a terminal on the Mac that will run Edward (for Claude Code, run `claude` in your home folder) and paste:
 
 ```
-I want to set up Edward, an open-source AI assistant, on my Mac.
+I want to set up Edward, an open-source personal AI assistant, on this Mac.
 
-Here is the project documentation:
-https://raw.githubusercontent.com/ben4mn/meet-edward/main/CLAUDE.md
+1. Check that this Mac has Apple silicon, the Xcode command-line tools and Homebrew.
+2. Clone https://github.com/ben4mn/meet-edward.git into my home folder.
+3. Read the CLAUDE.md at the top of that checkout and follow its section
+   "Helping someone set up Edward", one step at a time. Explain each step
+   and confirm it with me before the next.
 
-Steps:
-1. Clone: git clone https://github.com/ben4mn/meet-edward.git
-2. Run ./setup.sh (installs PostgreSQL, pgvector, Python venv, Node deps)
-3. I need to add my ANTHROPIC_API_KEY to .env — ask me for it or help me get one from console.anthropic.com
-4. Run ./restart.sh to start frontend + backend
-5. Verify http://localhost:3000 loads and responds to a test message
-
-If anything fails, check:
-- brew services list (PostgreSQL should be running)
-- python3 --version (needs 3.11+)
-- node --version (needs 18+)
-- cat /tmp/edward-backend.log
-- cat /tmp/edward-frontend.log
+Never ask me to paste my Anthropic API key, a password or the setup code
+into this chat: I will type them into ./setup.sh or .env myself.
 ```
 
-### What Happens Next
+If you already cloned the repository, open the assistant inside the `meet-edward` folder instead: Claude Code loads `CLAUDE.md` by itself there, so “Help me set up Edward” is enough.
 
-Your AI assistant will:
+### What to expect
 
-1. Clone the Edward repository to your computer
-2. Run the setup script, which installs PostgreSQL, Python dependencies, and the frontend
-3. Ask you for your Anthropic API key (or help you create one)
-4. Start both the backend and frontend services
-5. Verify everything is working
+1. It checks the prerequisites and installs what is missing (it will ask before it does).
+2. It runs `./setup.sh`, which asks *you* for your name, your API key and your time zone. Type them into the setup script, not into the chat.
+3. It helps you grant only the macOS permissions you need, and starts Edward, usually with `bash scripts/install-launchagents.sh` so he stays on.
+4. You open `http://localhost:3000` on the Mac and choose a password. The first visit also asks for a one-time setup code: read it yourself with `cat backend/.setup_code`.
+5. It checks the time zone and what works, using the app’s health report and the logs, then walks you through the optional features you want.
 
-If anything goes wrong, the AI has the debugging commands built into the prompt and can troubleshoot on the spot.
+> **Keep your secrets out of the chat.** What you paste into an AI assistant is sent to its provider. Your API key belongs in `./setup.sh` or `.env`, and your password and setup code in Edward’s own sign-in page.
 
-### After Setup
+### After setup
 
-1. Open [http://localhost:3000](http://localhost:3000) in your browser
-2. Set a password on first visit
-3. Send a test message to make sure Edward responds
+In the Edward tab, turn on the skills you want under **Mind → Skills** (every skill starts off), and check **House → Locale**. To reach Edward from your phone, see [Using Edward from your phone](https://meet-edward.com/docs/beginner-guide#using-edward-from-your-phone).
 
-Your Mac needs to stay on for Edward to run. If you restart your Mac, run `./restart.sh` from the project folder to start Edward again.
+The same assistant is a good partner for fitting Edward to your own home later: [Adapting to your Mac](https://meet-edward.com/docs/adapting) has prompts written for it.
 
-Want to access Edward from your phone or set it up as a home screen app? See the [phone access section](https://meet-edward.com/docs/beginner-guide#accessing-edward-from-your-phone) of the Beginner Guide.
-
-Once Edward is running, head to the [Configuration](https://meet-edward.com/docs/configuration) guide to customize your setup.
+Source: https://meet-edward.com/docs/setup-with-ai
 
 ---
 
-## Getting Started
+## Quick start
 
-From zero to a running Edward instance in about five minutes.
+*For the terminal-comfortable: install, start, choose a password.*
 
-### Prerequisites
+### You need
 
-- **macOS** — required for iMessage, Apple Services, and the scheduler
-- **Homebrew** — used by the setup script to install PostgreSQL
-- **Node.js 18+** — for the Next.js frontend
-- **Python 3.11+** — for the FastAPI backend
-- **Anthropic API key** — get one at [console.anthropic.com](https://console.anthropic.com)
+- A Mac with Apple silicon that can stay on (a Mac mini makes a good host)
+- The Xcode command-line tools (`xcode-select --install`) and [Homebrew](https://brew.sh)
+- An [Anthropic API key](https://console.anthropic.com/)
 
-### Quick Start
+### 1. Install
 
-```bash
-# Clone the repository
-git clone https://github.com/ben4mn/meet-edward.git
-cd meet-edward
-
-# Run the setup script
-./setup.sh
-
-# Add your Anthropic API key to backend/.env
-# ANTHROPIC_API_KEY=sk-ant-...
-
-# Start both services
-./restart.sh
+```
+git clone https://github.com/ben4mn/meet-edward.git && cd meet-edward
+./setup.sh          # installs everything, asks for your name, API key and time zone
 ```
 
-That's it. Visit `http://localhost:3000` and you're live.
+`./setup.sh` is safe to run again; each step checks what is already there. It stops before installing anything on an Intel Mac or in a Rosetta shell. It installs `python@3.12`, `postgresql@16` and `node` with Homebrew, builds pgvector from source for Postgres 16, creates the `edward` database, makes `backend/.venv` with pinned dependencies, installs Playwright’s headless shell, runs `npm ci`, builds two small Swift helpers (media and EventKit), and writes `.env` from `.env.example`.
 
-### What setup.sh Does
+| Flag | What it adds |
+| --- | --- |
+| `--with-test-db` | the backend tests’ own Postgres cluster on :5433 |
+| `--launchagents` | runs `scripts/install-launchagents.sh` at the end |
+| `--no-helpers` | skips building the Swift helpers |
+| `--non-interactive` | never prompts; takes `EDWARD_OWNER_NAME`, `ANTHROPIC_API_KEY` and `TIMEZONE` from the environment |
 
-The setup script handles the full first-time installation:
+### 2. Start Edward, one of two ways
 
-1. Installs **PostgreSQL 16** and the **pgvector** extension via Homebrew
-2. Creates the `edward` database and user (default: `edward/edward/edward`)
-3. Creates a Python virtual environment in `backend/venv/` and installs dependencies
-4. Installs frontend npm packages
-5. Generates a `backend/.env` template with required variables
+**Always on** (the usual choice for the Mac that hosts him). launchd starts him now and at every login, and restarts him if he stops:
 
-### What restart.sh Does
-
-The restart script manages both services with graceful stop/start:
-
-```bash
-./restart.sh              # Restart both frontend + backend
-./restart.sh frontend     # Restart only frontend
-./restart.sh backend      # Stop and restart only backend
+```
+bash scripts/install-launchagents.sh
 ```
 
-Logs are written to `backend/logs/` and the frontend console. The backend also supports `./start.sh` for direct startup (auto-activates the venv and installs any new dependencies).
+It installs the backend (:8000), the frontend (:3000), a health check every five minutes plus a deeper one at 08:00, a nightly backup at 03:30 (to `~/edward-backups` unless `EDWARD_BACKUP_DIR` says otherwise) and a daily memory report, labelled `com.meet-edward.*`. It takes `--with-graph`, `--without-backup`, `--dry-run` and `--uninstall`. If you started Edward by hand from this checkout, it stops that copy first.
 
-### Setting Your Password
+**By hand.** He runs until you stop him or the Mac restarts:
 
-The first time you visit `localhost:3000`, you'll be prompted to set a password. This is stored as a bcrypt hash in the database — Edward uses single-user JWT auth with HttpOnly cookies.
-
-After setup, you can change your password anytime from the Settings page.
-
-### Verifying It Works
-
-1. Open `http://localhost:3000` in your browser
-2. Set your password on first visit
-3. Send a message — Edward should respond with full context
-4. Check the debug panel (bottom of chat) for health status
-
-### Common Issues
-
-#### PostgreSQL not running
-
-```bash
-brew services start postgresql@16
+```
+./restart.sh        # backend :8000, frontend :3000
 ```
 
-#### Missing API key
+With the agents loaded, `./restart.sh` (or `./restart.sh backend|frontend`) restarts through launchd. It only restarts its own checkout’s Edward: in a second clone it refuses (exit 78) to touch agents that run another one.
 
-Make sure `ANTHROPIC_API_KEY` is set in `backend/.env`. Edward won't start the LangGraph agent without it.
+The first start takes a few minutes: the backend downloads its embedding model and sets up the database, and the frontend runs its first production build. `./restart.sh` waits up to 2 minutes for the backend and 4 for the frontend, then says “still starting” and exits 0. Logs: `/tmp/edward-backend.log` and `/tmp/edward-frontend.log`.
 
-#### Port conflicts
+### 3. Choose a password, on the Mac itself
 
-The backend runs on `:8000` and the frontend on `:3000`. If either port is in use, check for existing processes:
+Open `http://localhost:3000` on the Mac that runs Edward. The first visit asks for a password and a one-time setup code:
 
-```bash
-lsof -i :8000
-lsof -i :3000
+```
+cat backend/.setup_code
 ```
 
-#### Python version mismatch
+The backend writes the code when it starts with no password set; only your macOS user can read it, and it is deleted once the password is set. Until then the API answers nothing but the sign-in pages, and the setup request must come from a page at `localhost` on this Mac. No screen on the Mac? Forward the port and read the code over ssh:
 
-Edward requires Python 3.11+. Check with `python3 --version`. If you have multiple Python versions, the setup script uses whichever `python3` resolves to in your PATH.
+```
+ssh -L 3000:localhost:3000 you@my-mac.local
+ssh you@my-mac.local cat <your checkout>/backend/.setup_code
+```
 
-Next up: configure your environment variables in the [Configuration](https://meet-edward.com/docs/configuration) guide.
+### 4. After you sign in
+
+1. **Edward tab → Mind → Skills.** Every skill starts off on a fresh install. Turn on what Edward may use: Shell/Bash (his computer: `bash` and the editor), Web Search, iMessage, Push Notifications, iOS Widget.
+2. **House → Locale.** Check your time zone: reminders, quiet hours and “today” follow it.
+3. **macOS permissions** (System Settings → Privacy & Security), only for what you use:
+  - **Full Disk Access** for the python `setup.sh` prints at the end: iMessage, Mail, Contacts, Calendar and Reminders are read from their databases through it. Started by hand with `./restart.sh`, macOS charges your terminal app instead, so grant that too.
+  - **Automation**: macOS asks the first time Edward sends a message or drives Chrome.
+  - **Calendars and Reminders** (for changes): run `bash backend/scripts/eventkit_request_access.sh` while sitting at the Mac.
+
+### Reaching him from your phone
+
+Installing the PWA, push notifications and the microphone all need HTTPS. Put a tunnel (Cloudflare Tunnel, Tailscale, ngrok) or a reverse proxy in front of port 3000, set `EDWARD_PUBLIC_BASE_URL` to that address, and name the tunnel’s LaunchAgent in `EDWARD_TUNNEL_LABEL` so the health check watches it. The backend listens on every interface so devices on your network (a hub) can reach it; `EDWARD_BACKEND_HOST=127.0.0.1` keeps it to this Mac. Behind a tunnel, leave uvicorn’s `FORWARDED_ALLOW_IPS` unset: sign-in limits read the client from the tunnel’s own headers.
+
+### Is it working?
+
+- `GET /api/health/report` (signed in) says what works: turns and tool failures, pings, the calendar, mail, the last memory report, spend, and whether the app’s time zone matches the Mac’s.
+- `GET /api/health/spend` shows today’s Claude spend against the cap.
+- The watchdog writes to `~/.edward-health/health.log`.
+
+### Common issues
+
+#### Signing in loops back to the login page
+
+The session cookie is `Secure`, which assumes HTTPS (browsers make an exception for `http://localhost`). Use HTTPS, or set `EDWARD_COOKIE_SECURE=off` on a plain-HTTP network you trust.
+
+#### Messages, Mail or Calendar can’t be read
+
+Full Disk Access is tied to the python binary’s path, so `brew upgrade python@3.12` silently breaks it: grant the new path and re-run `bash scripts/install-launchagents.sh` and `bash backend/scripts/eventkit_request_access.sh`.
+
+#### pgvector is missing after a Postgres reinstall
+
+`brew reinstall postgresql@16` removes the pgvector built from source. Run `./setup.sh` again.
+
+Next: [Configuration](https://meet-edward.com/docs/configuration) (every setting, and what ships off), or [Upgrading from March](https://meet-edward.com/docs/upgrading) if you ran the March 2026 release. The [README](https://github.com/ben4mn/meet-edward/blob/main/README.md) is the canonical version of this page.
+
+Source: https://meet-edward.com/docs/getting-started
 
 ---
 
 ## Configuration
 
-Environment variables and integration setup for Edward.
+*Who you are, where he runs, what he may spend, and what ships switched off.*
 
-### Required
+### Where settings live
 
-| Variable | Description |
-|----------|-------------|
-| `ANTHROPIC_API_KEY` | Your Anthropic API key. Get one at [console.anthropic.com](https://console.anthropic.com) |
+Everything is in `.env` at the top of your checkout. `./setup.sh` creates it from [`.env.example`](https://github.com/ben4mn/meet-edward/blob/main/.env.example), which describes every setting with its default. The backend loads the file itself (a variable already set in its environment wins), and the start scripts never export it. Most values are read on every call; to be sure a change applies, run `./restart.sh backend`. Never commit `.env`.
 
-Everything else is optional. Edward works out of the box with just the API key — additional variables unlock integrations.
+### The essentials
 
-### Database
+`./setup.sh` asks for these three:
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `DB_USER` | `edward` | PostgreSQL username |
-| `DB_PASSWORD` | `edward` | PostgreSQL password |
-| `DB_NAME` | `edward` | PostgreSQL database name |
-| `DB_HOST` | `localhost` | Database host |
-| `DB_PORT` | `5432` | Database port |
+| Variable | What it is |
+| --- | --- |
+| `EDWARD_OWNER_NAME` | What Edward calls you. Unset, he says “the owner”. |
+| `ANTHROPIC_API_KEY` | Your key from [console.anthropic.com](https://console.anthropic.com/). Every model call uses it. |
+| `TIMEZONE` | Your IANA zone (`America/New_York`), until the app’s own setting (Edward tab → House → Locale) is loaded. |
 
-### Authentication
+### About you
 
-| Variable | Description |
-|----------|-------------|
-| `JWT_SECRET_KEY` | Secret for signing JWT tokens. Defaults to a dev key — **change this in production** |
+Read by `backend/services/owner.py`. The code never names its owner any other way.
 
-### Messaging
+| Variable | What it is |
+| --- | --- |
+| `EDWARD_OWNER_FULL_NAME`, `EDWARD_OWNER_ALIASES` | Other names you go by, so he recognises you in messages. |
+| `EDWARD_OWNER_HANDLES` | Your phone numbers, emails and Apple ID: how he recognises your iMessages and your self-chat. Set it if he reads your messages. |
+| `EDWARD_OWNER_EMAILS` | Your email addresses: mail from these is yours, and he never emails you. |
+| `EDWARD_HOUSEHOLD` | The people at the household hub, comma-separated, you first. |
+| `EDWARD_SENSITIVE_NAMES` | Pets, family and anyone else whose mentions his memory upkeep must never retire on its own. |
 
-#### Twilio (SMS & WhatsApp)
+### This Mac
 
-| Variable | Description |
-|----------|-------------|
-| `TWILIO_ACCOUNT_SID` | Twilio account SID |
-| `TWILIO_AUTH_TOKEN` | Twilio auth token |
-| `TWILIO_PHONE_NUMBER` | Your Twilio phone number (e.g. `+1234567890`) |
-| `TWILIO_WEBHOOK_URL` | Public URL for SMS webhooks |
-| `TWILIO_WHATSAPP_WEBHOOK_URL` | Public URL for WhatsApp webhooks |
+Read by `backend/services/host_config.py`.
 
-#### WhatsApp MCP Bridge
+| Variable | Default | What it is |
+| --- | --- | --- |
+| `EDWARD_PUBLIC_BASE_URL` | `http://localhost:3000` | Where you open Edward (a tunnel’s https address). Links in pushes and texts use it. |
+| `EDWARD_TUNNEL_LABEL` | unset | Your tunnel’s LaunchAgent label, so the health check watches and restarts it. |
+| `EDWARD_BACKEND_HOST` | `0.0.0.0` | The backend listens on every interface so a hub on your network can reach it; `127.0.0.1` keeps it to this Mac. |
+| `EDWARD_COOKIE_SECURE` | `on` | The session cookie assumes HTTPS (or `http://localhost`). `off` only on a plain-HTTP network you trust. |
+| `EDWARD_LAUNCHD_PREFIX` | `com.meet-edward` | The LaunchAgents’ label prefix. |
+| `EDWARD_BACKUP_DIR` | `~/edward-backups` | Where the nightly backup goes. A `/Volumes/…` path is a removable drive (skipped while unplugged; needs Full Disk Access). |
+| `NEXT_PUBLIC_BASE_URL` | the base URL | The app’s public origin for link previews, baked into the frontend build: after changing it, run `bash frontend/deploy-build.sh` and restart the frontend. |
 
-| Variable | Description |
-|----------|-------------|
-| `MCP_WHATSAPP_ENABLED` | Set to `true` to enable the whatsapp-mcp Go bridge |
-| `MCP_WHATSAPP_SERVER_DIR` | Path to the whatsapp-mcp-server directory |
+### The model and the money
 
-#### iMessage
+`EDWARD_LLM_PROVIDER=anthropic` is the default: every call goes to the Claude API, with one route per purpose.
 
-No environment variables needed — iMessage works via AppleScript on macOS. Enable the `imessage_applescript` skill in Settings.
+| Route | Used for | Model, effort |
+| --- | --- | --- |
+| `chat` | your conversations, ping replies, scheduled events | Sonnet 5.5, medium |
+| `mind` | every wake: follow-through, the nightly, free time, speaking up | Sonnet 5.5, medium |
+| `pulse` | deciding what the widget and screens show | Sonnet 5.5, medium |
+| `background` | memory extraction and upkeep, the noticer, photo descriptions | Haiku 5.5, high |
+| `voice` | spoken turns | Sonnet 5.5, low |
+| `judge` | evaluations | Opus 5.5, high |
 
-### Apple Services
+Override any of them per purpose with `EDWARD_CLAUDE_<PURPOSE>_MODEL`, `_EFFORT`, `_MAX_TOKENS`, `_THINKING_DISPLAY` and `_CACHE_TTL` (for example `EDWARD_CLAUDE_CHAT_MODEL`).
 
-| Variable | Description |
-|----------|-------------|
-| `MCP_APPLE_ENABLED` | Set to `true` to enable Calendar, Reminders, Notes, Mail, Contacts, and Maps |
+| Variable | Default | What it bounds |
+| --- | --- | --- |
+| `EDWARD_DAILY_SPEND_CAP_USD` | `5` | Dollars over your local day. Background work stops at 60 % of it (`EDWARD_BACKGROUND_SPEND_SHARE`), Edward’s own turns at the cap, and your own turns may run `EDWARD_INTERACTIVE_RESERVE_USD` (3) past it. |
+| `EDWARD_TURN_MAX_USD` | `3.00` | One turn you asked for. |
+| `EDWARD_AUTONOMOUS_TURN_MAX_USD` | `1.00` | One turn you didn’t (a wake, a ping from a friend, an event). |
+| `EDWARD_CREDITS_START_USD`, `EDWARD_CREDITS_START_DATE` | unset | Set both to count prepaid credits down on the Fuel card (console.anthropic.com stays the authority). |
 
-Apple Services runs as an MCP subprocess and requires macOS with the relevant apps configured (Calendar, Mail, etc.).
+Every call is priced and shown in the app (Edward tab → Work → Usage) and at `GET /api/health/spend`.
 
-### Web Search
+**The Codex fallback**: `EDWARD_LLM_PROVIDER=codex` runs GPT through the Codex CLI’s ChatGPT login. That is not an official API for third-party apps, may break at any time and may conflict with OpenAI’s terms; use it at your own risk. `OPENAI_API_KEY` switches it to the public API.
 
-| Variable | Description |
-|----------|-------------|
-| `BRAVE_SEARCH_API_KEY` | Brave Search API key for web search and page content extraction |
+### Off by default, and the switch for each
 
-### HTML Hosting
+A fresh install reads nothing private and reaches no one. Each feature below stays off, or does nothing, until you turn it on.
 
-| Variable | Description |
-|----------|-------------|
-| `HTML_HOSTING_API_KEY` | API key for html.zyroi.com hosting service |
-| `HTML_HOSTING_URL` | Hosting URL (defaults to `https://html.zyroi.com`) |
+| What | How to turn it on |
+| --- | --- |
+| Every skill | Edward tab → Mind → Skills (Shell/Bash, Web Search, iMessage, Push Notifications, iOS Widget, Voice…) |
+| Reading your iMessages, and `@Edward` pings | Edward tab → Attention → Listening → Configuration → Messages; Full Disk Access; Messages on this Mac signed into your Apple ID; `EDWARD_OWNER_HANDLES`. Pings then follow `EDWARD_PINGS` (on). [Read this first](https://meet-edward.com/docs/listening). |
+| Mail.app | Listening → Configuration → Email; Full Disk Access; keep Mail.app running |
+| Gmail | An OAuth client (`GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`; [gmail-setup.md](https://github.com/ben4mn/meet-edward/blob/main/docs/gmail-setup.md)), then Attention → Gmail → Watch my inbox |
+| Noticing (speaking up unasked) | `EDWARD_PROACTIVITY=shadow` (decides, never speaks), then `notice` |
+| Hands in your Chrome | Load `chrome-extension/` unpacked in Chrome, then `EDWARD_CHROME_HANDS=on` |
+| His shell, editor, your Chrome and the screens in friends’ pings | `EDWARD_FRIENDS_FULL_TOOLSET=on`, at a risk: a friend’s message then drives a shell that runs as you |
+| Approvals for tainted turns | `EDWARD_TAINT_APPROVALS=shadow` (log only) or `on` |
+| Voice | `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID` |
+| Push notifications | `npx web-push generate-vapid-keys` into `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`, then allow notifications in the app (HTTPS) |
+| The hub’s pets and care | Copy `backend/hub_seed.example.json` to `backend/hub_seed.json`, describe your own, set `EDWARD_HUB_SEED=hub_seed.json` |
+| The hub’s people | `EDWARD_HOUSEHOLD` (just you until set) |
+| The household photo door (a photos-only login) | `PHOTO_DOOR_PASSWORD_HASH`: a bcrypt hash, in single quotes (`.env.example` has the command) |
+| Twilio SMS and WhatsApp (a number of Edward’s own) | `TWILIO_*` and `EDWARD_OWNER_HANDLES`. Webhooks are refused without `TWILIO_AUTH_TOKEN`, and only your own numbers get an answer; `EDWARD_TWILIO_ANSWER_ANYONE=on` answers everyone, at a risk |
+| The WhatsApp bridge | Run the `whatsapp-mcp` Go bridge yourself, then `MCP_WHATSAPP_ENABLED=true` |
+| apple-mcp (a fallback for reading your calendar) | Install bun, clone apple-mcp, `MCP_APPLE_ENABLED=true` |
+| Alexa and Home Assistant | `ALEXA_SKILL_ID`, `HOME_ASSISTANT_URL`, `HOME_ASSISTANT_TOKEN`. Inbound Alexa requests are not signature-checked yet: leave `ALEXA_SKILL_ID` unset unless you use the skill |
+| Brave Search | `BRAVE_SEARCH_API_KEY`, only needed with the Claude server-side web tools off (`EDWARD_SERVER_WEB_TOOLS=off`) or on the Codex fallback |
+| The knowledge graph | `GRAPHITI_ENABLED=true` (queues every new memory) **and** `GRAPHITI_INGEST_ENABLED=true` (fills the graph from the queue), then `bash scripts/install-launchagents.sh --with-graph`. Each memory costs a few background model calls |
+| Hosted pages | `HTML_HOSTING_URL` and `HTML_HOSTING_API_KEY`. There is no default host |
+| A daily cap on his own pushes | `EDWARD_PUSH_BUDGET=<n>` (none by default) |
+| Deep health checks for a hub kiosk and for mail | `EDWARD_HEALTH_HUB_KIOSK=1`, `EDWARD_HEALTH_EMAIL=1` |
+| The Codex fallback | `EDWARD_LLM_PROVIDER=codex` (unofficial, at your own risk) |
 
-### Custom MCP Servers
+### On by default
 
-| Variable | Description |
-|----------|-------------|
-| `GITHUB_TOKEN` | GitHub personal access token — used for searching MCP server packages |
+Know these before you leave Edward running:
 
-### Observability
+- **The daily spend cap**, $5 over your local day.
+- **Quiet hours**, 22:00–07:00 (`EDWARD_QUIET_HOURS=22-7`; equal hours mean none). Pushes and spoken lines wait for morning.
+- **Two scheduled wakes a day**: a silent nightly at 03:00, skipped when nothing happened, and one free-time run at 13:00 (about $0.50 at most) that reaches nobody.
+- **The surfaces pulse**: a check every 15 minutes that runs a model turn only when the board, the calendar, a screen or the widget changed.
+- **The nightly backup** at 03:30 to `~/edward-backups`, on the same disk, unless you install with `--without-backup` or point `EDWARD_BACKUP_DIR` elsewhere. Keep a copy off the Mac too.
+- **The late-dose alert** (`EDWARD_CARE_WATCH=on`), which has nothing to watch until the hub has timed care items.
+- **The egress secret scan** and **the shell sandbox**. Their `off` values are emergency switches only.
 
-| Variable | Description |
-|----------|-------------|
-| `LANGCHAIN_TRACING_V2` | Set to `true` to enable LangSmith tracing |
-| `LANGCHAIN_API_KEY` | LangSmith API key |
-| `LANGCHAIN_PROJECT` | LangSmith project name (e.g. `edward`) |
+### Everything else
 
-### Push Notifications
+The full annotated list is [`.env.example`](https://github.com/ben4mn/meet-edward/blob/main/.env.example); the environment section of [CLAUDE.md](https://github.com/ben4mn/meet-edward/blob/main/CLAUDE.md) has the main ones with their defaults on one screen. Nothing reads `GITHUB_TOKEN`, `USPS_API_USER_ID` or the LangSmith variables any more.
 
-| Variable | Description |
-|----------|-------------|
-| `VAPID_PUBLIC_KEY` | VAPID public key for Web Push |
-| `VAPID_PRIVATE_KEY` | VAPID private key for Web Push |
+The iPhone widget has its own token, set up in [Widget, screen & hub](https://meet-edward.com/docs/surfaces).
 
-Generate VAPID keys with: `npx web-push generate-vapid-keys`
-
-### File Storage
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `FILE_STORAGE_ROOT` | `./storage` | Directory for persistent file storage |
-
-See all available integrations in the [Skills & Integrations](https://meet-edward.com/docs/skills) guide.
+Source: https://meet-edward.com/docs/configuration
 
 ---
 
-## Platform Support
+## Platform support
 
-Edward is built for macOS, but most of the stack runs on any platform.
+*macOS on Apple silicon, and nothing else, for now.*
 
-### What Works Everywhere
+| Platform | Supported | What happens |
+| --- | --- | --- |
+| macOS 14 or later, Apple silicon | Yes | Everything works. |
+| An older macOS, Apple silicon | Without calendar changes | The EventKit helper needs macOS 14, so `setup.sh` warns and Edward runs without it: he can read Calendar and Reminders but not change them. |
+| Intel Macs, or a Rosetta (x86_64) shell | No | `setup.sh` stops before installing anything. |
+| Linux, Windows (WSL) | No | `setup.sh` stops on anything but macOS. |
+| Docker | No | The backend runs natively on macOS, never in a container. |
 
-The core assistant — and the majority of Edward's capabilities — is fully cross-platform. If you can run Python, Node.js, and PostgreSQL, you can run Edward.
+> The March 2026 release described Linux and WSL as mostly working. This release does not: Edward’s own computer, his listeners and his follow-through all lean on macOS now.
 
-| Feature | macOS | Linux | Windows (WSL) |
-|---------|-------|-------|---------------|
-| Core chat + LangGraph agent | Yes | Yes | Yes |
-| Long-term memory (pgvector) | Yes | Yes | Yes |
-| Document store | Yes | Yes | Yes |
-| Scheduled events / scheduler | Yes | Yes | Yes |
-| Code execution (Python, JS, SQL, Shell) | Yes | Yes | Yes |
-| Twilio SMS & WhatsApp | Yes | Yes | Yes |
-| WhatsApp MCP | Yes | Yes | Yes |
-| Brave Search | Yes | Yes | Yes |
-| HTML Hosting | Yes | Yes | Yes |
-| File storage | Yes | Yes | Yes |
-| Persistent databases | Yes | Yes | Yes |
-| Push notifications | Yes | Yes | Yes |
-| Orchestrator (worker agents) | Yes | Yes | Yes |
-| Evolution (self-coding) | Yes | Yes | Yes |
-| Widget | Yes | Yes | Yes |
-| Custom MCP servers | Yes | Yes | Yes |
+### Why Apple silicon
 
-### What You Lose on Windows / Linux
+Edward’s memory search uses a small local embedding model through sentence-transformers, which pulls in PyTorch. The pinned PyTorch (in `backend/constraints.txt`) publishes no x86_64 macOS wheel, so `setup.sh` stops on an Intel Mac, in a Rosetta shell, or with an x86_64 Python. That pin, not the Swift helpers, is what an Intel port would have to change.
 
-These features depend on macOS-specific APIs (AppleScript, system databases, native apps) and have no cross-platform equivalent.
+### Why macOS
 
-| Feature | Why macOS-only | Impact |
-|---------|---------------|--------|
-| iMessage | AppleScript + Messages.app chat.db | No iMessage send/receive |
-| Apple Services | apple-mcp requires macOS apps | No Calendar, Reminders, Notes, Mail, Contacts, or Maps integration |
-| Contacts lookup | AppleScript to Contacts.app | No local contact search |
-| Heartbeat (iMessage) | Reads ~/Library/Messages/chat.db | No iMessage monitoring |
-| Heartbeat (Email) | Reads Mail.app via MCP | No email monitoring |
-| Heartbeat (Calendar) | Uses Apple Services MCP | No calendar monitoring |
+- **His shell is sandboxed by Seatbelt** (`sandbox-exec`). Without it the `bash` tool fails closed rather than running unsandboxed.
+- **He reads Apple’s own databases**: Messages’ `chat.db`, Mail’s Envelope Index, the Calendar and Reminders stores, Contacts. He sends iMessages through AppleScript and changes your calendar through EventKit.
+- **launchd keeps him running**, and the macOS privacy grants (Full Disk Access, Automation, Calendars) decide what he may read.
+- **His media handling uses macOS tools** (`sips`, `afconvert`, `avconvert`) and a Swift helper, not ffmpeg.
 
-### Setup Differences
+### What a port would take
 
-#### PostgreSQL
+A port is a project, not a setting. The macOS seams are marked `ADAPT:` in the code and collected in [Adapting to your Mac](https://meet-edward.com/docs/adapting), which has prompts for an AI assistant for the two pieces a Linux port would start with:
 
-On macOS, `setup.sh` installs PostgreSQL via Homebrew. On other platforms:
+1. **A sandbox for the `bash` tool first** (bubblewrap or firejail), rendered from the same rails table as the macOS profile and failing closed in the same way.
+2. **systemd units** in place of the LaunchAgents, with the same options as `scripts/install-launchagents.sh`.
 
-- **Linux (Debian/Ubuntu):** `sudo apt install postgresql postgresql-contrib`
-- **Linux (Fedora/RHEL):** `sudo dnf install postgresql-server postgresql-contrib`
-- **Windows:** Install via [postgresql.org](https://www.postgresql.org/download/windows/) or `winget install PostgreSQL.PostgreSQL`
+Everything that reads an Apple app (iMessage, Mail, Calendar, Reminders, Contacts, the screen) already degrades with an honest error when it can’t, so a port could leave those off.
 
-You'll also need the **pgvector** extension. On most Linux distros: `sudo apt install postgresql-16-pgvector` (adjust version as needed). On Windows, follow the [pgvector install guide](https://github.com/pgvector/pgvector).
+### Where the other pieces run
 
-#### Python & Node.js
+- **Your phone**: the app is a PWA, so any modern phone browser works, over HTTPS (see [Quick start](https://meet-edward.com/docs/getting-started)).
+- **The household hub**: any browser in kiosk mode on `/hub`; the reference install used a Raspberry Pi with a 7″ touchscreen ([pi-hub-setup.md](https://github.com/ben4mn/meet-edward/blob/main/docs/pi-hub-setup.md)).
+- **The iPhone widget**: the Scriptable app.
+- **Hands in your browser**: Google Chrome with the unpacked Edward extension, on the same Mac.
 
-- **Python 3.11+:** Install via `apt`, `pyenv`, or the [Python installer](https://www.python.org/downloads/)
-- **Node.js 18+:** Install via `nvm`, `fnm`, or the [Node.js installer](https://nodejs.org)
+Source: https://meet-edward.com/docs/platform-support
 
-#### Setup Scripts
+---
 
-The `setup.sh` and `restart.sh` scripts use Homebrew and assume macOS. On other platforms:
+## Upgrading from March
 
-- **Linux:** The bash scripts run natively — you just need to install PostgreSQL, Python, and Node.js manually first, then run `./setup.sh` (it will skip Homebrew steps gracefully)
-- **Windows:** Use WSL2 (recommended) to get a Linux environment, or run the setup steps manually in PowerShell
+*Move a March 2026 Edward onto this release without losing what he knows.*
 
-### Alternative Messaging via MCP
+This page is for an Edward installed from the March 2026 public release (`main` up to commit `408e1d5`, or the `v1.0.0` tag). A fresh install needs none of it: start at [Quick start](https://meet-edward.com/docs/getting-started). The full version, with every command and edge case, is [docs/UPGRADING.md](https://github.com/ben4mn/meet-edward/blob/main/docs/UPGRADING.md) in the repository.
 
-Edward's [Custom MCP system](https://meet-edward.com/docs/skills) lets you add messaging integrations at runtime — no code changes needed. Edward can discover and install MCP servers himself via the `search_mcp_servers` tool, or you can add them from the Settings page.
+**The short version:** stop Edward, back up the database, pull, move the old Python environment aside, run `./setup.sh`, tidy `.env`, start him. The first start migrates the database in place. Plan on half an hour, most of it installs and the first frontend build.
 
-Available messaging MCP servers include:
+### What changes
 
-| Platform | Description |
-|----------|-------------|
-| **Discord** | MCP servers for Discord bot integration |
-| **Telegram** | MCP servers for the Telegram Bot API |
-| **Signal** | MCP servers for Signal messaging |
-| **Slack** | MCP servers for Slack workspaces |
+Almost everything around the memory store. Your memories, documents, conversations, files, scheduled events, password and settings are kept. What Edward can do, and how, is new:
 
-Just ask Edward to "search for a Discord MCP server" in chat, or browse the **Edward's Servers** panel in Settings to add one manually.
+- **Every model call goes through the Claude API**, one route per purpose, under a **daily spend cap** ($5 by default). The model you picked in March is replaced by the route’s.
+- **One toolset of 14 tools on every surface**, and a sandboxed computer of his own. The Python/JavaScript/SQL sandboxes, Lightpanda and self-evolution are gone.
+- **The heartbeat’s triage is replaced by the mind**: wakes, follow-through, a silent nightly, a journal and (opt-in) noticing.
+- **@Edward pings in iMessage are answered** by default if he reads your messages (step 8).
+- **The app is new**: Today is the front door, the Edward tab replaces the old settings page, and the frontend runs as a production build.
 
-### Running in Docker
+### 1. Stop Edward
 
-On Linux, the backend *can* run in Docker since you don't have Apple features to lose. The frontend runs fine in Docker on any platform. This is useful for server deployments or containerized environments.
+The March `restart.sh` ran the backend on :8000 and `npm run dev` on :3000:
 
-### Windows: WSL2 Recommended
+```
+lsof -t -iTCP:8000 -sTCP:LISTEN | xargs kill
+lsof -t -iTCP:3000 -sTCP:LISTEN | xargs kill
+```
 
-For Windows users, **WSL2** is the recommended approach. It gives you a full Linux environment where everything except Apple features works natively — PostgreSQL, Python, Node.js, and all bash scripts run without modification.
+If you made your own launchd job or login item for him, unload it first.
 
-1. Install WSL2: `wsl --install`
-2. Install Ubuntu (default) or your preferred distro
-3. Follow the Linux setup steps inside WSL
-4. Access Edward at `localhost:3000` from your Windows browser
+### 2. Back up
 
-For full setup instructions, see the [Getting Started](https://meet-edward.com/docs/getting-started) guide. For integration details, see [Skills & Integrations](https://meet-edward.com/docs/skills).
+```
+PG="$(brew --prefix postgresql@16)/bin"
+mkdir -p ~/edward-backups
+"$PG/pg_dump" -Fc -d edward -f ~/edward-backups/edward-march-final.dump
+"$PG/pg_restore" --list ~/edward-backups/edward-march-final.dump | head
+
+cp .env ~/edward-backups/env-march
+cp backend/.jwt_secret ~/edward-backups/jwt_secret-march 2>/dev/null
+cp -R backend/storage ~/edward-backups/storage-march 2>/dev/null
+```
+
+Keep the dump until you have used the new Edward for a while; the nightly backup’s rotation never touches that name.
+
+### 3. Pull the release
+
+```
+git pull
+```
+
+Put any changes of your own on a branch first: this release rewrites most files, so expect to port them by hand. A fresh clone works just as well (copy `.env`, `backend/.jwt_secret` and `backend/storage/` into it); the database is shared, not part of the checkout.
+
+### 4. Move the old Python environment aside
+
+```
+mv backend/.venv backend/.venv.march
+```
+
+This release needs Homebrew’s Python 3.12 and installs pinned versions, so a clean environment is simplest.
+
+### 5. Run setup
+
+```
+./setup.sh
+```
+
+It keeps your `.env` and asks only for what is empty: your name, the API key if missing, your time zone. It builds pgvector for Postgres 16 when it is missing (the March setup used a Homebrew bottle that no longer ships), creates the venv, installs Playwright’s headless shell, runs `npm ci` and builds the Swift helpers. It stops on an Intel Mac or under Rosetta.
+
+At the end it prints the python that needs **Full Disk Access**. Grant it even if you granted one in March: the permission belongs to a binary’s path, and the new environment may run on a different python.
+
+### 6. Update .env
+
+Compare yours with [.env.example](https://github.com/ben4mn/meet-edward/blob/main/.env.example). The backend reads only the `.env` at the repo root (move a `backend/.env` up), and a variable set in your shell or by launchd now wins over the file. The changes that matter:
+
+| Setting | What to do |
+| --- | --- |
+| `LANGCHAIN_TRACING_V2`, `LANGCHAIN_API_KEY`, `LANGCHAIN_PROJECT` | **Delete.** LangSmith support is gone, but LangChain would keep sending traces while they are set. |
+| `GITHUB_TOKEN` | Delete; nothing reads it. |
+| `EDWARD_OWNER_NAME`, `EDWARD_OWNER_HANDLES`, `EDWARD_OWNER_EMAILS`, `TIMEZONE` | New. Who you are, and how he recognises your own messages. |
+| `EDWARD_INSTRUCTION_HORIZON_SINCE` | New. **Set it to the day you upgrade** (e.g. `2026-10-12`), so the weekly memory upkeep leaves the instructions March stored alone instead of letting the ones it can’t trace to you lapse. |
+| `TWILIO_*` | Webhooks now check Twilio’s signature and need `TWILIO_AUTH_TOKEN`; only your own numbers get an answer (`EDWARD_TWILIO_ANSWER_ANYONE=on` brings back answering everyone, at a risk). |
+| `HTML_HOSTING_URL`, `HTML_HOSTING_API_KEY` | No default host any more; set both if you used hosted pages. |
+| `EDWARD_PUBLIC_BASE_URL`, `EDWARD_COOKIE_SECURE` | New. Your tunnel’s https address, if you use one; the cookie setting only for a plain-HTTP network you trust. |
+| `EDWARD_DAILY_SPEND_CAP_USD` | New, default 5. March had no cap. |
+
+### 7. Start him
+
+```
+bash scripts/install-launchagents.sh   # always on
+# or
+./restart.sh                           # by hand
+```
+
+The first start builds the frontend and migrates the database; watch `/tmp/edward-backend.log`. Sign in with your March password. The one-time setup code is only for an install with no password; if your March Edward never had one, set it on the Mac with `cat backend/.setup_code`.
+
+### 8. Check what he listens to
+
+- **Mind → Skills.** Your March switches carry over. Shell/Bash is now his whole computer, Web Search gates search and fetch, iMessage gates reading and sending. Code Interpreter, JavaScript and SQL say “Retired”.
+- **Attention → Listening.** March turned Messages on by default. If Edward read your iMessages then, he reads them now, and he now **answers @Edward in any chat, from anyone** (friends inside limits, unknown numbers held for you), from your own iMessage account. If you don’t want that, turn Messages off in its Configuration view; `EDWARD_PINGS=off` alone is not enough.
+- **House → Locale.** Check the time zone: reminders, quiet hours, the nightly and “today” follow it.
+- **Work → Events.** Your reminders and recurring tasks are kept; check their times in your zone.
+
+Two optional steps (adopting this release’s persona, and backfills that tidy March data) are in [UPGRADING.md](https://github.com/ben4mn/meet-edward/blob/main/docs/UPGRADING.md), as is **rolling back** to March.
+
+### What is gone
+
+| March feature | Now |
+| --- | --- |
+| Self-evolution (Edward proposing, testing and deploying changes to his own code) | Gone, its tables dropped. He keeps a **wishlist** for you instead (Work → Wishlist) and never promises to build what he wishes for. |
+| Browser automation through Lightpanda | Gone. His own browser is Playwright’s headless shell, and with `EDWARD_CHROME_HANDS=on` he can use your Chrome. |
+| Python, JavaScript and SQL sandboxes | Gone. His sandboxed shell runs python, node and sqlite3. |
+| LangSmith tracing | Gone. Each turn’s reasoning, tools and memory hits are stored with the answer and shown in the chat’s work rail. |
+| Morning briefing, meeting prep, open-loop nudges, pattern detection | Gone. Wakes (follow-through, the nightly) and opt-in noticing replace them. |
+| The heartbeat’s triage and its calendar listener | Gone. Listening stores what arrives and hands it to the mind; the calendar is read when needed. |
+| Self-service install of MCP servers | Edward can’t install servers himself any more. Servers you installed still load, and you manage them in Mind → Servers. |
+| The persistent-database, file-storage and hosted-page tools | Out of his toolset (he has his own home folder). Your saved files and databases are kept and browsable in the Memory room. |
+
+### What is dormant
+
+**Workers and coding sessions.** The orchestrator, its routes and the Workers panel are still in the tree, and March tasks stay in their table, but no tool in the default toolset starts a worker any more: long work is a background job in his own shell plus a scheduled wake. The coding-session code now drives the Codex CLI inside a sandbox, and is equally dormant.
+
+### What is new
+
+- **Memory with provenance**: who said it, about whom, a tier, a source; weekly upkeep that never deletes; one question at a time about contradictions; a forget that previews exactly what it removes. [Memory](https://meet-edward.com/docs/memory)
+- **His computer**: a sandboxed shell, an editor, web search and fetch, a headless browser, `look`. [His computer](https://meet-edward.com/docs/computer)
+- **The mind**: wakes, follow-through, the nightly, free time, a journal with your verdicts, opt-in noticing. [The mind](https://meet-edward.com/docs/mind)
+- **Pings and media in iMessage**: @Edward in any chat; photos, PDFs, voice messages and videos understood. [Listening & pings](https://meet-edward.com/docs/listening)
+- **The app**: Today, a work rail that shows his thinking live, live voice, the Edward tab, `/screen`, the household hub, push with quiet hours. [The app](https://meet-edward.com/docs/app)
+- **Guard rails**: a secret scan on everything that leaves, spend caps, a one-time setup code, a sandbox for his shell, friends’ pings without your machine, Twilio answering only you. [Guard rails](https://meet-edward.com/docs/guard-rails)
+- **Running it**: LaunchAgents, a health watchdog, nightly verified backups, staged frontend deploys with a one-command rollback.
+
+Source: https://meet-edward.com/docs/upgrading
+
+---
+
+## The app
+
+*Three tabs, three questions: what needs me, let’s talk, and what is Edward up to.*
+
+Edward’s app is a progressive web app served by your Mac on port 3000. Open it in any browser, or install it on your phone’s home screen (that needs an `https://` address; see [Quick start](https://meet-edward.com/docs/getting-started)). The same Edward, with the same memory and conversations, is behind every surface: the app, voice, iMessage, the widget and the screens.
+
+### Today
+
+The front door, and where the app opens. In order:
+
+- **What needs you**, each with its action on the card: a message thread waiting on you, an event about to start, a send held for your approval, a note Edward left, a late pet dose. Cards never flood: one per thread, one per note title.
+- **Today’s digest**, and a short line from Edward that only the real signals support.
+- **What I did**: what he did since last night, grouped by part of the day. What he chose to do on his own links to its journal entry.
+- **Your conversations.**
+
+![Edward's Today page: late pet doses to log, a call starting soon, a reply held for approval, and a list of what he did today](https://meet-edward.com/screenshots/today-desktop.png)
+*Today: what needs you, with the action on each card, and what he did. (Invented data from the repository's UX harness.)*
+
+A send is never a keyboard shortcut: it goes out from your number, so it is always a deliberate tap, and the card says “Sent” only when the message was delivered.
+
+### Chat
+
+- **The work rail.** Above each answer, one timeline of what he did to get there, live: memory searches, each reasoning step by its heading, every tool call in plain words (“Opened example.com”, “Searched memory for …”, “Texted Parker”), code and its output, plans. When the answer starts, it folds into a receipt (“Thought for 14s · searched memory · opened 2 pages”), and a tap reopens it. His thinking and tool use are always visible; that is a design rule, not a debug option.
+- **Yours and Edward’s.** The sidebar keeps your conversations apart from Edward’s own threads: his journal entries (led by what he did on his own), message threads he read, scheduled events.
+- **Drafts and attachments** stay with their thread; what you type while he is answering waits in a queue, and Stop halts the turn in flight.
+- **Links**: `/chat?c=<id>` is a conversation, `?prompt=` fills the composer without sending, `?voice=1` opens live voice.
+
+![A chat with Edward: his work rail lists a memory search, a document search, a page he couldn't read and a web search, above his answer with a cost table](https://meet-edward.com/screenshots/chat-desktop.png)
+*The work rail: every step he took, including the one that failed.*
+
+### Voice
+
+With `ELEVENLABS_API_KEY` (and `ELEVENLABS_VOICE_ID` for the voice he speaks in) and the Voice skill on:
+
+- **Voice memos**: the mic button records a memo, posted as a playable attachment with its transcript, or transcribed into the text box.
+- **Live voice**: a hands-free (or hold-to-talk) conversation. Edward streams captions as you speak, answers out loud, says a short bridge line when he needs a moment, and stops when you talk over him. A long task hands off (“I’ll keep working on that”) and carries on in the background.
+- **Mic sensitivity** has three levels; the default gates out the room’s background noise, such as a TV.
+
+Spoken turns use the `voice` route (Sonnet 5.5 at low effort) for a fast first word. Audio goes to ElevenLabs for speech to text and back.
+
+### The Edward tab
+
+What he knows, watches and does. It opens on “Edward now”: him, his status and the start of his own state page, then five rooms:
+
+| Room | What is in it |
+| --- | --- |
+| Mind | His thoughts and wakes, the journal, the model, skills, MCP servers |
+| Memory | Memories (with where each came from), documents, files, databases, and Dreaming: how he tidies his memory, and any “Which is right?” question |
+| Attention | Listening (messages and mail), notifications, proactivity, Gmail, Alexa |
+| Work | Events and reminders, workers, his wishlist, usage (the day’s spend) |
+| House | Locale (your time zone), the hub’s photos |
+
+![The Edward tab: Edward's status, what he knows, watches and does, and the five rooms](https://meet-edward.com/screenshots/edward-tab-desktop.png)
+*The Edward tab: what he knows, watches and does, and the five rooms.*
+
+Every status line comes from a real signal. Edward’s animation makes the same promise: he looks busy only when something is running.
+
+### Push notifications
+
+- Web Push to the devices where you allowed it, once you set VAPID keys and turn on the Push Notifications skill.
+- Everything Edward sends on his own goes through one door: quiet hours (22:00–07:00 by default) hold it until morning, except a late pet dose or travel closing within three hours; he follows up once, never twice; and nothing secret goes on your lock screen.
+- Every push is logged with where its tap leads, and the tap goes there.
+- Notes that can wait land on Today instead of buzzing your phone.
+
+### A menu-bar companion
+
+`companion/EdwardBar` puts Edward in the menu bar of any Mac you use. It tells him you are at that Mac and whether you are active, idle or away (never what is on your screen; sharing the frontmost app’s name is off by default), and opens the chat. Build notes are in [its README](https://github.com/ben4mn/meet-edward/blob/main/companion/EdwardBar/README.md).
+
+Source: https://meet-edward.com/docs/app
+
+---
+
+## Memory
+
+*What he remembers, where he heard it, and who may change it.*
+
+### The store
+
+Every memory is a row in your PostgreSQL database with an embedding from a small local model (`all-MiniLM-L6-v2`, 384 dimensions, run on your Mac). Retrieval blends **70 % vector similarity** (pgvector) with **30 % BM25 keyword matching**: the first finds “dog” when you asked about pets, the second finds “Biscuit” when you named her.
+
+A memory has a type:
+
+| Type | Example |
+| --- | --- |
+| `fact` | “Biscuit is a beagle, born in 2019” |
+| `preference` | “Prefers window seats” |
+| `context` | “Is in Springfield until Friday” |
+| `instruction` | “Don’t reply in the family chat without asking” |
+| `intention` | Something Edward decided to do or watch, with a horizon |
+
+### Provenance: where he heard it
+
+Every row also records where it came from, so he can tell what you said from what he read or concluded:
+
+- **Origin**: `heard` (you said it), `read` (he read it in a message, a page or a screen), `thought` (he concluded or decided it) or `did` (an action and its outcome).
+- **About**: you, a contact, Edward himself, or the world.
+- **Tier**: observation → belief → knowledge, climbing as it is confirmed. A dated episode (“the flight on 3 June 2026 was late”) stops at belief.
+- **Source**: the conversation, turn, message or page it came from.
+
+Ask “how do you know that?” and he answers from that record, and only from it. The Memory room shows the same record for every row.
+
+### Only your words are yours
+
+A memory counts as something you said only when it came from your own turn: your chat, your voice, the widget, Alexa, your self-chat, or your own words in an `@Edward` ping. A wake, a scheduled reminder, someone else’s message or the household hub’s voice can’t write a memory as yours. And only you can change or forget what you said: from a turn that isn’t yours, his memory tools refuse to touch it. An instruction you want kept for good can be pinned as confirmed, and nothing retires or rewrites a pin.
+
+**Standing instructions** are your own instructions about yourself. They ride along in every wake, ahead of everything else.
+
+### After each turn
+
+- **Extraction.** A small model (the `background` route, Haiku 5.5) reads the turn and files what is worth keeping with its type, importance, tier and source. A near-duplicate reinforces the existing row instead of adding one.
+- **Use is citation.** A memory counts as used only when the answer actually drew on it, not whenever it was retrieved, so popular rows can’t entrench themselves.
+- **Reflection** looks for related memories in the background and hands them to the next turn.
+- **Search tags** make the conversation findable later.
+
+Before a turn, **deep retrieval** runs a few rewritten queries alongside yours when the message is short or the conversation has run on, and memories linked to the people and places you mention come along too.
+
+### Horizons
+
+Some things are meant to lapse. A one-off preference (“no onions in tonight’s order”) or a temporary instruction gets a 30-day horizon; an intention from a wake gets 72 hours unless a scheduled follow-up holds it. Telling him a taste is lasting takes the horizon off.
+
+### Upkeep that never deletes
+
+- **Weekly decay** (Sunday’s nightly) retires stale rows by stamping an end date. It never deletes, and one command undoes a pass. It never retires anything sensitive (pets, health, family, money, someone in distress, and the names in `EDWARD_SENSITIVE_NAMES`), stated timeless facts, or your own instructions.
+- **Hourly consolidation** links related memories and merges true duplicates, never your own words.
+- **Contradictions**: at most five new flags an hour, one per pair. If neither side is your own word, he keeps both. If one is, he asks you, one “Which is right?” at a time, on Today.
+
+### Documents
+
+Beside memories he keeps whole documents: recipes, notes, lists, reference pages, and his own `Edward: state` page, which he rewrites on Sundays. Documents are searched the same way, and their titles come up in conversation when relevant. Browse them in Memory → Documents.
+
+### Forgetting
+
+Ask him to forget something and he first shows the plan: the memories that match (whole words, linked entities, close meanings) and what hangs off them. He deletes exactly that plan, checks, and logs only the counts. Only you can ask, in your own conversation, and you can’t forget yourself (that would take the whole store). The Memory room has a “Forget…” sheet that does the same.
+
+### The knowledge graph (optional)
+
+Edward can also keep a graph of people, places and how they relate (Graphiti on Kuzu), filled by its own worker. It is off by default and takes two switches; see [Configuration](https://meet-edward.com/docs/configuration#off-by-default). Each memory costs a few background model calls.
+
+The long form, with the reasons behind each rule, is [memory.md](https://github.com/ben4mn/meet-edward/blob/main/docs/architecture/memory.md).
+
+Source: https://meet-edward.com/docs/memory
+
+---
+
+## The mind
+
+*What Edward does when nobody is talking to him, and how you can tell.*
+
+### Proactivity is noticing, not a schedule
+
+An earlier Edward ran on a timetable: a morning briefing, meeting prep, nudges about open loops, a weekly pattern report. On the install this release comes from, almost none of it was read. What was valued were the catches: a deadline closing, two messages that disagreed, someone waiting only on its owner. So Edward now wakes for a reason, does what that reason needs, and otherwise stays quiet.
+
+### What wakes him
+
+| Wake | When | What it may do |
+| --- | --- | --- |
+| **Follow-through** | A follow-up he scheduled, usually because he promised to check back | The checking, then tell you. A promise made in an iMessage chat is kept in that chat. |
+| **The nightly** | 03:00, skipped when nothing happened | Close finished intentions, note what he learned, update his state page; on Sundays, review the week and run memory upkeep. Silent: at most one note, never a push or a message. |
+| **Free time** | 13:00, once a day | Whatever he chooses for his screen and his own projects, about $0.50 at most. It reaches nobody. |
+| **Speaking up** | The noticer found something worth a word (opt-in, below) | Check it, then say it once. |
+| **The surfaces pulse** | Every 15 minutes, only if something changed | Decide what the widget and the screens show. See [Widget, screen & hub](https://meet-edward.com/docs/surfaces). |
+
+A wake is an ordinary turn with the same 14 tools as a conversation; what it may do is set by its policy. A wake that reaches nobody can’t send or push however it tries, and a refused call comes back as an honest error the model can read. The `mind` route runs Sonnet 5.5, inside the daily spend cap and a $1 cap per turn.
+
+`@Edward` pings are not wakes: they have their own runner, which answers each one within the limits in [Listening & pings](https://meet-edward.com/docs/listening).
+
+### The thought journal
+
+Edward needs no approval to act, but it must be obvious when he chooses to. A wake that does something outward (a message, a push, a note) or commits to something (scheduling, standing down) writes a journal entry:
+
+- **Why I looked**
+- **What I noticed**
+- **What I did**, one line per action, “sent” only when it was
+- **Why**
+
+Each entry asks you: **Right call? Yes / No.** The next wake reads your verdicts. Entries lead Edward’s side of the chat sidebar, marked when he reached someone, and you can reply inside one to ask why: he answers from what he actually saw and did.
+
+### Noticing (opt-in)
+
+With Listening on, Edward stores what arrives in your messages and mail. Whether he reads it for what matters is `EDWARD_PROACTIVITY`:
+
+| Value | What happens |
+| --- | --- |
+| `off` (default) | Messages are stored, pings answered, promises kept, the nightly runs. Nothing is noticed. |
+| `shadow` | The noticer and the gate run and record each decision, but he never speaks. Try this first. |
+| `notice` | The whole path. |
+
+The path:
+
+1. **The noticer** (a small model) reads each new batch of messages, with your own lines from every chat, and writes down private noticings: a deadline, a conflict between two facts, someone waiting only on you, a travel time closing, a password you pasted somewhere. Each must cite the messages it came from.
+2. **The gate**, plain code, decides: silent, hold, a note on Today, a push, or a reply in the thread. You are already on it? Silent. Just arrived? Wait 15 minutes. Said it before with nothing new? Silent. Only travel or household items closing within three hours may push, and quiet hours hold the rest until morning.
+3. **The speaker**, a wake, checks the noticing against the messages and says it once, through `tell_owner`.
+
+Your own instructions bind the gate (“don’t push me about the soccer chat”). What he learns from being ignored only shapes his advice to himself; it never silences a category.
+
+### How he reaches you
+
+Everything Edward says to you on his own goes through one door, `tell_owner`: quiet hours (22:00–07:00 by default) held in code, except care alerts and travel closing within three hours; at most one follow-up per subject; an offer phrased as an offer (“Want me to reply? Not sent.”); no secret on a lock screen. The channel is `EDWARD_OWNER_CHANNEL`: a push (the default), your iMessage self-chat, or Edward’s own Twilio number (with those two, an urgent word is a text). A wake never messages you any other way: `send_message` refuses to.
+
+**The late-dose alert** is code, not a model: a timed pet medication on the hub left unlogged 45 minutes after its slot pushes once. It works with every other switch off and outside the spend cap.
+
+### Rules a wake keeps
+
+- A mention must be answered, unless one of your standing instructions says stay out.
+- He doesn’t start or join other people’s conversations unasked: messages go out from your number, so he tells you instead.
+- A wake can’t change or delete what you said, and is never given the tool that forgets.
+- A failed wake is retried only when the failure was transient, and never after it reached someone or committed to something.
+
+### Watching him think
+
+- `GET /api/mind/now` is his live state (what is running, his last and next wake); the app’s Edward reflects it.
+- Mind → Thoughts lists each wake, what it did, and your verdicts.
+- `POST /api/mind/wake` wakes him by hand (it answers 202 and runs in the background).
+
+### Before you leave him unattended
+
+The repository has evaluation gates that run the real model over recorded situations on a test database, with every outward act a dry run: the judgement check (a mention, a standing instruction, a follow-through, the silent nightly; about $1–4), a ping check, and a noticer check to run before `EDWARD_PROACTIVITY` goes past `off`. See [testing.md](https://github.com/ben4mn/meet-edward/blob/main/docs/architecture/testing.md).
+
+The long form: [mind.md](https://github.com/ben4mn/meet-edward/blob/main/docs/architecture/mind.md), [noticing.md](https://github.com/ben4mn/meet-edward/blob/main/docs/architecture/noticing.md) and [push-and-notes.md](https://github.com/ben4mn/meet-edward/blob/main/docs/architecture/push-and-notes.md).
+
+Source: https://meet-edward.com/docs/mind
+
+---
+
+## Listening & pings
+
+*What he reads, who can ask him things, and what he may do for them.*
+
+> **Edward reads and sends iMessages as you.** He uses the Apple ID that Messages on the host Mac is signed into, and his messages go out from your own account, signed as Edward. With Messages turned on, anyone can write `@Edward` in a chat with you and he answers there. Decide that you want this before you turn it on.
+
+### Listening
+
+Three listeners store what arrives, and do nothing else. Each is off until you turn it on in the Edward tab: Messages and Email under **Attention → Listening → Configuration**, Gmail under **Attention → Gmail → Watch my inbox**.
+
+| Listener | How | Needs |
+| --- | --- | --- |
+| iMessage | Reads `~/Library/Messages/chat.db` every 10 seconds | Full Disk Access; Messages signed into your Apple ID; `EDWARD_OWNER_HANDLES` |
+| Mail.app | Reads Mail’s own index for unread inbox mail | Full Disk Access; Mail.app kept running |
+| Gmail | Google’s API, with “Watch my inbox” on | An OAuth client of your own ([gmail-setup.md](https://github.com/ben4mn/meet-edward/blob/main/docs/gmail-setup.md)) |
+
+What is stored feeds the mind: Edward can read it when you ask (“what did Rowan say about Saturday?”), and, if you turn noticing on, he reads each batch for what matters (see [The mind](https://meet-edward.com/docs/mind)). A message thread waiting on you shows on Today as one card per thread, and “Done” clears it.
+
+Mail can never trigger him: anyone can type `@edward` in a subject line, so only an iMessage can ask Edward anything.
+
+### Pings
+
+A ping is an iMessage that asks Edward something:
+
+- `@Edward` from anyone in any chat (yours included)
+- anything you write in your own self-chat
+- a reply to one of Edward’s messages
+
+Each ping gets its own turn, with the chat’s recent lines, its people, the photos and PDFs in it, and the links in the message, and his answer goes back into that chat. Pings are recorded the moment the message is stored, and answered by their own runner, so they are never lost in a busy batch. A ping closes when his reply is confirmed delivered (read back from Messages), or when he records that he chose not to answer. If a send went out and something failed after it, he says he was cut off rather than answering twice.
+
+Your own pings carry your authority: what you tell him in your self-chat or in your own `@Edward` is remembered as yours. A promise he makes in a chat (“I’ll check at five”) is kept in that chat.
+
+#### Friends’ pings
+
+A friend’s `@Edward` is someone else’s text driving a turn on your Mac, so it gets less:
+
+- **No shell, file editor, Chrome or screens**, and `look` only at what they sent or a link. Those act as you on your machine. `EDWARD_FRIENDS_FULL_TOOLSET=on` gives friends everything, at the risk that a message (or a page it points him at) drives a shell running as you.
+- **No new conversations**: anything he sends goes into that chat, or one that addressed him in the last 24 hours. He never writes to someone who asked him nothing, and leaves no task or reminder behind.
+- **Limits**: six turns an hour per chat, more than three friends’ pings in five minutes stops him there (and tells you), and friends’ turns spend Edward’s own share of the daily cap, never your reserve.
+- **Unknown numbers are held** for you, with a note at most once a day per sender, unless the chat is a group with someone from your contacts in it.
+- **Your standing instructions come along**: if you told him to stay out of a chat, he stands down there and tells you.
+
+What a friend’s ping can still do is read what Edward reads (your chats, memories and calendar) and answer from it. His prompt asks for discretion, but a prompt is not a wall: think about who can reach him before you turn Messages on.
+
+#### Switches
+
+- `EDWARD_PINGS=off` stops the runner; pings are still recorded, and the mind answers mentions instead. To stop answering altogether, turn Messages off in Listening.
+- `EDWARD_PING_FRIEND_TURNS_PER_HOUR` (6), `EDWARD_PING_CONCURRENCY` (2), and the iMessage skill, which gates reading and sending.
+- `GET /api/health/report` counts how every ping ended, by who asked, and how fast he answered.
+
+### Photos, PDFs, voice messages and video
+
+Attachments in a chat are understood, not skipped:
+
+- Photos (HEIC, stickers, GIF frames) are converted with macOS’s `sips` and seen as pictures; a ping turn gets up to six images and one PDF inline.
+- PDFs are read whole (up to 15 MB and 100 pages).
+- Voice messages and videos are heard through ElevenLabs’ Scribe (once voice is set up) and seen through a small Swift helper built by `setup.sh` (frames from a video).
+- Links are read first, from public addresses only, and never a sign-in or confirmation link, or one from an unknown number.
+
+Images leave saved history as a line with their reference, so old conversations stay small. `EDWARD_MEDIA=off` brings back plain placeholders.
+
+### Other ways in
+
+- **Twilio** gives Edward a number of his own for SMS and WhatsApp. Webhooks are refused without a valid Twilio signature, and only your own numbers get an answer; anyone else’s text is held, unanswered.
+- **The WhatsApp bridge** (whatsapp-mcp) reads and sends WhatsApp as you, once you run and pair it.
+- **Alexa** can ask Edward through a custom skill, but inbound requests are not signature-verified yet: see [Guard rails](https://meet-edward.com/docs/guard-rails).
+
+Want Edward on an Apple ID of his own, so people text him rather than you? That is a project; [Adapting to your Mac](https://meet-edward.com/docs/adapting) has a prompt for it.
+
+The long form: [heartbeat.md](https://github.com/ben4mn/meet-edward/blob/main/docs/architecture/heartbeat.md), [pings.md](https://github.com/ben4mn/meet-edward/blob/main/docs/architecture/pings.md) and [media.md](https://github.com/ben4mn/meet-edward/blob/main/docs/architecture/media.md).
+
+Source: https://meet-edward.com/docs/listening
+
+---
+
+## His computer
+
+*A shell, an editor and a browser of his own, on your Mac, with rails.*
+
+### One toolset, everywhere
+
+Edward has the same fourteen tools in every turn: your chat, voice, pings, his wakes, the screens’ pulse and scheduled events. What a turn may do with them is its **policy** (did you ask? may it reach people? may it push?), checked when a tool is called; a refused call comes back as an honest `Tool error:` with the reason.
+
+| Tool | What it does |
+| --- | --- |
+| `bash` | A persistent shell in his home folder, sandboxed |
+| `str_replace_based_edit_tool` | View, create and edit files, under the same rails |
+| `web_search`, `web_fetch` | Search the web and read pages |
+| `browser` | His own invisible browser |
+| `chrome` | Your Chrome, through the Edward extension (off by default) |
+| `look` | See images, PDFs, a web page or the screen as pictures |
+| `messages` | Read iMessage and mail |
+| `send_message` | The one guarded way to message someone |
+| `tell_owner` | Reach you: a note on Today, or a push |
+| `memory` | Search, remember, close, explain or forget memories; read and write documents |
+| `schedule` | Reminders, follow-up wakes, your calendar and Reminders |
+| `screen` | His screen, the household screen and the iPhone widget |
+| `plan` | A visible checklist for longer work |
+
+Skill switches only take tools away: Shell/Bash gates the shell and editor, Web Search the web tools, iMessage the message tools, iOS Widget the widget, Push Notifications the urgent push.
+
+### His home and his shell
+
+`~/edward-home` is his: `bin/` (on his PATH), `projects/`, `skills/`, `downloads/`, `jobs/` for background logs, and a Python 3.12 environment of his own. He may `pip install`, use `uv` and `npm`, and `brew install` ordinary formulae.
+
+- One persistent `bash` per conversation, so `cd` and variables carry over between commands.
+- 180 seconds a command; long work is a background job plus a scheduled wake to check on it.
+- A watchdog kills a session past 2 GB of memory or when the disk runs low; at most four sessions at once.
+- Every output is scanned and secrets are redacted before the model sees it.
+- Its environment is an allowlist: no API keys, no `.env` values, no database address.
+- If the sandbox can’t apply, `bash` fails closed. It never silently runs unsandboxed.
+
+### The rails
+
+The shell runs under a macOS Seatbelt profile rendered from one table of rails, which the in-process editor checks too:
+
+- **Not his own credentials**: the session-signing key, the setup code and `.env`, however the path is spelled (compared by the file’s identity on disk, so case variants, symlinks and hard links count).
+- **Not his own running code**: no writes to the checkout Edward runs from, his releases or his own sandbox config, and none of the directories above them can be renamed or moved.
+- **Not what production runs on**: no writes to either Postgres cluster’s data or to Homebrew’s `python@3.12` and `postgresql@16`, and no upgrading them.
+- **Not the services that act as you**: no connection to Edward’s own API (:8000, :3000), the WhatsApp bridge, or his databases (:5432, :5433).
+- **Not your other apps**: no launching or scripting apps (messages go through `send_message`, never `tell application "Messages"`), never a second Google Chrome, and signals only to his own processes.
+
+> **The sandbox is not a containment boundary.** The shell runs as your macOS user. Reads are open (except his own credentials), and writes are open everywhere but the protected paths, including your shell startup files, `~/Library/LaunchAgents` and Homebrew, from which programs later run as you, outside the sandbox. The rails stop accidents and turn misuse into deliberate work; they don’t make it impossible. For real isolation, run Edward under his own macOS user (prompt G in [Adapting to your Mac](https://meet-edward.com/docs/adapting)). Short of that, keep friends’ pings on their default, which gives them no shell.
+
+### Two browsers
+
+#### `browser`: his own
+
+Playwright’s bundled headless shell, never Google Chrome, with his own cookies (never yours). It opens http and https only, and every request and redirect is checked: nothing on this Mac or your network, only public addresses. He can open, read, find, click, type, scroll and download.
+
+#### `chrome`: yours, if you allow it
+
+With `EDWARD_CHROME_HANDS=on` and the unpacked extension in `chrome-extension/` loaded, Edward can use your own, signed-in Chrome. The extension connects only directly from this Mac, and only Edward’s own extension ID is accepted. Rails:
+
+- Typing outside a search box, pressing Enter there, or clicking anything labelled send, post, delete, accept, confirm, share and the like acts as you, so it runs only when you asked in that turn.
+- A payment step, or typing anything that looks like a card number, is refused in every turn.
+- Taking a picture of a tab never switches your active tab.
+
+Chrome shows its “being debugged” bar while he works, unless you set `EDWARD_CHROME_SILENT_DEBUGGER=on`. With the hands on, `/screen` also opens as a tab in your Chrome (see [Widget, screen & hub](https://meet-edward.com/docs/surfaces)).
+
+### `look`
+
+`look` hands the model the picture itself, not another model’s description of it: a photo from a chat, a file, a PDF, a web address, his own page, your Chrome tab, or this Mac’s screen (which needs Screen Recording for the backend’s python). Images are scaled to 1600 pixels at most, never up; a turn carries at most 40 images.
+
+### The web
+
+On Claude, `web_search` and `web_fetch` are Anthropic’s server tools: the search and fetch run at Anthropic. With `EDWARD_SERVER_WEB_TOOLS=off` (or on the Codex fallback) they run locally: Brave Search with your key, and a local fetch that refuses this Mac and your network on every hop.
+
+### Your calendar and Reminders
+
+- **Reading**: straight from Calendar’s and Reminders’ own databases on this Mac (Full Disk Access), read-only, in every turn. If they can’t be read he says so; he never reports an empty day instead. apple-mcp, if set up, is the calendar’s fallback.
+- **Changing**: only when you ask, through a small signed EventKit helper (macOS 14+). Grant it once, at the Mac, with `bash backend/scripts/eventkit_request_access.sh`. Edward never asks macOS himself, because a dialog nobody answers would hang a turn.
+
+The long form, including the full list of what the sandbox does not prevent, is [computer.md](https://github.com/ben4mn/meet-edward/blob/main/docs/architecture/computer.md).
+
+Source: https://meet-edward.com/docs/computer
+
+---
+
+## Widget, screen & hub
+
+*Where Edward shows himself, and decides for himself what to show.*
+
+### The pulse
+
+Edward decides what his surfaces show, the way you would decide what to pin to a fridge: there is no fixed layout. Every 15 minutes a check in code looks at what feeds them (the pet board, your calendar, the widget, the screens, who is at the hub). Only when something changed does he take a turn to decide what to show; most ticks cost nothing. The pulse reaches nobody and never pushes. If it fails or the day’s budget is spent, a plain fallback card stands in.
+
+### The iPhone widget
+
+A home-screen widget through the [Scriptable](https://scriptable.app) app. Edward fills it with sections (a title, lines, stats, a countdown) or, when he wants full control, a small Scriptable script of his own. A section can carry an end time and disappears by itself when it passes. Until he writes anything, the widget shows your upcoming events in your time zone.
+
+#### Setting it up
+
+1. Turn on the **iOS Widget** skill (Edward tab → Mind → Skills).
+2. Install Scriptable and copy [`scriptable/edward-widget.js`](https://github.com/ben4mn/meet-edward/blob/main/scriptable/edward-widget.js) into a new script.
+3. Fill in your public address and your widget token: while signed in, open `/api/widget/token` on your Edward.
+4. Add a Scriptable widget to your home screen and pick the script.
+
+> **Treat the widget token like your password.** Besides the widget, it can chat with Edward as you (`POST /api/widget/chat`, which `scriptable/edward-chat.js` uses). Put it only on your own devices; if it leaks, replace it with `POST /api/widget/token/regenerate` while signed in.
+
+### His screen
+
+`/screen` is Edward’s stage, meant for a display near the host Mac (or any browser you like). It is a scene of up to eight pieces he places himself (words, notes, lists, a countdown or timer, a picture, a video, your calendar, the pet board, a clock), with Edward standing in it, the lines he says, and, while a wake or the pulse is running, what he is thinking: tool names and scrubbed reasoning, never their arguments or results.
+
+![Edward's screen: a headline, a countdown to a landing, the weather for Saturday, a thought he wrote, tonight's pet care, and Edward standing on the stage](https://meet-edward.com/screenshots/screen-desktop.png)
+*A scene he arranged on a quiet evening.*
+
+- **It is his.** He is encouraged to change it, and his free time each afternoon is partly for it.
+- **Your ask holds it.** Ask him to put something up and it stays until the hold lapses; his own turns can’t replace it, though he can still say a line.
+- **His lines** can be spoken aloud, never during quiet hours.
+- **Opening it**: open `/screen` yourself in any browser. With the Chrome hands on, Edward finds or opens it as a tab in your Chrome, sized to the desktop (never a full-screen Space).
+
+### The household hub (optional)
+
+`/hub` is a touchscreen page for a kitchen or a pet station: a thin client, with all the logic on the host Mac. The reference install ran it on a Raspberry Pi with a 7″ touchscreen in Chromium’s kiosk mode ([pi-hub-setup.md](https://github.com/ben4mn/meet-edward/blob/main/docs/pi-hub-setup.md)); any kiosk-mode browser on `/hub` works.
+
+![The household hub: the time, two late doses, a who-toggle, Edward's greeting, tiles for pets, calendar, lists, voice, timers, health, photos and settings, and each pet's feeding status](https://meet-edward.com/screenshots/hub-kiosk.png)
+*The hub on a 7″ kiosk: two doses late, everything else calm.*
+
+| Page | What it does |
+| --- | --- |
+| `/hub` | Home: the day at a glance, and what Edward put up for the house |
+| `/hub/pets` | Feeding and medication: tap to log a dose |
+| `/hub/today`, `/hub/lists`, `/hub/timers` | The family calendar, shared lists, kitchen timers |
+| `/hub/ask` | Full-screen voice. It runs as someone in your home, not as you |
+| `/hub/health`, `/hub/settings`, `/hub/idle` | Vitals, the panel’s own controls, the photo screensaver |
+
+#### Built so alerts stay rare
+
+- Food given “twice daily, whenever” **never** goes overdue. Only timed doses (a dog’s 06:00 and 18:00 medication) can.
+- A dose more than four hours late stops alerting, but is still recorded.
+- Status colours never change with a person’s theme: “overdue” looks the same whoever is at the screen.
+- An item copied from, say, a pet-sitter’s note shows a “needs review” badge until someone confirms it.
+- A timed dose still unlogged 45 minutes after its slot pushes you once per pet and slot, from code, outside quiet hours and the spend cap, unless someone is standing at the hub.
+
+#### Setting it up
+
+- **Pets and care** come from a seed file: copy `backend/hub_seed.example.json` (a fictional dog and a cat), describe your own, and set `EDWARD_HUB_SEED`.
+- **People**: `EDWARD_HOUSEHOLD`, comma-separated, you first. With two or more, the hub shows a who-toggle and themes by person.
+- **Photos** for the screensaver live in `~/edward-photos` on the host Mac; upload them from the Edward tab (House → Hub Photos). A photos-only second login for someone else in the house (`/photos`) is off unless `PHOTO_DOOR_PASSWORD_HASH` is set.
+- **Over plain HTTP on your network**, the kiosk browser needs `--unsafely-treat-insecure-origin-as-secure=http://my-mac.local:3000`, or the microphone, the wake lock and the sign-in cookie silently fail.
+
+The hub signs in with your normal password, so it deliberately has no controls that change Edward himself (no restart button, no skill switches).
+
+The long form: [screen-and-browser.md](https://github.com/ben4mn/meet-edward/blob/main/docs/architecture/screen-and-browser.md) and [hub.md](https://github.com/ben4mn/meet-edward/blob/main/docs/architecture/hub.md). For the pulse’s place among his wakes, see [The mind](https://meet-edward.com/docs/mind).
+
+Source: https://meet-edward.com/docs/surfaces
+
+---
+
+## Guard rails
+
+*One process reads untrusted text and can act as you. Here is what stands in between, and where it stops.*
+
+### Before a password exists
+
+- Until you choose a password, the API answers nothing but the sign-in pages.
+- The first password needs a **one-time setup code** the backend writes to `backend/.setup_code`, readable only by your macOS user and deleted once the password is set. The request must also come from a page at `localhost` on the host Mac, but a device on your network can forge those headers: the code is what keeps someone else from claiming your Edward first.
+- Wrong codes are limited (10 per client in 15 minutes); sign-in allows 5 failed tries per client in 15 minutes, and 100 across all clients.
+- Sessions last 30 days and renew past half their life. The cookie is `Secure`: serve Edward over HTTPS.
+
+### Money
+
+- **A daily spend cap** ($5 over your local day by default). Background work stops first (at 60 %), then Edward’s own turns (at the cap); your own turns may run a $3 reserve past it. When the cap is reached he says so in a sentence, not an error.
+- **Per-turn caps**: $3 for a turn you asked for, $1 for anything else, and 60 tool rounds at most.
+- Every model call is priced and logged, and shown in the app.
+
+### What leaves
+
+- **The egress secret scan** is always on. Every message and file he sends, every shell command, every push, every URL he fetches or looks at, every search, everything typed in a browser and every argument to a custom MCP tool is scanned for keys, tokens, JWTs and private keys. A hit is refused, with only the kind logged. The exception is Anthropic’s server-side search and fetch (the default on Claude): their queries are checked only after the fact, and logged.
+- **Redaction on the way in**: shell output, files he views and every local tool’s result pass through the same scanner before the model sees them (the server-side search and fetch results can’t be).
+- **One send.** `send_message` is the only way he messages anyone: one recipient, a 10-minute dedupe, and a **recipient rule**. He may write to someone only if you asked, it is the chat the turn was asked in, they addressed him in the last 24 hours, or it is a live conversation; anyone else is your call. The app says “Sent” only when the message was delivered.
+- **Your Chrome** (if you turned the hands on): typing outside a search box or clicking send, post, delete and the like needs you to have asked in that turn; payments are refused in every turn.
+
+### Taint and approvals
+
+A turn is marked tainted when it starts from untrusted content (a message, a mail, a wake’s pack) or reads some (a web page, your messages, a calendar invitation). The approval gate that can hold such a turn’s outward calls is **off by default**; the recipient and Chrome rules above do its job in code. Set `EDWARD_TAINT_APPROVALS=shadow` to log what it would have held, or `on` to hold each one for your Approve / Deny on Today. An approval runs the stored call once, and never past the secret scan.
+
+### His computer
+
+His shell runs under a macOS Seatbelt sandbox: it can’t read his own credentials (the session key, the setup code, `.env`), write the code he runs from or what production depends on, reach his own API or databases, or launch and script other apps. Details in [His computer](https://meet-edward.com/docs/computer).
+
+> **It is not a containment boundary.** The shell runs as your macOS user and can write your shell startup files, your LaunchAgents and Homebrew, from which programs later run as you, outside the sandbox. A prompt injection that reaches the shell (a web page, a message, a file he was pointed at) therefore has a way to run code as you. The rails make that deliberate work rather than one mistaken command. For strong isolation, run Edward as a separate macOS user (prompt G in [Adapting to your Mac](https://meet-edward.com/docs/adapting)).
+
+### Other people
+
+- **Friends’ pings stay off your machine**: no shell, editor, Chrome or screens unless `EDWARD_FRIENDS_FULL_TOOLSET=on`. They can still read what Edward reads (your chats, memories, calendar) and answer from it; his prompt asks for discretion, which is a prompt, not a wall. See [Listening & pings](https://meet-edward.com/docs/listening).
+- **Twilio** webhooks are refused without a valid Twilio signature, and then only your own numbers get a turn. Anyone else’s text is held, unanswered, with no push.
+- **The household hub’s voice** runs as someone in your home, not as you: it follows the recipient rule and never texts you.
+- **A wake never messages you with `send_message`**; it reaches you only through `tell_owner`. And a wake can’t change or delete what you said.
+
+### Known gaps
+
+- **Alexa**: inbound requests are not signature-verified. Only the skill id is checked, and an Alexa turn runs as you, so anyone who learns the id and your URL can run a turn as you. Leave `ALEXA_SKILL_ID` unset unless you use the skill (the route then answers 503). [Adapting to your Mac](https://meet-edward.com/docs/adapting) has a prompt (E) that adds Amazon’s verification.
+- **The widget token is owner-equivalent**: it can chat as you. Keep it on your own devices and regenerate it if it leaks.
+- **Postgres trusts local connections** (Homebrew’s default), so any program running as you outside the sandbox can reach it. The shell itself is refused.
+- **Custom MCP servers’** environment values are stored in plain text.
+
+### Emergency switches
+
+`EDWARD_EGRESS_SECRET_SCAN=off` and `EDWARD_COMPUTER_SANDBOX=off` exist for emergencies only; the second runs his shell unsandboxed and logs every command. To stop Edward reaching anyone: turn Messages off in Listening, unset `TWILIO_AUTH_TOKEN`, and turn the iMessage and Push Notifications skills off.
+
+The long form: [trust-boundary.md](https://github.com/ben4mn/meet-edward/blob/main/docs/architecture/trust-boundary.md), [auth-and-pwa.md](https://github.com/ben4mn/meet-edward/blob/main/docs/architecture/auth-and-pwa.md) and [computer.md](https://github.com/ben4mn/meet-edward/blob/main/docs/architecture/computer.md).
+
+Source: https://meet-edward.com/docs/guard-rails
+
+---
+
+## Skills & integrations
+
+*The switches, and everything Edward can connect to.*
+
+### Skills
+
+Skills are switches in the Edward tab, under **Mind → Skills**. Every one starts off on a fresh install. Edward’s tools are the same fourteen on every surface, and a skill can only take some away; each row shows a live status that says what is actually true (“not paired”, “credentials rejected”).
+
+| Skill | What turning it on gives him |
+| --- | --- |
+| **Shell/Bash** | His computer: `bash` and the file editor, in his sandbox |
+| **Web Search** | `web_search` and `web_fetch` |
+| **iMessage** | `messages` and `send_message`: reading and sending iMessages, and mail with them. Pings need it too |
+| **Push Notifications** | An urgent `tell_owner` may buzz your phone; with it off, he leaves a note on Today instead |
+| **iOS Widget** | The `screen` tool’s widget actions |
+| **Voice Conversations** | Voice memos and live voice (with an ElevenLabs key) |
+| **Code Interpreter**, **JavaScript**, **SQL Database** | Retired: “Edward runs this in his own shell now.” They gate nothing |
+| Twilio SMS and WhatsApp, WhatsApp (MCP), Contacts, Apple Services, HTML Hosting, Alexa, Orchestrator, Claude Code Session | Status rows. Each reports whether its integration works; the switch doesn’t change Edward’s tools |
+
+`memory`, `schedule`, `screen`, `look`, `plan`, `tell_owner`, `browser` and `chrome` are always present (`chrome` answers that the hands are off until you turn them on).
+
+### Messages and mail
+
+- **iMessage**: read from Messages’ own database, sent through AppleScript from your own Apple ID, signed as Edward. See [Listening & pings](https://meet-edward.com/docs/listening).
+- **Mail.app** (iCloud or any account in it): read from Mail’s index on the Mac.
+- **Gmail**: through Google’s API with an OAuth client of your own ([gmail-setup.md](https://github.com/ben4mn/meet-edward/blob/main/docs/gmail-setup.md)). Email he sends goes out from your Gmail through the same guarded `send_message`, and never to you.
+- **Twilio**: SMS and WhatsApp from a number of Edward’s own. Signed webhooks only, answering only your numbers unless `EDWARD_TWILIO_ANSWER_ANYONE=on`.
+- **WhatsApp as you**, through the whatsapp-mcp project’s Go bridge: run it yourself, scan its QR code, then `MCP_WHATSAPP_ENABLED=true`.
+
+Reading is open in every turn; what someone else wrote marks the turn as tainted (see [Guard rails](https://meet-edward.com/docs/guard-rails)).
+
+### Your Mac’s own data
+
+- **Calendar and Reminders**: read from their own databases (Full Disk Access); changed only when you ask, through the EventKit helper.
+- **Contacts**: read from the AddressBook databases; Contacts.app only as a fallback.
+- **apple-mcp** (optional, `MCP_APPLE_ENABLED=true`): only a fallback for reading your calendar when Calendar’s own database can’t be read; its other tools are not given to Edward. Install bun and clone apple-mcp (its location is `MCP_APPLE_DIR`, default `~/apple-mcp`).
+
+### Search
+
+On Claude, search and fetch are Anthropic’s server tools and need no other key. **Brave Search** (`BRAVE_SEARCH_API_KEY`) is used only when they are off (`EDWARD_SERVER_WEB_TOOLS=off`) or on the Codex fallback.
+
+### Your home
+
+- **Alexa**: a custom skill can ask Edward things ([alexa-setup.md](https://github.com/ben4mn/meet-edward/blob/main/docs/alexa-setup.md)). Inbound requests are not signature-verified yet, so leave `ALEXA_SKILL_ID` unset unless you use it.
+- **Home Assistant**: announcements on Echo devices (`HOME_ASSISTANT_URL`, `HOME_ASSISTANT_TOKEN`).
+- **Presence**: the menu-bar companion, or any script with your widget token, tells Edward which Mac you are at.
+
+### Custom MCP servers
+
+MCP servers already installed (by a March install, for example) run with `npx` or `uvx`, and their tools are bound beside the fourteen, prefixed with the server’s name. You can switch, restart or remove them in **Mind → Servers**; this release has no way to add a new one from the app, and Edward can’t install servers himself any more (he runs `npx` in his own shell when he wants one for himself). Because nothing can tell what a custom tool does, every one is treated as outward: its arguments are secret-scanned, its results taint the turn and are redacted, a wake that uses one writes a journal entry, and it is refused in friends’ pings and in turns that may reach nobody.
+
+A server runs as you, unsandboxed, with an allowlisted environment (no keys of Edward’s). Its own `env_vars` are stored in plain text in the database and its backups: don’t put a write-capable token there without meaning to.
+
+### Also available
+
+- **Hosted pages**: `HTML_HOSTING_URL` and `HTML_HOSTING_API_KEY` point at a small upload service that speaks its API. There is no default host, and Edward’s tools for it were retired.
+- **The knowledge graph** (Graphiti and Kuzu), off by default: see [Memory](https://meet-edward.com/docs/memory).
+
+### Removed
+
+The Python, JavaScript and SQL sandboxes, Lightpanda, LangSmith, Find My and USPS tracking are gone. See [Upgrading from March](https://meet-edward.com/docs/upgrading) for the full list.
+
+The long form: [integrations.md](https://github.com/ben4mn/meet-edward/blob/main/docs/architecture/integrations.md).
+
+Source: https://meet-edward.com/docs/skills
+
+---
+
+## Adapting to your Mac
+
+*Edward ran for months for one person in one home. Here is how to fit him to yours.*
+
+Most of what was specific to that home is now a setting. A few places still assume the first host, and each is marked in the code with an `ADAPT:` note. The full list, with file and line, is [docs/ADAPTING.md](https://github.com/ben4mn/meet-edward/blob/main/docs/ADAPTING.md).
+
+### Settings, not code
+
+| What | Where it is read | Settings |
+| --- | --- | --- |
+| Who you are | `backend/services/owner.py` | `EDWARD_OWNER_NAME`, `_FULL_NAME`, `_ALIASES`, `_HANDLES`, `_EMAILS`, `EDWARD_HOUSEHOLD` |
+| Where Edward runs | `backend/services/host_config.py` | `EDWARD_PUBLIC_BASE_URL`, `EDWARD_LAUNCHD_PREFIX`, `EDWARD_TUNNEL_LABEL`, `EDWARD_BACKUP_DIR`, and more |
+| What the shell scripts see | `scripts/lib/edward-env.sh` | The environment, then `.env`, then the default |
+
+See [Configuration](https://meet-edward.com/docs/configuration) for the settings themselves.
+
+### Finding the seams
+
+```
+grep -rn "ADAPT:" --include='*.py' --include='*.ts' --include='*.tsx' --include='*.sh' \
+  --include='*.swift' --include='*.js' \
+  backend frontend scripts companion chrome-extension scriptable | grep -v node_modules
+```
+
+Each note has the same three parts:
+
+```
+# ADAPT: <what is specific to the original host, in one line>
+#   How it works here: <what the code assumes>
+#   To adapt: <the setting to change, or what to build>
+```
+
+The ones you are most likely to meet:
+
+- **iMessage as you.** Edward sends and reads as the Apple ID Messages on the Mac is signed into, so “from me” means you. An Apple ID of his own means reworking the echo checks.
+- **Mail.app’s index** lives under `~/Library/Mail/V10`, which changes between macOS releases (`EDWARD_MAIL_ENVELOPE_INDEX`).
+- **Calendar’s and Reminders’ stores** are private Apple databases, checked on one macOS version; when they can’t be read he says so (the calendar falls back to apple-mcp when it is set up).
+- **The protected Homebrew kegs** (python@3.12 and postgresql@16) and `HOMEBREW_PREFIX`, which the sandbox rails name.
+- **The screen** is a Google Chrome tab sized over AppleScript when the hands are on; any browser works when they are off.
+- **The hub** is laid out for one 7″ kiosk, and its pets come from a seed file with no editor in the app.
+- **Alexa** inbound is not signature-verified.
+- **Ports**: :8000 and :3000 are also written into the Chrome extension and the shell’s denied ports, so moving one means changing those too.
+
+### macOS permissions
+
+Almost every grant goes to the **backend’s python**: the real path of the python3.12 behind `backend/.venv`, which `setup.sh` and the LaunchAgent installer print. To grant it: System Settings → Privacy & Security → the list → **+** → `Cmd + Shift + G` → paste the path. Started by hand from a terminal, macOS charges the terminal app instead.
+
+| Permission | What needs it |
+| --- | --- |
+| Full Disk Access | iMessage, contact names, Mail’s index, the Calendar and Reminders stores, and backups to a removable drive |
+| Automation | Sending an iMessage; with the Chrome hands on, Chrome, Finder and System Events. Answer the first prompt at the Mac |
+| Accessibility | Sizing Chrome’s window for `/screen` (hands on only) |
+| Screen Recording | `look` at the screen |
+| Calendars, Reminders | Changing them when you ask: `bash backend/scripts/eventkit_request_access.sh`, at the Mac |
+
+> **Grants follow the binary’s path.** `brew upgrade python@3.12` moves Python and every grant silently stops applying: grant the new path, re-run `bash scripts/install-launchagents.sh` and the EventKit script. A `brew install` of something that depends on Python can upgrade it along the way, which is why Edward’s media handling avoids ffmpeg.
+
+### Prompts for the bigger changes
+
+Open Claude Code in your checkout: `CLAUDE.md` loads by itself and carries the house rules (a fix lands with the test that pins it, backend tests only on the test database, the architecture doc of anything you change). [ADAPTING.md](https://github.com/ben4mn/meet-edward/blob/main/docs/ADAPTING.md) has a prompt for each of these, ready to paste:
+
+|  | Change |
+| --- | --- |
+| A | A pets-and-care editor in the Edward tab, so the hub needs no seed file |
+| B | Linux, starting with a sandbox for the `bash` tool (bubblewrap) |
+| C | systemd units instead of LaunchAgents |
+| D | A separate Apple ID (or number) for Edward, so people text him, not you |
+| E | Amazon’s signature verification for inbound Alexa requests |
+| F | Your own browser (Safari, Arc) for the screen |
+| G | Edward under his own macOS user, for real isolation of his shell. The reference install never ran this way: treat it as a project (his own logged-in session, his own copies of your data, Postgres with passwords) |
+
+When you add code that assumes something about your own host, mark it the same way, and add a row to ADAPTING.md.
+
+Source: https://meet-edward.com/docs/adapting
 
 ---
 
 ## Architecture
 
-How Edward is structured under the hood.
+*How Edward is built, run and tested.*
 
-### System Overview
-
-```
-Frontend (Next.js :3000)  →  Backend (FastAPI :8000)  →  PostgreSQL (:5432)
-                                      ↓
-                              LangGraph Agent
-                                      ↓
-                              Claude API (Anthropic)
-```
-
-The frontend is a Next.js app that communicates with the FastAPI backend via REST and SSE (Server-Sent Events) for streaming. The backend manages all state in PostgreSQL, including conversation checkpoints, memories, documents, and configuration.
-
-### LangGraph Flow
-
-Every message goes through a four-node LangGraph pipeline:
+### Overview
 
 ```
-preprocess → retrieve_memory → respond → extract_memory → END
+Next.js PWA (:3000)  ──/api──▶  FastAPI (:8000)  ──▶  PostgreSQL 16 + pgvector (:5432)
+Today · Chat · Voice                  │
+Edward tab · /screen · /hub           │
+                                      ├─ a turn (LangGraph): preprocess → retrieve_memory → respond (tool loop) → extract_memory
+                                      ├─ one toolset of 14 tools; bash runs in a Seatbelt sandbox in ~/edward-home
+                                      ├─ listeners: iMessage (chat.db), Mail, Gmail → the mind (wakes, noticing, pings)
+                                      ├─ scheduler (every 30 s), consolidation (hourly), the screens' pulse
+                                      └─ the Claude API: ChatClaude, one route per purpose, a daily dollar cap
 ```
 
-1. **preprocess** — normalizes the input, sets up conversation metadata
-2. **retrieve_memory** — searches pgvector for relevant memories using hybrid 70% vector + 30% BM25 scoring
-3. **respond** — calls Claude with the full context and tool bindings, enters a tool loop (up to 5 iterations)
-4. **extract_memory** — uses Claude Haiku to identify any memorable information from the conversation and stores it
+The backend runs natively on macOS, never in a container: it reads Apple’s databases, talks to Messages over AppleScript, and sandboxes Edward’s shell with Seatbelt. The frontend is a Next.js production build served on :3000, which forwards `/api` to the backend. All state is in PostgreSQL: conversations and their LangGraph checkpoints, memories, documents, events, ledgers and settings.
 
-#### Tool Loop
-
-Inside the `respond` node, Edward can call tools iteratively:
+### A turn
 
 ```
-LLM response
-    ↓
-tool_calls? ──yes──> execute tools
-    │                     ↓
-    no              add ToolMessage
-    ↓                     ↓
- stream response    loop (max 5x)
+preprocess → retrieve_memory → respond (the tool loop) → extract_memory
 ```
 
-This allows Edward to chain actions — for example, searching the web, reading the page content, then summarizing it — all within a single conversation turn.
+- **One tool loop** for every surface (chat, voice, pings, wakes, the pulse, scheduled events), with the same [fourteen tools](https://meet-edward.com/docs/computer). What a turn may do is its `TurnPolicy`: whether you asked, whether it may reach people or push, where it may reply, its dollar cap and deadline. A turn you are not part of, with no policy, is fail-closed.
+- **Honest failures**: every tool failure reaches the model as `Tool error: <the real error>`; the same failing call is refused the third time; after three failed rounds he is told to step back, and after six the turn stops.
+- **Bounds**: 60 rounds, $3 a turn you asked for and $1 otherwise, 300 s per model call, 600 s per streamed turn, tool results capped at 30K characters.
+- **One turn at a time in a thread**, and Stop cancels the step in flight. The turn’s trace (reasoning, tools, memory hits) is stored with the answer, so the work rail renders the same from history.
 
-### Memory System
+### The model
 
-- **Embedding model**: sentence-transformers (`all-MiniLM-L6-v2`, 384 dimensions)
-- **Search**: Hybrid 70% vector similarity + 30% BM25 keyword matching
-- **Memory types**: `fact`, `preference`, `context`, `instruction`
-- **Extraction**: Claude Haiku identifies memorable info after each turn
-- **Deep Retrieval**: For complex conversations, runs 4 parallel queries (original + 3 Haiku-rewritten) for richer context
+Every model call goes through one set of builders and one Claude adapter on the `anthropic` SDK, with a model, effort and prompt-cache lifetime per purpose (chat, mind, pulse, background, voice, judge). Before each request the adapter asks the daily spend cap, and after it prices the call into a ledger. Every call is labelled with what it was for (`mind:nightly`, `ping:friend`, `turn:chat`…), which is how the app shows where the money went. An unofficial Codex fallback exists behind `EDWARD_LLM_PROVIDER=codex`. Details in [Configuration](https://meet-edward.com/docs/configuration).
 
-[Read the full memory system deep dive](https://meet-edward.com/docs/memory)
+### Running in the background
 
-### Background Systems
+| Loop | What it does |
+| --- | --- |
+| Scheduler | Polls every 30 s; each due event runs as its own task, in your time zone, never the host’s. Reminders, follow-up wakes, the nightly and free-time ticks, a five-minute sweep, the pulse. |
+| Listeners | iMessage every 10 s, Mail and Gmail on their own intervals; they store events and nothing else |
+| Ping runner | Answers each `@Edward` in its own turn, two at a time, never two in one chat |
+| The mind | Wakes, the noticer and the speak gate ([The mind](https://meet-edward.com/docs/mind)) |
+| The pulse | Every 15 minutes, a model turn only when a surface’s inputs changed |
+| Consolidation | Hourly memory upkeep ([Memory](https://meet-edward.com/docs/memory)) |
+| The sweep | Every five minutes, with no model: the late-dose alert, noticing upkeep, snoozes |
+| Graph worker | Optional, its own LaunchAgent: fills the knowledge graph |
 
-Edward runs several background loops that operate independently of user conversations:
+### Startup order
 
-#### Heartbeat
+`main.py`’s lifespan starts things in an order that matters: the tool registry must come after skills and every MCP source.
 
-Monitors iMessage, Apple Calendar, and Apple Mail for incoming items. Multi-layer triage classifies urgency: Layer 1 (zero-cost rules) → Layer 2 (Haiku classification) → Layer 3 (execute action). Can ignore, remember, respond, or push-notify based on classification.
+1. Logging, the database and the LangGraph checkpointer (tables, migrations, drops)
+2. The time zone cache, the embedding model, the Codex rate gate (Codex only)
+3. The storage directory and skills
+4. Built-in MCP clients (after an orphan sweep), custom MCP servers, a second skills sweep
+5. The tool registry
+6. Edward’s computer: his home, the Seatbelt profile, a sweep of leftover shells
+7. The scheduler
+8. The listeners and the mind path, the presence probe
+9. The ping runner
+10. Browser hands (a no-op unless they are on)
+11. Consolidation (after 60 s)
+12. The orchestrator (recovers crashed worker tasks; dormant)
+13. Greeting pre-warm
 
-[Read the full heartbeat deep dive](https://meet-edward.com/docs/heartbeat)
+Shutdown runs the matching hooks in reverse, his computer first.
 
-#### Reflection
+### The chat stream
 
-Post-turn enrichment that generates 3-5 Haiku queries to find related memories. Results are stored and loaded on the next turn for deeper context. Runs asynchronously — no latency impact.
+`POST /api/chat` streams Server-Sent Events, `data: {json}`, plus a heartbeat comment every 10 s when idle. Every event has a `type` and a `conversation_id`; the frontend folds them into one live bubble. A crash mid-stream becomes a spoken-style apology and `done`; a client that leaves gets nothing more, and the step in flight is cancelled.
 
-#### Consolidation
+| Event | Meaning |
+| --- | --- |
+| `user_message` | A voice memo’s transcript and audio, before the answer |
+| `progress` | Steps such as memory_search, tool_execution, generating |
+| `memory_match` | One per retrieved memory (debug streaming only) |
+| `thinking` | The model is working between tool calls |
+| `reasoning` | Summarized reasoning, as it streams |
+| `tool_args_delta` | Partial JSON of a tool call being written |
+| `tool_start / tool_end` | A tool call begins / finishes (result ≤ 500 chars) |
+| `code, execution_output, execution_result` | A command, its output, its result |
+| `plan_created, plan_updated, plan_step_update, plan_completed` | His visible plan |
+| `cc_session_start, cc_text, cc_tool_use, cc_tool_result, cc_session_end` | A Codex session (dormant) |
+| `content` | Text of the answer |
+| `done` | Stream complete: the checkpoint is written, the thread is free |
 
-Hourly background loop that clusters related memories via Haiku. Creates connections between related memories and flags quality/staleness issues. Disabled by default.
-
-#### Scheduler
-
-In-process asyncio loop that polls every 30 seconds for due events. Executes scheduled events via the same `chat_with_memory()` function used in conversation — meaning Edward has full tool access when processing scheduled actions.
-
-#### Orchestrator
-
-Spawns lightweight worker agents (mini-Edwards) that run within Edward's process. Workers have full tool access, memory retrieval, and state persistence. Worker conversations appear in the sidebar with a distinct source tag.
-
-[Read the full orchestrator deep dive](https://meet-edward.com/docs/orchestrator)
-
-### Key Directories
+### The tree
 
 ```
 meet-edward/
-├── frontend/              # Next.js app
-│   ├── app/               # Pages and routes
-│   ├── components/        # React components
-│   └── lib/               # API client, context, utilities
-├── backend/
-│   ├── main.py            # FastAPI app + lifespan
-│   ├── routers/           # API route handlers
-│   ├── services/
-│   │   ├── graph/         # LangGraph agent (nodes, state, tools)
-│   │   ├── execution/     # Code execution sandboxes
-│   │   ├── heartbeat/     # Message monitoring + triage
-│   │   ├── memory_service.py
-│   │   ├── document_service.py
-│   │   ├── tool_registry.py
-│   │   ├── skills_service.py
-│   │   └── ...
-│   └── start.sh           # Backend startup script
-├── site/                  # Marketing site (meet-edward.com)
-├── setup.sh               # First-time installation
-└── restart.sh             # Service management
+├── backend/            FastAPI: main.py, routers/, services/, tests/, scripts/
+│   └── services/
+│       ├── graph/      the turn: the tool loop, streaming, the prompt
+│       ├── toolset/    the 14 tools and TurnPolicy
+│       ├── computer/   his home, shell, editor and the Seatbelt rails
+│       ├── heartbeat/  the listeners and the mind path
+│       ├── pings/      the @Edward runner
+│       ├── media/      photos, PDFs, voice messages, video
+│       ├── voice/      live voice
+│       └── …           memory, mind, noticing, reach, scheduler, hub, screen
+├── frontend/           the Next.js PWA (app/, components/, lib/, __tests__/)
+├── chrome-extension/   his hands in your Chrome (optional)
+├── companion/          the menu-bar companion
+├── scriptable/         the iPhone widget
+├── scripts/            LaunchAgents, the watchdog, the test cluster
+├── docs/               ADAPTING, UPGRADING, architecture/
+├── site/               meet-edward.com
+├── setup.sh
+└── restart.sh
 ```
 
-### Startup Order
+### Running it
 
-The backend initializes components in a specific order (defined in `main.py` lifespan). The tool registry must come after all tool sources are initialized:
+- **LaunchAgents** keep the backend and frontend alive, and run a health check every five minutes (Postgres, backend, frontend, the tunnel, the graph worker and the scheduler, bottom up, never restarting the app onto a dead dependency), a deeper one at 08:00, a verified nightly backup and a daily memory report.
+- **The frontend is a production build.** `frontend/deploy-build.sh` builds the next version beside the running one and swaps it in on restart; `frontend/rollback-build.sh` swaps back. Open tabs reload onto a new build only when you are idle.
+- **The live checkout is production**: edits there are live at the next restart, so build and experiment in a git worktree.
 
-1. **Database + LangGraph** — tables and checkpoint store
-2. **Skills** — load enabled states
-3. **MCP clients** — WhatsApp, Apple Services subprocesses
-4. **Custom MCP servers** — user-added servers from DB
-5. **Tool registry** — must be after all tool sources
-6. **Scheduler** — polls for due events
-7. **Heartbeat** — iMessage listener + triage loop
-8. **Consolidation** — hourly memory clustering
-9. **Evolution** — check for pending deploys
-10. **Orchestrator** — recover crashed worker tasks
-11. **Proactive services** — morning briefing, meeting prep, nudges, patterns
+### Testing
 
-All have matching shutdown hooks in reverse order.
+- Backend tests run only on their own Postgres cluster on :5433, through `scripts/with-test-db-lock.sh`, never with the live database exported. They can never reach a real model, Chrome, Messages, your calendar or the embedding model.
+- Frontend tests are `node --test`, with guardrail tests that pin real contracts (every tool has a work-rail label, one clock format, every settings panel in a room).
+- A UX fixture harness runs the real app against a mock API with invented content, for screenshots and design work.
+- Evaluation gates run the real model over recorded situations, with every outward act a dry run, before the mind, pings or noticing change.
+- A doc lint fails when the docs name a path, route or event that doesn’t exist.
 
-### SSE Event Protocol
+### Read further
 
-The chat endpoint (`POST /api/chat`) streams structured events for real-time UI updates:
+- [CLAUDE.md](https://github.com/ben4mn/meet-edward/blob/main/CLAUDE.md): the operating guide, every rule that must hold, every route and setting. Written for Claude sessions working in the repo, and just as useful for people.
+- [docs/architecture/](https://github.com/ben4mn/meet-edward/tree/main/docs/architecture): one page per subsystem, with the reasons and incidents behind each rule.
+- [api.md](https://github.com/ben4mn/meet-edward/blob/main/docs/architecture/api.md): every route and socket.
+- [CONTRIBUTING.md](https://github.com/ben4mn/meet-edward/blob/main/CONTRIBUTING.md): setup for contributors, the checks a change must pass, and the privacy rules.
 
-| Event | Description |
-|-------|-------------|
-| `thinking` | LLM is processing (between tool calls) |
-| `tool_start` | Tool execution beginning |
-| `code` | Code/query/command to execute |
-| `execution_output` | stdout/stderr from code execution |
-| `execution_result` | Code execution completed |
-| `tool_end` | Tool execution finished |
-| `content` | Text content from LLM response |
-| `done` | Stream complete |
-
----
-
-## Skills & Integrations
-
-Edward's modular skill system — enable what you need, disable what you don't.
-
-### Overview
-
-Skills are managed from the **Settings** page in the web UI. Each skill can be toggled on or off independently. When a skill is enabled, its tools become available to Edward in conversation. When disabled, those tools are completely hidden from the LLM.
-
-### All Skills
-
-| Skill | Category | Description | Env Vars Required |
-|-------|----------|-------------|-------------------|
-| **iMessage AppleScript** | Messaging | Send and read iMessages via AppleScript (macOS only) | None |
-| **Twilio SMS** | Messaging | Send and receive SMS via Twilio | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER` |
-| **Twilio WhatsApp** | Messaging | Send and receive WhatsApp messages via Twilio | Same as Twilio SMS |
-| **WhatsApp MCP** | Messaging | Read/send WhatsApp as user via whatsapp-mcp Go bridge | `MCP_WHATSAPP_ENABLED`, `MCP_WHATSAPP_SERVER_DIR` |
-| **Brave Search** | Search | Web search and page content extraction via Brave Search API | `BRAVE_SEARCH_API_KEY` |
-| **Code Interpreter** | Execution | Execute Python code in a sandboxed subprocess | None |
-| **JavaScript Interpreter** | Execution | Execute JavaScript via Node.js subprocess | None |
-| **SQL Database** | Execution | Per-conversation SQLite database for queries | None |
-| **Shell / Bash** | Execution | Execute shell commands with blocklist safety | None |
-| **Apple Services** | Apple | Calendar, Reminders, Notes, Mail, Contacts, Maps (macOS only) | `MCP_APPLE_ENABLED=true` |
-| **HTML Hosting** | System | Create, update, and delete hosted HTML pages | `HTML_HOSTING_API_KEY` |
-| **Browser Automation** | Execution | Headless browser via Lightpanda — navigate, click, type, extract text | `LIGHTPANDA_PATH` |
-
-### Always-Available Tools
-
-Some tools are always available regardless of skill state. These are core to Edward's functionality:
-
-- **Memory tools** — remember, update, forget, search
-- **Document tools** — save, read, edit, search, list, delete
-- **Scheduled event tools** — schedule, list, cancel
-- **File storage tools** — save, list, read, download, tag, delete
-- **Persistent database tools** — create, query, list, delete
-- **Widget tools** — update widget state and code
-- **Push notification tools** — send web push to subscribed devices
-- **Contact tools** — lookup by name or phone number
-- **Custom MCP tools** — search, add, list, remove MCP servers
-
-### Custom MCP Servers
-
-Beyond the built-in skills, Edward can discover, install, and use MCP servers at runtime. This is fully self-service — Edward can search GitHub for MCP server packages, install them via `npx` or `uvx`, and start using their tools immediately.
-
-Key details:
-
-- Servers run as subprocesses — no git clone needed
-- Each server's tools are prefixed with the server name to avoid collisions
-- New tools are available immediately via hot-reload
-- Manage custom servers from the "Edward's Servers" panel in Settings
-
-Set the `GITHUB_TOKEN` environment variable to enable GitHub search for MCP server discovery.
-
-### Enabling a Skill
-
-1. Navigate to **Settings** in the web UI
-2. Find the skill in the skills list
-3. Toggle it on
-4. If the skill requires environment variables, make sure they're set in `backend/.env` and restart the backend
-
-Skills that require MCP clients (WhatsApp MCP, Apple Services) will initialize their subprocess when enabled. The skill status indicator shows whether the connection is healthy.
-
-Curious about how it all fits together? See the [Architecture](https://meet-edward.com/docs/architecture) overview.
-
----
-
-## Memory System
-
-How Edward remembers everything — types, retrieval, extraction, and background enrichment.
-
-### Overview
-
-Edward's memory system is what makes him different from a stateless chatbot. Every conversation is mined for memorable information — facts, preferences, context, instructions — and stored in PostgreSQL with vector embeddings. On future turns, relevant memories are retrieved and injected into the LLM context so Edward can reference things you told him weeks ago.
-
-### Memory Types
-
-Each memory is classified into one of four types during extraction:
-
-| Type | Description | Example |
-|------|-------------|---------|
-| `fact` | Objective information about the user or world | "User's dog is named Luna" |
-| `preference` | User likes, dislikes, or style preferences | "Prefers dark mode in all apps" |
-| `context` | Situational or temporal context | "Starting a new job at Acme Corp next Monday" |
-| `instruction` | Explicit directives from the user | "Always respond in bullet points" |
-
-### Temporal Nature
-
-Memories also carry a temporal nature that affects how they're weighted over time:
-
-| Temporal | Description | Behavior |
-|----------|-------------|----------|
-| `timeless` | Permanently relevant facts | No decay — always full weight |
-| `temporary` | Short-lived context | Decays over time, eventually irrelevant |
-| `evolving` | Facts that may change | Boosted when recently updated, decays otherwise |
-
-### Memory Tiers
-
-Each memory is assigned a confidence tier:
-
-| Tier | Description |
-|------|-------------|
-| `observation` | Inferred from conversation — may not be explicitly stated |
-| `belief` | Reasonably confident based on context |
-| `knowledge` | Explicitly stated by the user — high confidence |
-
-### Hybrid Retrieval
-
-When Edward needs to recall memories, he uses a hybrid scoring approach:
-
-- **70% vector similarity** — pgvector cosine distance using `all-MiniLM-L6-v2` embeddings (384 dimensions)
-- **30% BM25 keyword matching** — traditional text search for exact term hits
-
-This combination catches both semantically similar memories and ones that share specific keywords. The context budget is capped at 8,000 characters to avoid overwhelming the LLM.
-
-### Memory Extraction
-
-After every conversation turn, Edward runs a memory extraction step using Claude Haiku 4.5. The extractor analyzes the conversation and identifies any new memorable information. For each extracted memory, it assigns:
-
-- Memory type (`fact`, `preference`, `context`, `instruction`)
-- Importance score (0-10)
-- Temporal nature (`timeless`, `temporary`, `evolving`)
-- Confidence tier (`observation`, `belief`, `knowledge`)
-
-Duplicate detection prevents the same information from being stored multiple times. Existing memories are updated rather than duplicated.
-
-### Deep Retrieval
-
-For complex conversations, Edward activates deep retrieval — a pre-turn gate that runs when the message is short or the conversation has reached 3+ turns. It fires 4 parallel memory queries:
-
-1. The original user message
-2. 3 Haiku-rewritten query variations targeting different angles
-
-Results are deduplicated and merged, giving the LLM a richer context window than a single query would provide.
-
-### Reflection
-
-After each turn, a fire-and-forget reflection step generates 3-5 Haiku-crafted queries to find memories related to the current conversation. The results are stored in the `memory_enrichments` table and loaded on the *next* turn to provide deeper context. This runs asynchronously and adds zero latency to the current response.
-
-### Consolidation
-
-An hourly background loop clusters related memories via Haiku. It creates:
-
-- **Memory connections** — links between related memories
-- **Memory flags** — quality and staleness markers
-
-Consolidation is disabled by default and can be enabled via the REST API or settings UI.
-
-### Memory Tools
-
-Edward has direct access to memory management tools (always available, not gated by skills):
-
-| Tool | Description |
-|------|-------------|
-| `remember_update` | Create or update a memory |
-| `remember_forget` | Delete a specific memory |
-| `remember_search` | Search memories by query |
-
----
-
-## Heartbeat
-
-Edward's proactive monitoring system — listening for messages, calendar events, and emails without being asked.
-
-### Overview
-
-The heartbeat system lets Edward act on incoming information before you open the chat. It monitors iMessage, Apple Calendar, and Apple Mail, triaging each event through a multi-layer classification pipeline to decide whether to ignore, remember, respond, or alert you.
-
-### Architecture
-
-```
-┌─────────────┐  ┌─────────────┐  ┌─────────────┐
-│  iMessage   │  │  Calendar   │  │    Email    │
-│  Listener   │  │  Listener   │  │  Listener   │
-└──────┬──────┘  └──────┬──────┘  └──────┬──────┘
-       │                │                │
-       └────────────────┼────────────────┘
-                        ↓
-              ┌───────────────────┐
-              │   Triage Engine   │
-              │  L1 → L2 → L3    │
-              └────────┬──────────┘
-                       ↓
-        ┌──────────────┼──────────────┐
-        ↓              ↓              ↓
-   [DISMISS]      [NOTE/ACT]    [ESCALATE]
-                  memory/reply   reply + push
-```
-
-### Listeners
-
-#### iMessage
-
-Polls the macOS Messages database (`~/Library/Messages/chat.db`) every 10 seconds for new incoming messages. Uses Apple's timestamp format (nanoseconds since 2001-01-01). Only picks up messages from other people — Edward's own outbound messages are ignored.
-
-#### Calendar
-
-Polls Apple Calendar via MCP tools at a configurable interval (default 300 seconds). Looks ahead a configurable number of minutes for upcoming events. Useful for proactive reminders about meetings or appointments.
-
-#### Email
-
-Polls Apple Mail for unread emails. Filters for messages that mention `@edward` to avoid noise. Only processes emails that explicitly invoke Edward.
-
-### 3-Layer Triage
-
-Every incoming event passes through up to three triage layers, stopping as soon as a definitive action is determined:
-
-#### Layer 1 — Rules (Zero Cost)
-
-Fast pattern matching with no LLM calls. Catches obvious cases like known spam senders, automated notifications, or messages from Edward himself. Events that pass Layer 1 move to Layer 2.
-
-#### Layer 2 — Haiku Classification
-
-Claude Haiku classifies the event's urgency and determines what action to take. This is the primary decision point for most messages. Classification outputs one of the action types below.
-
-#### Layer 3 — Execute
-
-Carries out the determined action — storing a memory, sending a response via `chat_with_memory()`, or pushing a notification.
-
-### Actions
-
-| Action | Description |
-|--------|-------------|
-| `DISMISS` | Ignore the event — no further processing |
-| `NOTE` | Store the information as a memory for future reference |
-| `ACT` | Respond to the message using Edward's full tool access |
-| `ESCALATE` | Respond *and* send a push notification to alert you |
-
-### @edward Mentions
-
-Messages containing `@edward` bypass the normal triage flow entirely and are routed directly to Layer 3 for immediate response. This lets anyone in a group chat summon Edward by name.
-
-### Listening Windows
-
-When Edward responds to a message, a 5-minute follow-up window opens for that conversation. Any replies during this window are treated as continuations rather than new events, keeping the conversation coherent.
-
-### Active Chat Gating
-
-When you're actively chatting with Edward in the web UI, the triage system pauses to avoid duplicate responses. It resumes automatically when the chat goes idle.
-
-### Briefing Injection
-
-Pending heartbeat events that require attention are injected into Edward's system prompt. When you open the chat, Edward can proactively brief you on things that happened while you were away.
-
-### Configuration
-
-Heartbeat settings are managed via `PATCH /api/heartbeat/config` or the settings UI:
-
-| Field | Default | Description |
-|-------|---------|-------------|
-| `enabled` | `true` | Master switch for the heartbeat system |
-| `poll_seconds` | `10` | iMessage polling interval |
-| `calendar_enabled` | `true` | Enable calendar listener |
-| `calendar_poll_seconds` | `300` | Calendar polling interval |
-| `calendar_lookahead_minutes` | `30` | How far ahead to look for events |
-| `email_enabled` | `true` | Enable email listener |
-| `email_poll_seconds` | `300` | Email polling interval |
-
----
-
-## Widget
-
-Put Edward on your iOS home screen with a Scriptable widget.
-
-### Overview
-
-Edward can render a live widget on your iPhone or iPad home screen using the [Scriptable](https://scriptable.app) app. The widget fetches data from Edward's API and displays it natively — upcoming events, memory stats, custom dashboards, or anything Edward decides to show you.
-
-### How It Works
-
-```
-Edward (LLM tools)
-       ↓
-  PostgreSQL (widget_state)
-       ↓
-  GET /api/widget?token=<token>
-       ↓
-  Scriptable app (iOS)
-       ↓
-  Home screen widget
-```
-
-Edward updates the widget state via LLM tools. The Scriptable app periodically fetches the latest state from the public API endpoint (authenticated by token, no login required) and renders it.
-
-### Setup
-
-1. Install [Scriptable](https://apps.apple.com/app/scriptable/id1405459188) from the App Store
-2. Get your widget token from Edward's settings page or via `GET /api/widget/token`
-3. Create a new script in Scriptable and paste the widget code (available in settings)
-4. Update the `TOKEN` and `BASE_URL` variables in the script to point to your Edward instance
-5. Add a Scriptable widget to your home screen and select the script
-
-### Structured Data Mode
-
-By default, the widget uses structured data — Edward sets a title, subtitle, theme, and an array of sections. Available section types:
-
-| Type | Description |
-|------|-------------|
-| `header` | Bold section header text |
-| `text` | Plain text content |
-| `list` | Bulleted list of items |
-| `stat` | Single key-value statistic |
-| `stats_row` | Horizontal row of multiple stats |
-| `progress` | Progress bar with label and percentage |
-| `countdown` | Countdown to a target date |
-| `divider` | Visual separator line |
-| `spacer` | Empty vertical space |
-
-Themes control the color scheme. Edward can set the theme dynamically based on time of day or content. Each section can include an optional SF Symbol icon.
-
-### Raw JavaScript Mode
-
-For full control, Edward can store raw Scriptable JavaScript via the `update_widget_code` tool. The script must create a `ListWidget` and call `Script.setWidget()`. When custom code is set, the structured data mode is bypassed entirely.
-
-Use `clear_widget_code` to revert back to structured data mode.
-
-### Auto-Generated Default
-
-When no custom widget state has been set, Edward auto-generates content including:
-
-- A time-of-day greeting
-- Upcoming scheduled events
-- Memory statistics
-
-### Widget Chat
-
-The widget can send quick messages to Edward via `POST /api/widget/chat`. This is a lightweight endpoint that allows simple interactions without opening the full web UI.
-
-### LLM Tools
-
-Widget tools are always available (not skill-gated):
-
-| Tool | Description |
-|------|-------------|
-| `update_widget` | Set widget title, subtitle, sections, and theme |
-| `get_widget_state_tool` | Read the current widget state |
-| `update_widget_code` | Store raw Scriptable JavaScript |
-| `clear_widget_code` | Clear custom script, revert to structured data |
-
----
-
-## File Storage
-
-Persistent file storage with categories, tags, and sandbox integration.
-
-### Overview
-
-Edward can store files permanently — generated images, code artifacts, uploaded documents, processed outputs. Files are organized with categories and tags, stored on disk with hex-prefix sharding, and tracked in PostgreSQL.
-
-### Storage Architecture
-
-Files are stored on disk using hex-prefix sharding to avoid overloading any single directory:
-
-```
-FILE_STORAGE_ROOT/
-├── a3/
-│   ├── a3f7c2..._report.pdf
-│   └── a3e1b0..._chart.png
-├── f1/
-│   └── f1d4a9..._notes.txt
-└── ...
-```
-
-The path format is `{id[0:2]}/{id}_{filename}`. The storage root defaults to `./storage` and can be configured via the `FILE_STORAGE_ROOT` environment variable.
-
-### File Categories
-
-| Category | Description |
-|----------|-------------|
-| `upload` | Files uploaded directly by the user |
-| `generated` | Files created by Edward (code output, images, etc.) |
-| `artifact` | Build artifacts or intermediate outputs |
-| `processed` | Files that have been transformed or analyzed |
-| `general` | Default category for uncategorized files |
-
-### Sandbox-to-Storage Flow
-
-When Edward executes code (Python, JavaScript, shell), output files land in a per-conversation sandbox directory. These are temporary — cleaned up after 24 hours. To keep a file permanently, Edward uses the `save_to_storage` tool to move it from the sandbox to persistent storage.
-
-```
-Code execution sandbox (temporary, 24h TTL)
-           ↓
-  save_to_storage tool
-           ↓
-  Persistent file storage (permanent)
-```
-
-### Limits
-
-- **Maximum file size**: 50 MB
-- **Allowed types**: MIME type allowlist (common document, image, audio, video, and code formats)
-- **Metadata**: Each file tracks filename, MIME type, size, category, tags, source, and timestamps
-
-### LLM Tools
-
-File storage tools are always available (not skill-gated):
-
-| Tool | Description |
-|------|-------------|
-| `save_to_storage` | Move a sandbox file to persistent storage |
-| `list_storage_files` | List stored files with optional category/tag filters |
-| `get_storage_file_url` | Get a download URL for a stored file |
-| `read_storage_file` | Read the contents of a stored text file |
-| `tag_storage_file` | Update a file's description, tags, or category |
-| `delete_storage_file` | Delete a file from storage |
-
----
-
-## Orchestrator & Claude Code
-
-Worker agents and Claude Code sessions for autonomous, parallel task execution.
-
-### Overview
-
-The orchestrator lets Edward spawn lightweight worker agents that run autonomously within his process. Each worker is a mini-Edward with full tool access, memory retrieval, and conversation persistence. For coding tasks, Edward can also delegate to Claude Code sessions via the `claude-agent-sdk`.
-
-### Worker Agents
-
-Workers are spawned via `chat_with_memory()` — the same function used for normal conversations. This means workers have:
-
-- Full access to all enabled tools (messaging, search, code execution, etc.)
-- Memory retrieval and extraction (they can remember and recall)
-- Their own conversation thread, visible in the sidebar
-- State persistence via LangGraph checkpoints
-
-Worker conversations are tagged with `source: "orchestrator_worker"` so they appear distinctly in the sidebar.
-
-### Context Modes
-
-When spawning a worker, you can control how much context it receives:
-
-| Mode | Description |
-|------|-------------|
-| `full` | Worker gets the complete parent conversation as context |
-| `scoped` | Worker gets only the task description and relevant snippets |
-| `none` | Worker starts with a blank slate — task description only |
-
-### Claude Code Sessions
-
-For coding tasks that require file editing, test running, and iterative development, Edward delegates to Claude Code via the `claude-agent-sdk`. Claude Code sessions:
-
-- Run as separate processes with their own context
-- Can read, write, and execute code in the repository
-- Stream events back to the frontend in real-time
-- Are tracked in the `claude_code_sessions` database table
-
-The frontend renders Claude Code session events inline in the chat UI via the `CCSessionBlock` component.
-
-### Concurrency
-
-Workers and Claude Code sessions use separate concurrency semaphores to prevent either from starving the other:
-
-| Pool | Default Limit | Description |
-|------|---------------|-------------|
-| Workers | 5 | Internal mini-Edward agents |
-| Claude Code | 2 | External Claude Code sessions |
-
-### Task Lifecycle
-
-```
-pending → running → completed
-                  → failed
-                  → cancelled
-```
-
-Tasks start as `pending` and move to `running` when picked up by a worker or Claude Code session. They resolve to `completed`, `failed`, or `cancelled`. Failed tasks include error details. Cancelled tasks are stopped gracefully when possible.
-
-### Configuration
-
-Orchestrator settings are managed via `PATCH /api/orchestrator/config` or the settings UI:
-
-| Field | Default | Description |
-|-------|---------|-------------|
-| `enabled` | `true` | Master switch for the orchestrator |
-| `max_concurrent_workers` | `5` | Maximum parallel worker agents |
-| `max_concurrent_cc` | `2` | Maximum parallel Claude Code sessions |
-| `auto_recover` | `true` | Recover crashed tasks on startup |
-
----
-
-## Proactive Intelligence
-
-Edward's proactive intelligence suite runs autonomous background services that initiate actions without being asked.
-
-### Services (all disabled by default)
-
-- **Morning Briefing** — daily summary delivered at a configurable time with calendar events, open loops, and activity. Delivered via push, iMessage, or chat.
-- **Meeting Prep** — polls calendar and generates prep briefs with entity-linked memory context before upcoming meetings.
-- **Open Loop Nudges** — daily check for stale unresolved items. Generates gentle reminders via push notification.
-- **Pattern Detection** — weekly analysis of conversation themes, memory distribution, and entity trends. Stored as a document.
-
-### Entity Tracking
-
-LLM-based extraction identifies people, projects, places, organizations, and topics. Entities are resolved by name/alias, linked to memories, and detected at retrieval time via fast substring matching (no LLM call). Entity-linked memories are merged into conversation context automatically.
-
-### Open Loop Tracking
-
-Post-turn implication analysis detects unresolved items (tasks, follow-ups, commitments) and inferred facts. Open loops are tracked with priority, nudge history, and snooze support. Implied facts are stored as low-confidence memories.
-
-### Session Briefing
-
-On first turn of a new conversation, Edward generates a continuity summary — new memories, fired events, completed tasks, triage activity, consolidation results. Pure DB queries, no LLM needed.
-
-### State Documents
-
-Documents tagged "state" are injected into every conversation's system prompt. Use for current goals, weekly plans, or ongoing context.
-
-### Browser Automation
-
-Headless browser via Lightpanda (CDP-compatible). Skill-gated — only available when `browser_automation` skill is enabled and `LIGHTPANDA_PATH` env var is set. Tools: `browse_web`, `browser_click`, `browser_type`, `browser_extract`.
-
-### Configuration
-
-| Endpoint | Description |
-|----------|-------------|
-| `GET /api/proactive/config` | Get configuration |
-| `PATCH /api/proactive/config` | Update configuration |
-| `GET /api/proactive/status` | Service status |
-| `GET /api/proactive/open-loops` | List open loops |
-| `PATCH /api/proactive/open-loops/:id` | Resolve/snooze loop |
-| `GET /api/proactive/entities` | List tracked entities |
-
-Set `TIMEZONE` env var (default: `UTC`) for correct scheduling.
+Source: https://meet-edward.com/docs/architecture

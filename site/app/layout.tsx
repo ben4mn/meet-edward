@@ -13,26 +13,29 @@ const geistMono = localFont({
   weight: "100 900",
 });
 
+const TITLE = "Edward — the open-source AI assistant that remembers, on your Mac";
+const DESCRIPTION =
+  "An open-source AI assistant for one person: you. Edward remembers where he heard things, follows through on what he promised, works in a sandboxed computer of his own and runs on your Mac with the Claude API.";
+
 export const metadata: Metadata = {
   metadataBase: new URL("https://meet-edward.com"),
-  title: "Edward — Secure, Self-Evolving AI That Never Forgets",
-  description:
-    "Self-hosted AI that remembers every conversation, evolves its own code, and proactively monitors your messages and calendar. Your data never leaves your machine.",
+  title: TITLE,
+  description: DESCRIPTION,
   keywords: [
     "AI assistant",
+    "personal AI",
     "long-term memory",
     "open source",
     "self-hosted",
+    "macOS",
+    "Apple silicon",
+    "Claude API",
+    "iMessage",
     "LangGraph",
     "Next.js",
     "FastAPI",
     "PostgreSQL",
     "pgvector",
-    "macOS",
-    "Claude",
-    "conversational AI",
-    "personal AI",
-    "multi-agent",
   ],
   manifest: "/manifest.json",
   robots: "index, follow",
@@ -41,9 +44,8 @@ export const metadata: Metadata = {
     apple: "/favicon.svg",
   },
   openGraph: {
-    title: "Edward — Secure, Self-Evolving AI That Never Forgets",
-    description:
-      "Self-hosted AI that remembers every conversation, evolves its own code, and proactively monitors your messages and calendar. Your data never leaves your machine.",
+    title: TITLE,
+    description: DESCRIPTION,
     type: "website",
     url: "https://meet-edward.com",
     siteName: "Edward",
@@ -52,15 +54,14 @@ export const metadata: Metadata = {
         url: "/og.png",
         width: 1200,
         height: 630,
-        alt: "Edward — Secure, Self-Evolving AI That Never Forgets",
+        alt: "Edward — an open-source AI assistant that remembers, on your Mac",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Edward — Secure, Self-Evolving AI That Never Forgets",
-    description:
-      "Self-hosted AI that remembers every conversation, evolves its own code, and proactively monitors your messages and calendar. Your data never leaves your machine.",
+    title: TITLE,
+    description: DESCRIPTION,
     creator: "@pennedbyben",
     images: ["/og.png"],
   },
@@ -77,11 +78,10 @@ const jsonLd = {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
   name: "Edward",
-  description:
-    "Self-hosted AI that remembers every conversation, evolves its own code, and proactively monitors your messages and calendar. Your data never leaves your machine.",
+  description: DESCRIPTION,
   url: "https://meet-edward.com",
   applicationCategory: "DeveloperApplication",
-  operatingSystem: "macOS, Linux, Windows (WSL)",
+  operatingSystem: "macOS (Apple silicon)",
   license: "https://www.apache.org/licenses/LICENSE-2.0",
   sameAs: ["https://github.com/ben4mn/meet-edward"],
   offers: {
@@ -91,7 +91,7 @@ const jsonLd = {
   },
   author: {
     "@type": "Person",
-    name: "Ben Williams",
+    name: "Ben Foreman",
     url: "https://zyroi.com",
   },
 };

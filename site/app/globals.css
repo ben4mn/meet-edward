@@ -145,6 +145,33 @@ body {
   margin: 2rem 0;
 }
 
+/* A callout: a caution, an editor's note */
+.docs-prose .note {
+  border: 1px solid rgba(82, 183, 136, 0.35);
+  background: rgba(82, 183, 136, 0.06);
+  border-radius: 0.5rem;
+  padding: 0.875rem 1.125rem;
+  margin: 1.25rem 0 1.5rem;
+}
+
+.docs-prose .note.caution {
+  border-color: rgba(245, 158, 11, 0.4);
+  background: rgba(245, 158, 11, 0.06);
+}
+
+.docs-prose .note p:last-child,
+.docs-prose .note ul:last-child {
+  margin-bottom: 0;
+}
+
+/* Wide tables scroll inside the page at phone width */
+@media (max-width: 640px) {
+  .docs-prose table {
+    display: block;
+    overflow-x: auto;
+  }
+}
+
 /* Edward avatar animations */
 @keyframes edward-float {
   0%, 100% { transform: translateY(0); }

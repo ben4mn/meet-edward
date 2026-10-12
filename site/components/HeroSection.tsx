@@ -1,10 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { motion } from "framer-motion";
-import { Github } from "lucide-react";
+import { Github, BookOpen } from "lucide-react";
 import { EdwardHero } from "./EdwardHero";
 
 const GITHUB_URL = "https://github.com/ben4mn/meet-edward";
+const WALKTHROUGH_URL = "https://youtu.be/uewYlQma1QY";
 
 export function HeroSection() {
   return (
@@ -32,13 +34,13 @@ export function HeroSection() {
         </div>
 
         <motion.h1
-          className="font-mono text-4xl sm:text-5xl md:text-6xl font-bold text-[#f1f5f9] tracking-tight leading-[1.1] mb-5"
+          className="font-mono text-4xl sm:text-5xl font-bold text-[#f1f5f9] tracking-tight leading-[1.1] mb-5 text-balance"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.3 }}
         >
-          Your AI assistant that{" "}
-          <span className="text-[#52b788]">remembers everything.</span>
+          An AI assistant that{" "}
+          <span className="text-[#52b788]">remembers, and follows through.</span>
         </motion.h1>
 
         <motion.p
@@ -47,25 +49,36 @@ export function HeroSection() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.5 }}
         >
-          Long-term memory. Multi-agent orchestration. Self-evolution.
-          Edward learns who you are — and improves himself.
+          Open source, and built for one person: you. Edward runs on your
+          Mac, knows where he heard what he knows, keeps the promises he
+          makes, and works in a sandboxed computer of his own.
         </motion.p>
 
-        <motion.a
-          href={GITHUB_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-2.5 text-base font-semibold text-white px-8 py-3.5 rounded-xl bg-[#52b788] hover:bg-[#52b788]/90 transition-all"
+        <motion.div
+          className="w-full sm:w-auto flex flex-col sm:flex-row items-center gap-3"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.7 }}
-          whileHover={{ scale: 1.03 }}
-          whileTap={{ scale: 0.98 }}
         >
-          <Github className="w-5 h-5" />
-          Get Started on GitHub
-        </motion.a>
-
+          <motion.a
+            href={GITHUB_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full sm:w-auto justify-center inline-flex items-center gap-2.5 text-base font-semibold text-white px-8 py-3.5 rounded-xl bg-[#52b788] hover:bg-[#52b788]/90 transition-all"
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.98 }}
+          >
+            <Github className="w-5 h-5" />
+            Get Started on GitHub
+          </motion.a>
+          <Link
+            href="/docs/introduction"
+            className="w-full sm:w-auto justify-center inline-flex items-center gap-2.5 text-base font-semibold text-[#f1f5f9] px-8 py-3.5 rounded-xl border border-[#334155] hover:border-[#52b788]/50 hover:bg-[#1e293b]/60 transition-all"
+          >
+            <BookOpen className="w-5 h-5" />
+            Read the docs
+          </Link>
+        </motion.div>
       </div>
 
       <motion.div
@@ -88,25 +101,38 @@ export function HeroSection() {
       </motion.div>
     </section>
 
-    {/* YouTube walkthrough */}
+    {/* The app today */}
     <section className="relative px-6 pb-20 pt-8 flex justify-center">
-      <motion.div
-        className="w-full max-w-4xl"
+      <motion.figure
+        className="w-full max-w-5xl"
         initial={{ opacity: 0, y: 30 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-50px" }}
         transition={{ duration: 0.6 }}
       >
-        <div className="relative w-full rounded-xl border border-[#334155] overflow-hidden shadow-2xl shadow-black/40" style={{ paddingBottom: "56.25%" }}>
-          <iframe
-            className="absolute inset-0 w-full h-full"
-            src="https://www.youtube.com/embed/uewYlQma1QY"
-            title="Edward walkthrough"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            allowFullScreen
+        <div className="rounded-xl border border-[#334155] overflow-hidden shadow-2xl shadow-black/40 bg-[#0b1120]">
+          {/* eslint-disable-next-line @next/next/no-img-element -- static export, no image optimizer */}
+          <img
+            src="/screenshots/today-desktop.png"
+            alt="Edward's Today page: late pet doses to log, a call starting soon, a reply held for approval, and what he did today"
+            width={1600}
+            height={1000}
+            className="w-full h-auto block"
           />
         </div>
-      </motion.div>
+        <figcaption className="text-sm text-[#64748b] mt-3 text-center">
+          Today, the front door: what needs you, and what he did.{" "}
+          <a
+            href={WALKTHROUGH_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[#52b788] hover:text-[#6fcf97] transition-colors"
+          >
+            The video walkthrough
+          </a>{" "}
+          shows the earlier March 2026 release.
+        </figcaption>
+      </motion.figure>
     </section>
     </>
   );

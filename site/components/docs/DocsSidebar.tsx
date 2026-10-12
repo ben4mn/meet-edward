@@ -11,42 +11,60 @@ import {
   Puzzle,
   Layers,
   Brain,
-  Activity,
-  Smartphone,
-  HardDrive,
-  GitBranch,
+  Sparkles,
+  MessageSquare,
+  Terminal,
+  MonitorSmartphone,
+  LayoutDashboard,
+  Shield,
+  Wrench,
+  CircleArrowUp,
   GraduationCap,
   WandSparkles,
   Monitor,
-  Sparkles,
   ArrowLeft,
   Menu,
   X,
 } from "lucide-react";
+import { DOCS_PAGES, DOCS_SECTIONS } from "../../lib/docsNav";
+
+type Icon = React.ComponentType<{ className?: string }>;
+
+const ICONS: Record<string, Icon> = {
+  introduction: BookOpen,
+  "beginner-guide": GraduationCap,
+  "setup-with-ai": WandSparkles,
+  "getting-started": Rocket,
+  configuration: Settings,
+  "platform-support": Monitor,
+  upgrading: CircleArrowUp,
+  app: LayoutDashboard,
+  memory: Brain,
+  mind: Sparkles,
+  listening: MessageSquare,
+  computer: Terminal,
+  surfaces: MonitorSmartphone,
+  "guard-rails": Shield,
+  skills: Puzzle,
+  adapting: Wrench,
+  architecture: Layers,
+};
 
 type NavItem =
   | { type: "section"; label: string }
-  | { type: "link"; href: string; label: string; icon: React.ComponentType<{ className?: string }> };
+  | { type: "link"; href: string; label: string; icon: Icon };
 
-const NAV_ITEMS: NavItem[] = [
-  { type: "section", label: "Get Started" },
-  { type: "link", href: "/docs/introduction", label: "Introduction", icon: BookOpen },
-  { type: "link", href: "/docs/beginner-guide", label: "Beginner Guide", icon: GraduationCap },
-  { type: "link", href: "/docs/setup-with-ai", label: "Setup with AI", icon: WandSparkles },
-  { type: "link", href: "/docs/getting-started", label: "Getting Started", icon: Rocket },
-  { type: "link", href: "/docs/configuration", label: "Configuration", icon: Settings },
-  { type: "link", href: "/docs/platform-support", label: "Platform Support", icon: Monitor },
-  { type: "section", label: "Features" },
-  { type: "link", href: "/docs/memory", label: "Memory System", icon: Brain },
-  { type: "link", href: "/docs/heartbeat", label: "Heartbeat", icon: Activity },
-  { type: "link", href: "/docs/widget", label: "Widget", icon: Smartphone },
-  { type: "link", href: "/docs/file-storage", label: "File Storage", icon: HardDrive },
-  { type: "link", href: "/docs/orchestrator", label: "Orchestrator", icon: GitBranch },
-  { type: "link", href: "/docs/proactive", label: "Proactive Intelligence", icon: Sparkles },
-  { type: "section", label: "Reference" },
-  { type: "link", href: "/docs/skills", label: "Skills & Integrations", icon: Puzzle },
-  { type: "link", href: "/docs/architecture", label: "Architecture", icon: Layers },
-];
+const NAV_ITEMS: NavItem[] = DOCS_SECTIONS.flatMap((section): NavItem[] => [
+  { type: "section", label: section },
+  ...DOCS_PAGES.filter((page) => page.section === section).map(
+    (page): NavItem => ({
+      type: "link",
+      href: `/docs/${page.slug}`,
+      label: page.label,
+      icon: ICONS[page.slug] ?? BookOpen,
+    })
+  ),
+]);
 
 export function DocsSidebar() {
   const pathname = usePathname();

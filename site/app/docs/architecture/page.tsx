@@ -1,259 +1,305 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { DocsContent } from "../../../components/docs/DocsContent";
+import { GITHUB_BLOB, GITHUB_TREE } from "../../../lib/docsNav";
 
 export const metadata: Metadata = {
   title: "Architecture — Edward Docs",
-  description: "System architecture overview — Next.js frontend, FastAPI backend, LangGraph agent pipeline, PostgreSQL with pgvector, and background services like Heartbeat and Orchestrator.",
+  description:
+    "How Edward is built: a Next.js PWA, a FastAPI backend that runs natively on macOS, PostgreSQL with pgvector, a LangGraph turn with one tool loop and 14 tools, the Claude API through one adapter, background loops, the startup order, the chat stream's events, and how it is run and tested.",
   alternates: { canonical: "/docs/architecture" },
   openGraph: {
     title: "Architecture — Edward Docs",
-    description: "System architecture overview — Next.js frontend, FastAPI backend, LangGraph pipeline, and background services.",
+    description:
+      "Next.js PWA, FastAPI on macOS, PostgreSQL + pgvector, a LangGraph turn with 14 tools, and the Claude API.",
     url: "/docs/architecture",
   },
 };
+
+const DIAGRAM = `Next.js PWA (:3000)  ──/api──▶  FastAPI (:8000)  ──▶  PostgreSQL 16 + pgvector (:5432)
+Today · Chat · Voice                  │
+Edward tab · /screen · /hub           │
+                                      ├─ a turn (LangGraph): preprocess → retrieve_memory → respond (tool loop) → extract_memory
+                                      ├─ one toolset of 14 tools; bash runs in a Seatbelt sandbox in ~/edward-home
+                                      ├─ listeners: iMessage (chat.db), Mail, Gmail → the mind (wakes, noticing, pings)
+                                      ├─ scheduler (every 30 s), consolidation (hourly), the screens' pulse
+                                      └─ the Claude API: ChatClaude, one route per purpose, a daily dollar cap`;
+
+const EVENTS: [string, string][] = [
+  ["user_message", "A voice memo’s transcript and audio, before the answer"],
+  ["progress", "Steps such as memory_search, tool_execution, generating"],
+  ["memory_match", "One per retrieved memory (debug streaming only)"],
+  ["thinking", "The model is working between tool calls"],
+  ["reasoning", "Summarized reasoning, as it streams"],
+  ["tool_args_delta", "Partial JSON of a tool call being written"],
+  ["tool_start / tool_end", "A tool call begins / finishes (result ≤ 500 chars)"],
+  ["code, execution_output, execution_result", "A command, its output, its result"],
+  ["plan_created, plan_updated, plan_step_update, plan_completed", "His visible plan"],
+  ["cc_session_start, cc_text, cc_tool_use, cc_tool_result, cc_session_end", "A Codex session (dormant)"],
+  ["content", "Text of the answer"],
+  ["done", "Stream complete: the checkpoint is written, the thread is free"],
+];
 
 export default function ArchitecturePage() {
   return (
     <DocsContent>
       <h1>Architecture</h1>
-      <p className="subtitle">
-        How Edward is structured under the hood.
+      <p className="subtitle">How Edward is built, run and tested.</p>
+
+      <h2>Overview</h2>
+      <pre>
+        <code>{DIAGRAM}</code>
+      </pre>
+      <p>
+        The backend runs natively on macOS, never in a container: it reads
+        Apple’s databases, talks to Messages over AppleScript, and sandboxes
+        Edward’s shell with Seatbelt. The frontend is a Next.js production
+        build served on :3000, which forwards <code>/api</code> to the backend.
+        All state is in PostgreSQL: conversations and their LangGraph
+        checkpoints, memories, documents, events, ledgers and settings.
       </p>
 
-      <h2>System Overview</h2>
-      <pre><code>{`Frontend (Next.js :3000)  →  Backend (FastAPI :8000)  →  PostgreSQL (:5432)
-                                      ↓
-                              LangGraph Agent
-                                      ↓
-                              Claude API (Anthropic)`}</code></pre>
-      <p>
-        The frontend is a Next.js app that communicates with the FastAPI backend
-        via REST and SSE (Server-Sent Events) for streaming. The backend manages
-        all state in PostgreSQL, including conversation checkpoints, memories,
-        documents, and configuration.
-      </p>
-
-      <h2>LangGraph Flow</h2>
-      <p>
-        Every message goes through a four-node LangGraph pipeline:
-      </p>
-      <pre><code>{`preprocess → retrieve_memory → respond → extract_memory → END`}</code></pre>
-      <ol>
-        <li><strong>preprocess</strong> — normalizes the input, sets up conversation metadata</li>
-        <li><strong>retrieve_memory</strong> — searches pgvector for relevant memories using hybrid 70% vector + 30% BM25 scoring</li>
-        <li><strong>respond</strong> — calls Claude with the full context and tool bindings, enters a tool loop (up to 5 iterations)</li>
-        <li><strong>extract_memory</strong> — uses Claude Haiku to identify any memorable information from the conversation and stores it</li>
-      </ol>
-
-      <h3>Tool Loop</h3>
-      <p>
-        Inside the <code>respond</code> node, Edward can call tools iteratively:
-      </p>
-      <pre><code>{`LLM response
-    ↓
-tool_calls? ──yes──> execute tools
-    │                     ↓
-    no              add ToolMessage
-    ↓                     ↓
- stream response    loop (max 5x)`}</code></pre>
-      <p>
-        This allows Edward to chain actions — for example, searching the web,
-        reading the page content, then summarizing it — all within a single
-        conversation turn.
-      </p>
-
-      <h2>Memory System</h2>
+      <h2>A turn</h2>
+      <pre>
+        <code>preprocess → retrieve_memory → respond (the tool loop) → extract_memory</code>
+      </pre>
       <ul>
-        <li><strong>Embedding model</strong>: sentence-transformers (<code>all-MiniLM-L6-v2</code>, 384 dimensions)</li>
-        <li><strong>Search</strong>: Hybrid 70% vector similarity + 30% BM25 keyword matching</li>
-        <li><strong>Memory types</strong>: <code>fact</code>, <code>preference</code>, <code>context</code>, <code>instruction</code></li>
-        <li><strong>Extraction</strong>: Claude Haiku identifies memorable info after each turn</li>
-        <li><strong>Deep Retrieval</strong>: For complex conversations, runs 4 parallel queries (original + 3 Haiku-rewritten) for richer context</li>
+        <li>
+          <strong>One tool loop</strong> for every surface (chat, voice, pings,
+          wakes, the pulse, scheduled events), with the same{" "}
+          <Link href="/docs/computer">fourteen tools</Link>. What a turn may
+          do is its <code>TurnPolicy</code>: whether you asked, whether it may
+          reach people or push, where it may reply, its dollar cap and
+          deadline. A turn you are not part of, with no policy, is fail-closed.
+        </li>
+        <li>
+          <strong>Honest failures</strong>: every tool failure reaches the
+          model as <code>Tool error: &lt;the real error&gt;</code>; the same
+          failing call is refused the third time; after three failed rounds
+          he is told to step back, and after six the turn stops.
+        </li>
+        <li>
+          <strong>Bounds</strong>: 60 rounds, $3 a turn you asked for and $1
+          otherwise, 300 s per model call, 600 s per streamed turn, tool
+          results capped at 30K characters.
+        </li>
+        <li>
+          <strong>One turn at a time in a thread</strong>, and Stop cancels the
+          step in flight. The turn’s trace (reasoning, tools, memory hits) is
+          stored with the answer, so the work rail renders the same from
+          history.
+        </li>
       </ul>
+
+      <h2>The model</h2>
       <p>
-        <Link href="/docs/memory">Read the full memory system deep dive →</Link>
+        Every model call goes through one set of builders and one Claude
+        adapter on the <code>anthropic</code> SDK, with a model, effort and
+        prompt-cache lifetime per purpose (chat, mind, pulse, background,
+        voice, judge). Before each request the adapter asks the daily spend
+        cap, and after it prices the call into a ledger. Every call is
+        labelled with what it was for (<code>mind:nightly</code>,{" "}
+        <code>ping:friend</code>, <code>turn:chat</code>…), which is how the
+        app shows where the money went. An unofficial Codex fallback exists
+        behind <code>EDWARD_LLM_PROVIDER=codex</code>. Details in{" "}
+        <Link href="/docs/configuration">Configuration</Link>.
       </p>
 
-      <h2>Background Systems</h2>
-      <p>
-        Edward runs several background loops that operate independently of user
-        conversations:
-      </p>
+      <h2>Running in the background</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Loop</th>
+            <th>What it does</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Scheduler</td>
+            <td>
+              Polls every 30 s; each due event runs as its own task, in your
+              time zone, never the host’s. Reminders, follow-up wakes, the
+              nightly and free-time ticks, a five-minute sweep, the pulse.
+            </td>
+          </tr>
+          <tr>
+            <td>Listeners</td>
+            <td>iMessage every 10 s, Mail and Gmail on their own intervals; they store events and nothing else</td>
+          </tr>
+          <tr>
+            <td>Ping runner</td>
+            <td>Answers each <code>@Edward</code> in its own turn, two at a time, never two in one chat</td>
+          </tr>
+          <tr>
+            <td>The mind</td>
+            <td>Wakes, the noticer and the speak gate (<Link href="/docs/mind">The mind</Link>)</td>
+          </tr>
+          <tr>
+            <td>The pulse</td>
+            <td>Every 15 minutes, a model turn only when a surface’s inputs changed</td>
+          </tr>
+          <tr>
+            <td>Consolidation</td>
+            <td>Hourly memory upkeep (<Link href="/docs/memory">Memory</Link>)</td>
+          </tr>
+          <tr>
+            <td>The sweep</td>
+            <td>Every five minutes, with no model: the late-dose alert, noticing upkeep, snoozes</td>
+          </tr>
+          <tr>
+            <td>Graph worker</td>
+            <td>Optional, its own LaunchAgent: fills the knowledge graph</td>
+          </tr>
+        </tbody>
+      </table>
 
-      <h3>Heartbeat</h3>
+      <h2>Startup order</h2>
       <p>
-        Monitors iMessage, Apple Calendar, and Apple Mail for incoming items.
-        Multi-layer triage classifies urgency: Layer 1 (zero-cost rules) →
-        Layer 2 (Haiku classification) → Layer 3 (execute action). Can ignore,
-        remember, respond, or push-notify based on classification.
-      </p>
-      <p>
-        <Link href="/docs/heartbeat">Read the full heartbeat deep dive →</Link>
-      </p>
-
-      <h3>Reflection</h3>
-      <p>
-        Post-turn enrichment that generates 3-5 Haiku queries to find related
-        memories. Results are stored and loaded on the next turn for deeper
-        context. Runs asynchronously — no latency impact.
-      </p>
-
-      <h3>Consolidation</h3>
-      <p>
-        Hourly background loop that clusters related memories via Haiku. Creates
-        connections between related memories and flags quality/staleness issues.
-        Disabled by default.
-      </p>
-
-      <h3>Scheduler</h3>
-      <p>
-        In-process asyncio loop that polls every 30 seconds for due events.
-        Executes scheduled events via the same <code>chat_with_memory()</code>{" "}
-        function used in conversation — meaning Edward has full tool access when
-        processing scheduled actions.
-      </p>
-
-      <h3>Orchestrator</h3>
-      <p>
-        Spawns lightweight worker agents (mini-Edwards) that run within Edward&apos;s
-        process. Workers have full tool access, memory retrieval, and state
-        persistence. Worker conversations appear in the sidebar with a distinct
-        source tag.
-      </p>
-      <p>
-        <Link href="/docs/orchestrator">Read the full orchestrator deep dive →</Link>
-      </p>
-
-      <h3>Entity Tracking</h3>
-      <p>
-        LLM-based entity extraction identifies people, projects, places,
-        organizations, and topics from conversations. Entities are linked to
-        memories via mention records, enabling entity-aware memory retrieval.
-        Fast substring detection at retrieval time avoids extra LLM calls.
-      </p>
-
-      <h3>Open Loop Tracking</h3>
-      <p>
-        Post-turn implication analysis detects unresolved items (tasks,
-        follow-ups, commitments) and tracks them as open loops. The system
-        also infers implicit facts and stores them as low-confidence memories.
-      </p>
-
-      <h3>Session Briefing</h3>
-      <p>
-        When a new conversation starts, Edward generates a continuity summary
-        of what happened between sessions — new memories stored, scheduled
-        events fired, orchestrator tasks completed, triage activity, and
-        consolidation results. Pure DB queries, no LLM call needed.
-      </p>
-
-      <h3>Proactive Intelligence</h3>
-      <p>
-        Autonomous background services that operate on their own schedules
-        (all disabled by default):
-      </p>
-      <ul>
-        <li><strong>Morning briefing</strong> — daily summary with calendar, open loops, and activity</li>
-        <li><strong>Meeting prep</strong> — calendar-based preparation briefs with entity context</li>
-        <li><strong>Open loop nudges</strong> — daily reminders for stale unresolved items</li>
-        <li><strong>Pattern detection</strong> — weekly analysis of conversation themes and entity trends</li>
-      </ul>
-      <p>
-        <Link href="/docs/proactive">Read the full proactive intelligence deep dive →</Link>
-      </p>
-
-      <h2>Key Directories</h2>
-      <pre><code>{`meet-edward/
-├── frontend/              # Next.js app
-│   ├── app/               # Pages and routes
-│   ├── components/        # React components
-│   └── lib/               # API client, context, utilities
-├── backend/
-│   ├── main.py            # FastAPI app + lifespan
-│   ├── routers/           # API route handlers
-│   ├── services/
-│   │   ├── graph/         # LangGraph agent (nodes, state, tools)
-│   │   ├── execution/     # Code execution sandboxes
-│   │   ├── heartbeat/     # Message monitoring + triage
-│   │   ├── memory_service.py
-│   │   ├── document_service.py
-│   │   ├── tool_registry.py
-│   │   ├── skills_service.py
-│   │   └── ...
-│   └── start.sh           # Backend startup script
-├── site/                  # Marketing site (meet-edward.com)
-├── setup.sh               # First-time installation
-└── restart.sh             # Service management`}</code></pre>
-
-      <h2>Startup Order</h2>
-      <p>
-        The backend initializes components in a specific order (defined in{" "}
-        <code>main.py</code> lifespan). The tool registry must come after all
-        tool sources are initialized:
+        <code>main.py</code>’s lifespan starts things in an order that
+        matters: the tool registry must come after skills and every MCP
+        source.
       </p>
       <ol>
-        <li><strong>Database + LangGraph</strong> — tables and checkpoint store</li>
-        <li><strong>Skills</strong> — load enabled states</li>
-        <li><strong>MCP clients</strong> — WhatsApp, Apple Services subprocesses</li>
-        <li><strong>Custom MCP servers</strong> — user-added servers from DB</li>
-        <li><strong>Tool registry</strong> — must be after all tool sources</li>
-        <li><strong>Scheduler</strong> — polls for due events</li>
-        <li><strong>Heartbeat</strong> — iMessage listener + triage loop</li>
-        <li><strong>Consolidation</strong> — hourly memory clustering</li>
-        <li><strong>Evolution</strong> — check for pending deploys</li>
-        <li><strong>Orchestrator</strong> — recover crashed worker tasks</li>
-        <li><strong>Proactive services</strong> — morning briefing, meeting prep, nudges, patterns</li>
+        <li>Logging, the database and the LangGraph checkpointer (tables, migrations, drops)</li>
+        <li>The time zone cache, the embedding model, the Codex rate gate (Codex only)</li>
+        <li>The storage directory and skills</li>
+        <li>Built-in MCP clients (after an orphan sweep), custom MCP servers, a second skills sweep</li>
+        <li>The tool registry</li>
+        <li>Edward’s computer: his home, the Seatbelt profile, a sweep of leftover shells</li>
+        <li>The scheduler</li>
+        <li>The listeners and the mind path, the presence probe</li>
+        <li>The ping runner</li>
+        <li>Browser hands (a no-op unless they are on)</li>
+        <li>Consolidation (after 60 s)</li>
+        <li>The orchestrator (recovers crashed worker tasks; dormant)</li>
+        <li>Greeting pre-warm</li>
       </ol>
-      <p>All have matching shutdown hooks in reverse order.</p>
+      <p>Shutdown runs the matching hooks in reverse, his computer first.</p>
 
-      <h2>SSE Event Protocol</h2>
+      <h2>The chat stream</h2>
       <p>
-        The chat endpoint (<code>POST /api/chat</code>) streams structured events
-        for real-time UI updates:
+        <code>POST /api/chat</code> streams Server-Sent Events,{" "}
+        <code>data: {"{json}"}</code>, plus a heartbeat comment every 10 s
+        when idle. Every event has a <code>type</code> and a{" "}
+        <code>conversation_id</code>; the frontend folds them into one live
+        bubble. A crash mid-stream becomes a spoken-style apology and{" "}
+        <code>done</code>; a client that leaves gets nothing more, and the
+        step in flight is cancelled.
       </p>
       <table>
         <thead>
           <tr>
             <th>Event</th>
-            <th>Description</th>
+            <th>Meaning</th>
           </tr>
         </thead>
         <tbody>
-          <tr>
-            <td><code>thinking</code></td>
-            <td>LLM is processing (between tool calls)</td>
-          </tr>
-          <tr>
-            <td><code>tool_start</code></td>
-            <td>Tool execution beginning</td>
-          </tr>
-          <tr>
-            <td><code>code</code></td>
-            <td>Code/query/command to execute</td>
-          </tr>
-          <tr>
-            <td><code>execution_output</code></td>
-            <td>stdout/stderr from code execution</td>
-          </tr>
-          <tr>
-            <td><code>execution_result</code></td>
-            <td>Code execution completed</td>
-          </tr>
-          <tr>
-            <td><code>tool_end</code></td>
-            <td>Tool execution finished</td>
-          </tr>
-          <tr>
-            <td><code>content</code></td>
-            <td>Text content from LLM response</td>
-          </tr>
-          <tr>
-            <td><code>done</code></td>
-            <td>Stream complete</td>
-          </tr>
+          {EVENTS.map(([name, meaning]) => (
+            <tr key={name}>
+              <td><code>{name}</code></td>
+              <td>{meaning}</td>
+            </tr>
+          ))}
         </tbody>
       </table>
+
+      <h2>The tree</h2>
+      <pre>
+        <code>{`meet-edward/
+├── backend/            FastAPI: main.py, routers/, services/, tests/, scripts/
+│   └── services/
+│       ├── graph/      the turn: the tool loop, streaming, the prompt
+│       ├── toolset/    the 14 tools and TurnPolicy
+│       ├── computer/   his home, shell, editor and the Seatbelt rails
+│       ├── heartbeat/  the listeners and the mind path
+│       ├── pings/      the @Edward runner
+│       ├── media/      photos, PDFs, voice messages, video
+│       ├── voice/      live voice
+│       └── …           memory, mind, noticing, reach, scheduler, hub, screen
+├── frontend/           the Next.js PWA (app/, components/, lib/, __tests__/)
+├── chrome-extension/   his hands in your Chrome (optional)
+├── companion/          the menu-bar companion
+├── scriptable/         the iPhone widget
+├── scripts/            LaunchAgents, the watchdog, the test cluster
+├── docs/               ADAPTING, UPGRADING, architecture/
+├── site/               meet-edward.com
+├── setup.sh
+└── restart.sh`}</code>
+      </pre>
+
+      <h2>Running it</h2>
+      <ul>
+        <li>
+          <strong>LaunchAgents</strong> keep the backend and frontend alive,
+          and run a health check every five minutes (Postgres, backend,
+          frontend, the tunnel, the graph worker and the scheduler, bottom
+          up, never restarting the app onto a dead dependency), a deeper one
+          at 08:00, a verified nightly backup and a daily memory report.
+        </li>
+        <li>
+          <strong>The frontend is a production build.</strong>{" "}
+          <code>frontend/deploy-build.sh</code> builds the next version beside
+          the running one and swaps it in on restart;{" "}
+          <code>frontend/rollback-build.sh</code> swaps back. Open tabs reload
+          onto a new build only when you are idle.
+        </li>
+        <li>
+          <strong>The live checkout is production</strong>: edits there are
+          live at the next restart, so build and experiment in a git worktree.
+        </li>
+      </ul>
+
+      <h2>Testing</h2>
+      <ul>
+        <li>
+          Backend tests run only on their own Postgres cluster on :5433,
+          through <code>scripts/with-test-db-lock.sh</code>, never with the
+          live database exported. They can never reach a real model, Chrome,
+          Messages, your calendar or the embedding model.
+        </li>
+        <li>
+          Frontend tests are <code>node --test</code>, with guardrail tests
+          that pin real contracts (every tool has a work-rail label, one
+          clock format, every settings panel in a room).
+        </li>
+        <li>
+          A UX fixture harness runs the real app against a mock API with
+          invented content, for screenshots and design work.
+        </li>
+        <li>
+          Evaluation gates run the real model over recorded situations, with
+          every outward act a dry run, before the mind, pings or noticing
+          change.
+        </li>
+        <li>
+          A doc lint fails when the docs name a path, route or event that
+          doesn’t exist.
+        </li>
+      </ul>
+
+      <h2>Read further</h2>
+      <ul>
+        <li>
+          <a href={`${GITHUB_BLOB}/CLAUDE.md`}>CLAUDE.md</a>: the operating
+          guide, every rule that must hold, every route and setting. Written
+          for Claude sessions working in the repo, and just as useful for
+          people.
+        </li>
+        <li>
+          <a href={`${GITHUB_TREE}/docs/architecture`}>docs/architecture/</a>:
+          one page per subsystem, with the reasons and incidents behind each
+          rule.
+        </li>
+        <li>
+          <a href={`${GITHUB_BLOB}/docs/architecture/api.md`}>api.md</a>:
+          every route and socket.
+        </li>
+        <li>
+          <a href={`${GITHUB_BLOB}/CONTRIBUTING.md`}>CONTRIBUTING.md</a>:
+          setup for contributors, the checks a change must pass, and the
+          privacy rules.
+        </li>
+      </ul>
     </DocsContent>
   );
 }

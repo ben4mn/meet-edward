@@ -1,36 +1,31 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# meet-edward.com
 
-## Getting Started
+The website for [Edward](https://github.com/ben4mn/meet-edward): the landing page, the docs and the blog. Next.js 14 with a static export (`output: 'export'`), deployed to Cloudflare Pages.
 
-First, run the development server:
+## Working on it
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cd site
+npm ci
+npm run dev          # http://localhost:3000
+npm run lint
+npm run build        # static site in out/
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+`npm run build` also runs, before the build, `scripts/generate-sitemap.mjs`, `scripts/generate-feeds.mjs` (RSS and JSON Feed) and `scripts/generate-og-images.mjs` (one Open Graph image per blog post; it fetches the Inter font from Google Fonts), and after it `scripts/generate-llms-full.mjs`, which turns every exported docs page into `out/llms-full.txt` and `public/llms-full.txt`. Commit the public copy when the docs change.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Where things are
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `app/page.tsx` and `components/` — the landing page
+- `app/docs/<slug>/page.tsx` — one docs page each; `lib/docsNav.ts` is the sidebar's list, and `scripts/blog-data.mjs` (`DOC_PAGES`) the sitemap's, so add a page to both
+- `lib/blog.tsx` — the posts; `scripts/blog-data.mjs` mirrors their metadata for the build scripts. A post whose features have changed keeps its text and gets an `editorsNote`
+- `public/og.png` — the default link-preview card, from `scripts/generate-og-default.mjs` (run by hand when the tagline changes; commit the PNG)
+- `public/llms.txt`, `public/llms-full.txt` — machine-readable docs ([llmstxt.org](https://llmstxt.org))
+- `public/screenshots/` — app screenshots from the repository's `docs/screenshots` (the UX harness, invented data only), resized for the web
+- `public/_redirects` — Cloudflare Pages redirects, including docs pages that were renamed
 
-## Learn More
+The docs describe the release in the repository: when the README, `CLAUDE.md`, `docs/ADAPTING.md`, `docs/UPGRADING.md` or `docs/architecture/` change what Edward does, change the matching page here.
 
-To learn more about Next.js, take a look at the following resources:
+## Deploying
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+A push to `main` that touches `site/**` builds and deploys the site to Cloudflare Pages (`.github/workflows/deploy-site.yml`), and a weekly rebuild publishes blog posts whose date has come. Open a pull request instead, and build it locally first.

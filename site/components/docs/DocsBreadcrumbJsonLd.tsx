@@ -1,22 +1,11 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import { DOCS_PAGES } from "../../lib/docsNav";
 
-const SLUG_LABELS: Record<string, string> = {
-  introduction: "Introduction",
-  "beginner-guide": "Beginner Guide",
-  "setup-with-ai": "Setup with AI",
-  "getting-started": "Getting Started",
-  configuration: "Configuration",
-  "platform-support": "Platform Support",
-  architecture: "Architecture",
-  skills: "Skills & Integrations",
-  memory: "Memory System",
-  heartbeat: "Heartbeat",
-  widget: "Widget",
-  "file-storage": "File Storage",
-  orchestrator: "Orchestrator & Claude Code",
-};
+const SLUG_LABELS: Record<string, string> = Object.fromEntries(
+  DOCS_PAGES.map((page) => [page.slug, page.label])
+);
 
 export function DocsBreadcrumbJsonLd() {
   const pathname = usePathname();

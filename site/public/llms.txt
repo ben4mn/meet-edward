@@ -1,50 +1,45 @@
 # Edward
 
-> Self-hosted AI assistant with long-term memory, extensible skills, and proactive monitoring. Built with Next.js, FastAPI, LangGraph, and PostgreSQL.
+> An open-source AI assistant that remembers, notices what matters and works on your Mac, for one person. Next.js PWA, FastAPI, PostgreSQL with pgvector, LangGraph, and the Claude API for every model call. macOS on Apple silicon only. Apache-2.0.
 
-Edward (Enhanced Digital Workflow Assistant for Routine Decisions) is an open-source, self-hosted AI assistant that remembers every conversation, evolves its own code, and proactively monitors your messages and calendar. Your data never leaves your machine.
+Edward runs on the owner's own Mac and keeps everything he knows in their PostgreSQL database; the one outside service he needs is the Claude API. Every memory records who said it, what it is about and how sure he is. He answers in a chat PWA, by voice and in iMessage (@Edward in any chat), works in a sandboxed computer of his own (a persistent shell, a file editor and a headless browser: 14 tools on every surface), keeps his promises with scheduled follow-up wakes, writes a journal of what he does on his own, and stays inside a daily spend cap (default $5). Noticing what matters in the owner's messages is opt-in.
 
 ## Documentation
 
-- [Introduction](https://meet-edward.com/docs/introduction): Overview of Edward — what it is, key features, and how it works
-- [Beginner Guide](https://meet-edward.com/docs/beginner-guide): Step-by-step setup for non-technical users
-- [Setup with AI](https://meet-edward.com/docs/setup-with-ai): Install Edward using Claude Code, Cursor, or Windsurf
-- [Getting Started](https://meet-edward.com/docs/getting-started): Quick start for developers with prerequisites and troubleshooting
-- [Configuration](https://meet-edward.com/docs/configuration): Complete environment variable reference
-- [Platform Support](https://meet-edward.com/docs/platform-support): Cross-platform compatibility — macOS, Linux, Windows (WSL)
-- [Architecture](https://meet-edward.com/docs/architecture): System design — LangGraph pipeline, database, background services
-- [Skills & Integrations](https://meet-edward.com/docs/skills): Modular skills — messaging, code execution, search, Apple Services
-- [Memory System](https://meet-edward.com/docs/memory): Hybrid vector + BM25 retrieval, extraction, reflection, consolidation
-- [Heartbeat](https://meet-edward.com/docs/heartbeat): Proactive monitoring — iMessage, Calendar, Email triage
-- [Widget](https://meet-edward.com/docs/widget): iOS home screen widget via Scriptable
-- [File Storage](https://meet-edward.com/docs/file-storage): Persistent file storage with categories and tags
-- [Orchestrator & Claude Code](https://meet-edward.com/docs/orchestrator): Parallel worker agents and Claude Code sessions
-- [Proactive Intelligence](https://meet-edward.com/docs/proactive): Morning briefings, meeting prep, open loop nudges, entity tracking, pattern detection
+- [Introduction](https://meet-edward.com/docs/introduction): what Edward is, what makes him different, what leaves your Mac
+- [Beginner guide](https://meet-edward.com/docs/beginner-guide): installing step by step, with no coding experience
+- [Set up with AI](https://meet-edward.com/docs/setup-with-ai): a prompt for Claude Code; the repository's CLAUDE.md has a section for AI assistants helping someone set Edward up
+- [Quick start](https://meet-edward.com/docs/getting-started): setup.sh, LaunchAgents or restart.sh, the one-time setup code, first steps
+- [Configuration](https://meet-edward.com/docs/configuration): settings, the Claude routes and spend cap, what ships off and how to turn it on
+- [Platform support](https://meet-edward.com/docs/platform-support): macOS on Apple silicon only, and why
+- [Upgrading from March](https://meet-edward.com/docs/upgrading): moving a March 2026 install onto the October 2026 release; what was removed, what is dormant, what is new
+- [The app](https://meet-edward.com/docs/app): Today, Chat and its work rail, voice, the Edward tab, push notifications
+- [Memory](https://meet-edward.com/docs/memory): hybrid retrieval, provenance, extraction, horizons, upkeep that never deletes, documents, verified forget
+- [The mind](https://meet-edward.com/docs/mind): wakes, follow-through, the silent nightly, free time, the thought journal, opt-in noticing, how he reaches you
+- [Listening & pings](https://meet-edward.com/docs/listening): iMessage, Mail and Gmail listeners; @Edward pings and friends' limits; photos, PDFs and voice messages
+- [His computer](https://meet-edward.com/docs/computer): the 14 tools, the sandboxed shell and its rails, two browsers, look, the web, the calendar
+- [Widget, screen & hub](https://meet-edward.com/docs/surfaces): the iPhone widget, his /screen stage, the optional household hub
+- [Guard rails](https://meet-edward.com/docs/guard-rails): setup code, spend caps, secret scan, taint and approvals, the sandbox's limits, known gaps
+- [Skills & integrations](https://meet-edward.com/docs/skills): skill switches and what they gate; messages, mail, Apple data, Twilio, WhatsApp, Alexa, search, MCP servers
+- [Adapting to your Mac](https://meet-edward.com/docs/adapting): ADAPT: seams, macOS permissions, prompts for bigger changes
+- [Architecture](https://meet-edward.com/docs/architecture): the turn, the model, background loops, startup order, the chat stream, running and testing
 
-## Key Features
+## In the repository
 
-- **Long-term memory**: Hybrid 70% vector + 30% BM25 retrieval with pgvector, automatic extraction via Claude Haiku
-- **Self-hosted**: Runs entirely on your machine — PostgreSQL, FastAPI, Next.js. No cloud dependency.
-- **Extensible skills**: Messaging (iMessage, Twilio SMS/WhatsApp, WhatsApp MCP), code execution (Python, JS, SQL, Shell), web search, Apple Services, HTML hosting
-- **Proactive heartbeat**: Monitors iMessage, Calendar, and Email — classifies and responds automatically
-- **Scheduled events**: Self-triggering reminders, messages, and tasks with cron support
-- **Worker agents**: Orchestrator spawns mini-Edwards with full tool access for parallel tasks
-- **Self-evolution**: Claude Code integration for autonomous code changes with validation
-- **Proactive intelligence**: Morning briefings, meeting prep, open loop nudges, entity tracking, weekly pattern detection
-- **Browser automation**: Headless browser via Lightpanda for JS-heavy pages
-- **Custom MCP servers**: Discover, install, and use MCP servers at runtime
-- **iOS widget**: Home screen widget via Scriptable with structured data or raw JavaScript
-- **Document store**: Persistent document storage with semantic search
-- **File storage**: Categorized file management with sandbox-to-storage flow
-- **Push notifications**: Web Push via VAPID for alerts and reminders
+- [README](https://github.com/ben4mn/meet-edward/blob/main/README.md): features, quick start, configuration
+- [CLAUDE.md](https://github.com/ben4mn/meet-edward/blob/main/CLAUDE.md): the operating guide for AI assistants (and people) working with Edward: setup steps, rules, routes, settings
+- [docs/architecture/](https://github.com/ben4mn/meet-edward/tree/main/docs/architecture): one page per subsystem
+- [docs/ADAPTING.md](https://github.com/ben4mn/meet-edward/blob/main/docs/ADAPTING.md) and [docs/UPGRADING.md](https://github.com/ben4mn/meet-edward/blob/main/docs/UPGRADING.md)
 
-## Tech Stack
+## Key facts
 
-- Frontend: Next.js 14, React, Tailwind CSS
-- Backend: FastAPI, Python 3.11+, LangGraph
-- Database: PostgreSQL with pgvector, langgraph-checkpoint-postgres
-- LLM: Claude (Anthropic API) via ChatAnthropic
-- Embedding: sentence-transformers (all-MiniLM-L6-v2, 384 dims)
+- Platform: macOS on Apple silicon only (not Intel, Linux, Windows or Docker)
+- Model: the Claude API via one adapter, a route per purpose (Sonnet 5.5 for chat, wakes and screens; Haiku 5.5 for background memory work; Opus 5.5 for evaluations); an unofficial Codex fallback is opt-in
+- Spend: a daily cap ($5 by default), $3 per turn the owner asked for, $1 per other turn
+- Memory: pgvector (all-MiniLM-L6-v2, 384 dims, local) blended 70/30 with BM25; origin (heard, read, thought, did), about, tier and source on every row
+- Tools: bash, str_replace_based_edit_tool, web_search, web_fetch, browser, chrome, look, messages, send_message, tell_owner, memory, schedule, screen, plan
+- Off by default: reading messages and mail, noticing, Chrome hands, friends' full toolset, approvals, voice, push, the knowledge graph, the hub's pets
+- Removed since March 2026: self-evolution, Lightpanda, the Python/JavaScript/SQL sandboxes, LangSmith, the morning briefing and its siblings; workers are dormant
 
 ## Links
 

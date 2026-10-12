@@ -7,12 +7,12 @@ import { getPublishedPosts } from "@/lib/blog";
 export const metadata: Metadata = {
   title: "Blog — Edward",
   description:
-    "Articles about building a self-hosted AI assistant with long-term memory, proactive monitoring, and self-evolution.",
+    "Notes on building Edward, an open-source AI assistant that remembers, follows through and runs on your Mac.",
   alternates: { canonical: "/blog" },
   openGraph: {
     title: "Blog — Edward",
     description:
-      "Articles about building a self-hosted AI assistant with long-term memory, proactive monitoring, and self-evolution.",
+      "Notes on building Edward, an open-source AI assistant that remembers, follows through and runs on your Mac.",
     url: "/blog",
   },
 };
@@ -20,7 +20,7 @@ export const metadata: Metadata = {
 export default function BlogPage() {
   const posts = getPublishedPosts().map(
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    ({ content, ...meta }) => meta
+    ({ content, editorsNote, ...meta }) => meta
   );
 
   return (
@@ -32,8 +32,8 @@ export default function BlogPage() {
             Blog
           </h1>
           <p className="text-[#64748b] text-lg mb-12">
-            Notes on building an AI assistant that remembers, evolves, and works
-            in the background.
+            Notes on building an AI assistant that remembers, follows through
+            and runs on your Mac.
           </p>
           <BlogIndexContent posts={posts} />
         </div>
