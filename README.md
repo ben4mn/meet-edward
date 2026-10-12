@@ -36,6 +36,49 @@
 
 > The walkthrough shows the March 2026 release. This release looks and works differently; see [what changed](docs/UPGRADING.md).
 
+## Screenshots
+
+This release in the UX fixture harness, with invented data: the owner Ellis, their partner Rowan and the dog Biscuit aren't real.
+
+<p align="center">
+  <img src="docs/screenshots/today-desktop.png" width="700" alt="Today on desktop: Edward's evening greeting, cards that need Ellis (two late doses for Biscuit, a call in 11 minutes, a reply to Jordan held for approval) and a 'What I did' column of his wakes and actions" /><br />
+  <sub><b>Today</b>: what needs you, with the action on the card, and what Edward did on his own.</sub>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/chat-desktop.png" width="700" alt="Chat on desktop: a cabin-weekend conversation with the work rail open above Edward's answer, showing his reasoning, two searches, a page that timed out and a web search, then a cost table" /><br />
+  <sub><b>Chat</b>, with the work rail open: his reasoning and every tool call, including the one that failed.</sub>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/today-mobile.png" width="240" alt="Today on an iPhone: the greeting and the first cards that need Ellis, above the Today, Chat and Edward tab bar" />
+  &nbsp;
+  <img src="docs/screenshots/chat-mobile.png" width="240" alt="Chat on an iPhone: the work rail open with Edward's reasoning and tool steps above his answer" />
+  &nbsp;
+  <img src="docs/screenshots/edward-tab-mobile.png" width="240" alt="The Edward tab on an iPhone: Edward's status, what he knows, watches and does, and the first of his rooms" /><br />
+  <sub>The installed PWA on an iPhone.</sub>
+</p>
+
+<details>
+<summary><strong>The Edward tab, his screen and the household hub</strong></summary>
+
+<p align="center">
+  <img src="docs/screenshots/edward-tab-desktop.png" width="700" alt="The Edward tab on desktop: Edward's status card, what he knows, watches and does, and his five rooms (Mind, Memory, Attention, Work, House)" /><br />
+  <sub><b>The Edward tab</b>: what he knows, watches and does, and the five rooms his settings live in.</sub>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/screen-desktop.png" width="700" alt="The /screen stage: a headline Edward wrote, a countdown to Rowan's flight, Saturday's forecast, a thought he left, what is on his mind and tonight's list" /><br />
+  <sub><b>His screen</b> (<code>/screen</code>): a stage he arranges on the host Mac's display.</sub>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/hub-kiosk.png" width="560" alt="The household hub on a 7-inch touchscreen: the clock, two late-dose alerts, Edward greeting Ellis, tiles for pets, calendar, lists, voice, timers, health, photos and settings, and each pet's meals" /><br />
+  <sub><b>The household hub</b> (<code>/hub</code>) on a 7-inch touchscreen.</sub>
+</p>
+
+</details>
+
 ## Why Edward?
 
 Most assistants start every conversation from nothing and wait to be asked. Edward is built the other way round:
