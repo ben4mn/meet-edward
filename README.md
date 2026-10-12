@@ -21,7 +21,7 @@
   <a href="https://meet-edward.com/docs">Docs</a> &nbsp;·&nbsp;
   <a href="https://meet-edward.com/blog">Blog</a> &nbsp;·&nbsp;
   <a href="#quick-start">Quick Start</a> &nbsp;·&nbsp;
-  <a href="https://youtu.be/uewYlQma1QY">Video Walkthrough</a>
+  <a href="https://meet-edward.com/#film">Watch the Film</a>
 </p>
 
 ---
@@ -29,12 +29,12 @@
 ## Demo
 
 <p align="center">
-  <a href="https://youtu.be/uewYlQma1QY">
-    <img src="https://img.youtube.com/vi/uewYlQma1QY/maxresdefault.jpg" width="700" alt="Watch the Edward walkthrough" />
+  <a href="https://meet-edward.com/#film">
+    <img src="docs/screenshots/film-teaser.gif" width="700" alt="Edward waves beside the words Meet Edward and a Watch the film, 5 min button" />
   </a>
+  <br />
+  <sub><b>Meet Edward</b>, a five-minute film. It plays on <a href="https://meet-edward.com/#film">meet-edward.com</a>, or <a href="https://meet-edward.com/video/meet-edward.mp4">download the MP4</a>. The people and pets in it are invented; the screens are the real app on test data.</sub>
 </p>
-
-> The walkthrough shows the March 2026 release. This release looks and works differently; see [what changed](docs/UPGRADING.md).
 
 ## Screenshots
 

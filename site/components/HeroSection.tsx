@@ -6,7 +6,6 @@ import { Github, BookOpen } from "lucide-react";
 import { EdwardHero } from "./EdwardHero";
 
 const GITHUB_URL = "https://github.com/ben4mn/meet-edward";
-const WALKTHROUGH_URL = "https://youtu.be/uewYlQma1QY";
 
 export function HeroSection() {
   return (
@@ -101,8 +100,8 @@ export function HeroSection() {
       </motion.div>
     </section>
 
-    {/* The app today */}
-    <section className="relative px-6 pb-20 pt-8 flex justify-center">
+    {/* The film */}
+    <section id="film" className="relative px-6 pb-20 pt-8 flex justify-center scroll-mt-24">
       <motion.figure
         className="w-full max-w-5xl"
         initial={{ opacity: 0, y: 30 }}
@@ -110,27 +109,30 @@ export function HeroSection() {
         viewport={{ once: true, margin: "-50px" }}
         transition={{ duration: 0.6 }}
       >
-        <div className="rounded-xl border border-[#334155] overflow-hidden shadow-2xl shadow-black/40 bg-[#0b1120]">
-          {/* eslint-disable-next-line @next/next/no-img-element -- static export, no image optimizer */}
-          <img
-            src="/screenshots/today-desktop.png"
-            alt="Edward's Today page: late pet doses to log, a call starting soon, a reply held for approval, and what he did today"
-            width={1600}
-            height={1000}
-            className="w-full h-auto block"
-          />
+        <div className="rounded-xl border border-[#334155] overflow-hidden shadow-2xl shadow-black/40 bg-[#0b1120] aspect-video">
+          <video
+            className="w-full h-full block"
+            controls
+            playsInline
+            preload="none"
+            poster="/video/meet-edward-poster.jpg"
+            width={1920}
+            height={1080}
+            aria-label="Meet Edward, a five-minute film"
+          >
+            <source src="/video/meet-edward.mp4" type="video/mp4" />
+          </video>
         </div>
         <figcaption className="text-sm text-[#64748b] mt-3 text-center">
-          Today, the front door: what needs you, and what he did.{" "}
+          Meet Edward, in five minutes. The people and pets are invented; the
+          screens are the real app on test data.{" "}
           <a
-            href={WALKTHROUGH_URL}
-            target="_blank"
-            rel="noopener noreferrer"
+            href="/video/meet-edward.mp4"
+            download
             className="text-[#52b788] hover:text-[#6fcf97] transition-colors"
           >
-            The video walkthrough
-          </a>{" "}
-          shows the earlier March 2026 release.
+            Download the MP4
+          </a>
         </figcaption>
       </motion.figure>
     </section>
