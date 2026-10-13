@@ -1,6 +1,7 @@
 "use client";
 
 import { ScrollReveal, StaggerContainer, StaggerItem } from "./ScrollReveal";
+import { ZoomableImage } from "./ZoomableImage";
 
 // Screenshots from the repository's UX harness (invented data only).
 const shots: { src: string; width: number; height: number; title: string; caption: string; alt: string; wide?: boolean }[] = [
@@ -71,14 +72,12 @@ export function Showcase() {
             <StaggerItem key={shot.src} className={shot.wide ? "md:col-span-2" : undefined}>
               <figure>
                 <div className="rounded-xl border border-[#334155]/80 overflow-hidden bg-[#0b1120] shadow-xl shadow-black/30">
-                  {/* eslint-disable-next-line @next/next/no-img-element -- static export, no image optimizer */}
-                  <img
+                  <ZoomableImage
                     src={shot.src}
                     alt={shot.alt}
                     width={shot.width}
                     height={shot.height}
-                    loading="lazy"
-                    className="w-full h-auto block"
+                    className="w-full h-auto block transition-opacity hover:opacity-90"
                   />
                 </div>
                 <figcaption className="mt-3">
